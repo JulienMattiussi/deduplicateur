@@ -1,4 +1,4 @@
-import { useState, startTransition, useEffect } from "react";
+import { useState, startTransition, useEffect, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -17,6 +17,7 @@ interface DuplicateGroup {
   hash: string;
   size: number;
   files: DuplicateFile[];
+  folder_key?: string;
 }
 
 interface ScanSummary {
@@ -26,6 +27,14 @@ interface ScanSummary {
   total_groups: number;
   scanned_files: number;
   duration_ms: number;
+  by_folder: boolean;
+  total_folders: number;
+}
+
+interface FolderSummary {
+  folder_key: string;
+  group_count: number;
+  total_wasted_bytes: number;
 }
 
 interface GroupsPage {
@@ -148,6 +157,71 @@ function GroupCard({
   );
 }
 
+function FolderSection({
+  summary,
+  groups,
+  loading,
+  hasMore,
+  selected,
+  onToggle,
+  onExpand,
+  onLoadMore,
+}: {
+  summary: FolderSummary;
+  groups: DuplicateGroup[];
+  loading: boolean;
+  hasMore: boolean;
+  selected: Set<string>;
+  onToggle: (path: string) => void;
+  onExpand: () => void;
+  onLoadMore: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  function toggle() {
+    const next = !expanded;
+    setExpanded(next);
+    if (next && groups.length === 0 && !loading) {
+      onExpand();
+    }
+  }
+
+  return (
+    <div className="folder-section">
+      <button className="folder-section-header" onClick={toggle}>
+        <span className="folder-section-chevron">{expanded ? "▾" : "▸"}</span>
+        <span className="folder-section-name">
+          📁 {summary.folder_key === "" ? "Dossier racine" : summary.folder_key}
+        </span>
+        <span className="folder-section-stats">
+          {summary.group_count} groupe{summary.group_count > 1 ? "s" : ""} · {formatSize(summary.total_wasted_bytes)} en double
+        </span>
+      </button>
+      {expanded && (
+        <>
+          {loading && groups.length === 0 && (
+            <div className="folder-section-loading">
+              <span className="toolbar-spinner" style={{ display: "inline-block" }} />
+              Chargement…
+            </div>
+          )}
+          {groups.map((group) => (
+            <GroupCard key={group.id} group={group} selected={selected} onToggle={onToggle} />
+          ))}
+          {hasMore && !loading && groups.length > 0 && (
+            <button className="btn-load-more" onClick={onLoadMore}>
+              Afficher 50 de plus ({summary.group_count - groups.length} restants)
+            </button>
+          )}
+          {loading && groups.length > 0 && (
+            <div className="folder-section-loading">Chargement…</div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 function ExclusionsPanel({
   excluded,
   onChange,
@@ -229,6 +303,19 @@ export default function App() {
   ]);
   const [confirmPending, setConfirmPending] = useState(false);
   const [selecting, setSelecting] = useState(false);
+  const [scanMode, setScanMode] = useState<"all" | "by_folder">("all");
+  const [folderSummaries, setFolderSummaries] = useState<FolderSummary[]>([]);
+  const [folderState, setFolderState] = useState<Record<string, { loading: boolean; hasMore: boolean; offset: number }>>({});
+
+  const groupsByFolder = useMemo(() => {
+    const map = new Map<string, DuplicateGroup[]>();
+    for (const g of groups) {
+      const key = g.folder_key ?? "";
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(g);
+    }
+    return map;
+  }, [groups]);
 
   useEffect(() => {
     invoke<ScanSummary[]>("list_sessions")
@@ -251,6 +338,29 @@ export default function App() {
     }
   }
 
+  async function loadFolderPage(folderKey: string) {
+    const state = folderState[folderKey];
+    if (state?.loading) return;
+    const offset = state?.offset ?? 0;
+    setFolderState((prev) => ({
+      ...prev,
+      [folderKey]: { loading: true, hasMore: state?.hasMore ?? true, offset },
+    }));
+    try {
+      const page = await invoke<GroupsPage>("get_folder_groups_page", { folderKey, offset, limit: 50 });
+      startTransition(() => {
+        setGroups((prev) => [...prev, ...page.groups]);
+        setFolderState((prev) => ({
+          ...prev,
+          [folderKey]: { loading: false, hasMore: page.has_more, offset: offset + page.groups.length },
+        }));
+      });
+    } catch (e) {
+      setFolderState((prev) => ({ ...prev, [folderKey]: { loading: false, hasMore: state?.hasMore ?? true, offset } }));
+      setError(String(e));
+    }
+  }
+
   async function resumeSession(id: string) {
     try {
       const s = await invoke<ScanSummary>("load_session", { id });
@@ -260,8 +370,15 @@ export default function App() {
         setGroups([]);
         setSelected(new Set());
         setError(null);
+        setFolderSummaries([]);
+        setFolderState({});
       });
-      await loadPage(0, false);
+      if (s.by_folder) {
+        const summaries = await invoke<FolderSummary[]>("list_folder_keys");
+        startTransition(() => setFolderSummaries(summaries));
+      } else {
+        await loadPage(0, false);
+      }
     } catch (e) {
       setError(String(e));
     }
@@ -275,6 +392,8 @@ export default function App() {
         setSummary(null);
         setGroups([]);
         setSelected(new Set());
+        setFolderSummaries([]);
+        setFolderState({});
       }
     });
   }
@@ -303,6 +422,8 @@ export default function App() {
     setSelected(new Set());
     setError(null);
     setProgress(null);
+    setFolderSummaries([]);
+    setFolderState({});
 
     const unlisten = await listen<{ current: number; total: number }>(
       "scan:progress",
@@ -310,12 +431,23 @@ export default function App() {
     );
 
     try {
-      const s = await invoke<ScanSummary>("scan_folder", { path: folder, recursive, excluded });
+      const effectiveRecursive = scanMode === "by_folder" ? true : recursive;
+      const s = await invoke<ScanSummary>("scan_folder", {
+        path: folder,
+        recursive: effectiveRecursive,
+        excluded,
+        byFolder: scanMode === "by_folder",
+      });
       startTransition(() => {
         setSummary(s);
         setSessions((prev) => [s, ...prev]);
       });
-      await loadPage(0, false);
+      if (s.by_folder) {
+        const summaries = await invoke<FolderSummary[]>("list_folder_keys");
+        startTransition(() => setFolderSummaries(summaries));
+      } else {
+        await loadPage(0, false);
+      }
     } catch (e) {
       if (String(e) !== "cancelled") setError(String(e));
     } finally {
@@ -404,7 +536,7 @@ export default function App() {
           {summary && (
             <button
               className="btn-ghost"
-              onClick={() => { setSummary(null); setGroups([]); setSelected(new Set()); }}
+              onClick={() => { setSummary(null); setGroups([]); setSelected(new Set()); setFolderSummaries([]); setFolderState({}); }}
             >
               ← Mes analyses
             </button>
@@ -420,12 +552,21 @@ export default function App() {
             <span className="folder-icon">📁</span>
             <span className="folder-path">{folder || "Cliquer pour choisir un dossier…"}</span>
           </div>
-          <label className="toggle-recursive">
+          <select
+            className="select-mode"
+            value={scanMode}
+            onChange={(e) => setScanMode(e.target.value as "all" | "by_folder")}
+            disabled={scanning}
+          >
+            <option value="all">Tout le dossier</option>
+            <option value="by_folder">Par sous-dossier</option>
+          </select>
+          <label className="toggle-recursive" style={{ visibility: scanMode === "by_folder" ? "hidden" : "visible" }}>
             <input
               type="checkbox"
               checked={recursive}
               onChange={(e) => setRecursive(e.target.checked)}
-              disabled={scanning}
+              disabled={scanning || scanMode === "by_folder"}
             />
             Sous-dossiers
           </label>
@@ -441,6 +582,9 @@ export default function App() {
         {summary && (
           <div className="stats-row">
             <span className="stat"><strong>{summary.scanned_files}</strong> fichiers analysés</span>
+            {summary.by_folder && (
+              <span className="stat"><strong>{summary.total_folders}</strong> dossier{summary.total_folders > 1 ? "s" : ""}</span>
+            )}
             <span className="stat"><strong>{summary.total_groups}</strong> groupes</span>
             <span className="stat waste"><strong>{formatSize(summary.total_wasted_bytes)}</strong> récupérables</span>
             <span className="stat duration">en {summary.duration_ms} ms</span>
@@ -488,19 +632,37 @@ export default function App() {
           </div>
 
           <div className="groups-list">
-            {groups.map((group) => (
-              <GroupCard key={group.id} group={group} selected={selected} onToggle={toggleFile} />
-            ))}
-            {hasMore && (
-              <button
-                className="btn-load-more"
-                onClick={() => loadPage(groups.length, true)}
-                disabled={loadingMore}
-              >
-                {loadingMore
-                  ? "Chargement…"
-                  : `Afficher 50 de plus (${summary!.total_groups - groups.length} restants)`}
-              </button>
+            {summary?.by_folder ? (
+              folderSummaries.map((fs) => (
+                <FolderSection
+                  key={fs.folder_key}
+                  summary={fs}
+                  groups={groupsByFolder.get(fs.folder_key) ?? []}
+                  loading={folderState[fs.folder_key]?.loading ?? false}
+                  hasMore={folderState[fs.folder_key]?.hasMore ?? true}
+                  selected={selected}
+                  onToggle={toggleFile}
+                  onExpand={() => loadFolderPage(fs.folder_key)}
+                  onLoadMore={() => loadFolderPage(fs.folder_key)}
+                />
+              ))
+            ) : (
+              <>
+                {groups.map((group) => (
+                  <GroupCard key={group.id} group={group} selected={selected} onToggle={toggleFile} />
+                ))}
+                {hasMore && (
+                  <button
+                    className="btn-load-more"
+                    onClick={() => loadPage(groups.length, true)}
+                    disabled={loadingMore}
+                  >
+                    {loadingMore
+                      ? "Chargement…"
+                      : `Afficher 50 de plus (${summary!.total_groups - groups.length} restants)`}
+                  </button>
+                )}
+              </>
             )}
           </div>
         </>

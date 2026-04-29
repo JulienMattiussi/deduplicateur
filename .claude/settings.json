@@ -18,7 +18,9 @@
       "Bash(. \"$HOME/.cargo/env\" && cargo check *)",
       "Bash(cd * && . \"$HOME/.cargo/env\" && cargo test *)",
       "Bash(cd * && . \"$HOME/.cargo/env\" && cargo check *)",
-      "Bash(npm run format:check *)"
+      "Bash(npm run format:check *)",
+      "Bash(export NVM_DIR=\"$HOME/.nvm\" && [ -s \"$NVM_DIR/nvm.sh\" ] && . \"$NVM_DIR/nvm.sh\" && npx tsc --noEmit 2>&1)",
+      "Bash(. \"$HOME/.cargo/env\" && cargo test --manifest-path src-tauri/Cargo.toml 2>&1 && export NVM_DIR=\"$HOME/.nvm\" && [ -s \"$NVM_DIR/nvm.sh\" ] && . \"$NVM_DIR/nvm.sh\" && npx tsc --noEmit 2>&1)"
     ]
   }
 }

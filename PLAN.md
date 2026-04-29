@@ -55,8 +55,8 @@
 
 - [x] Parcours récursif de l'arborescence (walkdir)
 - [x] Option : inclure ou exclure les sous-dossiers (toggle + panneau d'exclusions)
-- [ ] Analyse indépendante par dossier (pas de comparaison cross-dossiers) - actuellement tout est mis à plat
-- [ ] UI : vue arborescente des résultats (dossier → groupes de doublons)
+- [x] Analyse indépendante par dossier (pas de comparaison cross-dossiers) - mode "Par sous-dossier"
+- [x] UI : vue arborescente des résultats (dossier → groupes de doublons)
 
 **Critère de validation : analyser `/Photos` avec 20 sous-dossiers sans mélanger les résultats**
 

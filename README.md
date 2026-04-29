@@ -15,6 +15,7 @@ Outil de détection et suppression de fichiers en double - rapide, local, sans c
 - **Détection exacte** - identifie les fichiers identiques bit à bit via un hachage en cascade (taille → hash partiel 4 Ko → hash complet xxhash3)
 - **Parallélisme** - hachage multi-cœurs avec Rayon, tient sur 200 000 fichiers
 - **Sous-dossiers** - analyse récursive avec exclusion de dossiers configurables (`node_modules`, `.git`, `target`…)
+- **Mode par sous-dossier** - compare les doublons uniquement à l'intérieur de chaque premier niveau de sous-dossier, sans mélanger les fichiers de dossiers différents
 - **Sessions persistantes** - chaque scan est sauvegardé ; reprendre une analyse après redémarrage sans rescanner
 - **Pagination sans freeze** - les résultats sont chargés par tranches de 50, le système ne sature jamais
 - **Suppression sûre** - les fichiers sont envoyés dans la corbeille, récupérables
@@ -79,7 +80,7 @@ Chaque scan produit un fichier JSON dans `~/.local/share/deduplicateur/sessions/
 | Corbeille | trash | Suppression récupérable cross-platform |
 | Frontend | React 18 + TypeScript | UI réactive |
 | Bundler | Vite + Tauri CLI | Dev HMR + build `.exe` |
-| Tests Rust | cargo test + tempfile | 13 tests unitaires sur le moteur |
+| Tests Rust | cargo test + tempfile | 16 tests unitaires sur le moteur |
 | Tests TS | Vitest | Tests utilitaires |
 
 ---
@@ -120,7 +121,7 @@ Sur Windows, génère un `.exe` autonome.
 ### Tests
 
 ```bash
-# Moteur Rust (13 tests)
+# Moteur Rust (16 tests)
 cargo test --manifest-path src-tauri/Cargo.toml
 
 # Utilitaires TypeScript
@@ -135,8 +136,8 @@ npm test
 |-------|-------------|--------|
 | 1 | Moteur exact + UI minimale | ✅ |
 | 2 | Hash partiel, Rayon, progression, sessions | ✅ |
-| 3 | Interface soignée (thème, sélection intelligente) | 🔜 |
-| 4 | Analyse par sous-dossier indépendante | 🔜 |
+| 3 | Interface soignée (thème, sélection intelligente) | ✅ |
+| 4 | Analyse par sous-dossier indépendante | ✅ |
 | 5 | Similarité images (pHash, résolution-agnostique) | 🔜 |
 | 6 | Similarité vidéos (échantillonnage de frames) | 🔜 |
 

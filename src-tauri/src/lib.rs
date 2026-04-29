@@ -24,6 +24,10 @@ struct ScanSummary {
     total_groups: usize,
     scanned_files: usize,
     duration_ms: u128,
+    #[serde(default)]
+    by_folder: bool,
+    #[serde(default)]
+    total_folders: usize,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -73,6 +77,7 @@ async fn scan_folder(
     path: String,
     recursive: bool,
     excluded: Vec<String>,
+    by_folder: bool,
 ) -> Result<ScanSummary, String> {
     let app = window.app_handle().clone();
     let cancelled = {
@@ -83,7 +88,7 @@ async fn scan_folder(
 
     let folder = path.clone();
     let result = tauri::async_runtime::spawn_blocking(move || {
-        do_scan(&path, recursive, &excluded, cancelled, |current, total| {
+        do_scan(&path, recursive, &excluded, by_folder, cancelled, |current, total| {
             if current % 50 == 0 || current == total {
                 let _ = window.emit(
                     "scan:progress",
@@ -101,6 +106,15 @@ async fn scan_folder(
         .as_millis()
         .to_string();
 
+    let total_folders = if by_folder {
+        result.groups.iter()
+            .filter_map(|g| g.folder_key.as_ref())
+            .collect::<std::collections::HashSet<_>>()
+            .len()
+    } else {
+        0
+    };
+
     let summary = ScanSummary {
         id,
         folder,
@@ -108,6 +122,8 @@ async fn scan_folder(
         total_groups: result.groups.len(),
         scanned_files: result.scanned_files,
         duration_ms: result.duration_ms,
+        by_folder,
+        total_folders,
     };
 
     save_session(&app, &summary, &result.groups);
@@ -254,6 +270,69 @@ fn smart_select(app: tauri::AppHandle, mode: String) -> Result<Vec<String>, Stri
     }
 }
 
+#[derive(serde::Serialize)]
+struct FolderSummary {
+    folder_key: String,
+    group_count: usize,
+    total_wasted_bytes: u64,
+}
+
+#[tauri::command]
+fn list_folder_keys(app: tauri::AppHandle) -> Result<Vec<FolderSummary>, String> {
+    let cache = app.state::<ScanCache>();
+    let guard = cache.0.lock().unwrap();
+    match *guard {
+        None => Err("Aucune session chargée".to_string()),
+        Some(ref loaded) => {
+            let mut summaries: Vec<FolderSummary> = Vec::new();
+            for group in &loaded.groups {
+                let key = group.folder_key.clone().unwrap_or_default();
+                let wasted = group.size * (group.files.len() as u64 - 1);
+                match summaries.last_mut() {
+                    Some(last) if last.folder_key == key => {
+                        last.group_count += 1;
+                        last.total_wasted_bytes += wasted;
+                    }
+                    _ => summaries.push(FolderSummary {
+                        folder_key: key,
+                        group_count: 1,
+                        total_wasted_bytes: wasted,
+                    }),
+                }
+            }
+            Ok(summaries)
+        }
+    }
+}
+
+#[tauri::command]
+fn get_folder_groups_page(
+    app: tauri::AppHandle,
+    folder_key: String,
+    offset: usize,
+    limit: usize,
+) -> Result<GroupsPage, String> {
+    let cache = app.state::<ScanCache>();
+    let guard = cache.0.lock().unwrap();
+    match *guard {
+        None => Err("Aucune session chargée".to_string()),
+        Some(ref loaded) => {
+            let folder_groups: Vec<DuplicateGroup> = loaded.groups.iter()
+                .filter(|g| g.folder_key.as_deref().unwrap_or("") == folder_key.as_str())
+                .cloned()
+                .collect();
+            let total = folder_groups.len();
+            let end = (offset + limit).min(total);
+            Ok(GroupsPage {
+                groups: if offset < total { folder_groups[offset..end].to_vec() } else { vec![] },
+                offset,
+                total,
+                has_more: end < total,
+            })
+        }
+    }
+}
+
 #[tauri::command]
 fn delete_files(paths: Vec<String>) -> Result<(), String> {
     let mut errors: Vec<String> = Vec::new();
@@ -290,6 +369,8 @@ pub fn run() {
             delete_session,
             smart_select,
             select_all_duplicates,
+            list_folder_keys,
+            get_folder_groups_page,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
