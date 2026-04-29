@@ -333,6 +333,38 @@ fn get_folder_groups_page(
     }
 }
 
+#[cfg(target_os = "windows")]
+fn open_in_file_manager(path: &str) -> std::io::Result<()> {
+    std::process::Command::new("explorer")
+        .arg(format!("/select,{}", path))
+        .spawn()
+        .map(|_| ())
+}
+
+#[cfg(target_os = "macos")]
+fn open_in_file_manager(path: &str) -> std::io::Result<()> {
+    std::process::Command::new("open")
+        .args(["-R", path])
+        .spawn()
+        .map(|_| ())
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+fn open_in_file_manager(path: &str) -> std::io::Result<()> {
+    let dir = std::path::Path::new(path)
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new(path));
+    std::process::Command::new("xdg-open")
+        .arg(dir)
+        .spawn()
+        .map(|_| ())
+}
+
+#[tauri::command]
+fn reveal_in_folder(path: String) -> Result<(), String> {
+    open_in_file_manager(&path).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 fn delete_files(paths: Vec<String>) -> Result<(), String> {
     let mut errors: Vec<String> = Vec::new();
@@ -371,6 +403,7 @@ pub fn run() {
             select_all_duplicates,
             list_folder_keys,
             get_folder_groups_page,
+            reveal_in_folder,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

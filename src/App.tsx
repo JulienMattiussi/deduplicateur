@@ -44,6 +44,14 @@ interface GroupsPage {
   has_more: boolean;
 }
 
+async function revealInFolder(path: string) {
+  try {
+    await invoke("reveal_in_folder", { path });
+  } catch {
+    // best-effort, pas d'erreur visible
+  }
+}
+
 function relativeDate(id: string): string {
   const diff = Date.now() - parseInt(id);
   const minutes = Math.floor(diff / 60_000);
@@ -145,7 +153,16 @@ function GroupCard({
               </span>
               <span className="file-col-name file-name">{file.name}</span>
               <span className="file-col-date file-meta">{formatDate(file.modified)}</span>
-              <span className="file-col-dir file-meta">{dirname(file.path)}</span>
+              <span className="file-col-dir">
+                <span className="file-col-dir-text file-meta">{dirname(file.path)}</span>
+                <button
+                  className="btn-reveal"
+                  onClick={(e) => { e.stopPropagation(); revealInFolder(file.path); }}
+                  title="Ouvrir dans le gestionnaire de fichiers"
+                >
+                  ↗
+                </button>
+              </span>
               <span className="file-col-badge">
                 {idx === 0 && <span className="badge-original">original</span>}
               </span>
