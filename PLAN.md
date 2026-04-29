@@ -1,13 +1,13 @@
-# Plan d'action — Déduplicateur
+# Plan d'action - Déduplicateur
 
 ## Stack technique
-- **Backend** : Rust (Tauri) — hachage xxhash, parallélisme Rayon
+- **Backend** : Rust (Tauri) - hachage xxhash, parallélisme Rayon
 - **Frontend** : React + TypeScript + Tailwind CSS + shadcn/ui
 - **Packaging** : `.exe` autonome via `tauri build`
 
 ---
 
-## Phase 1 — Moteur exact + UI minimale ✅
+## Phase 1 - Moteur exact + UI minimale ✅
 **Objectif : avoir un `.exe` qui tourne sur un vrai dossier**
 
 - [x] Initialiser le projet Tauri + React
@@ -22,7 +22,7 @@
 
 ---
 
-## Phase 2 — Performance + filtrage en cascade
+## Phase 2 - Performance + filtrage en cascade
 **Objectif : tenir sur des dossiers de plusieurs milliers de fichiers**
 
 - [ ] Ajouter hash partiel (4 Ko) entre tri par taille et hash complet
@@ -34,7 +34,7 @@
 
 ---
 
-## Phase 3 — Interface soignée
+## Phase 3 - Interface soignée
 **Objectif : UX agréable et utilisable**
 
 - [ ] Dark mode + thème cohérent (Tailwind + shadcn/ui)
@@ -47,7 +47,7 @@
 
 ---
 
-## Phase 4 — Sous-dossiers
+## Phase 4 - Sous-dossiers
 **Objectif : traiter une arborescence entière, dossier par dossier**
 
 - [ ] Parcours récursif de l'arborescence
@@ -59,7 +59,7 @@
 
 ---
 
-## Phase 5 — Similarité images
+## Phase 5 - Similarité images
 **Objectif : détecter les mêmes images en formats/résolutions différents**
 
 - [ ] Intégrer `image-hasher` (pHash, résolution-agnostique)
@@ -72,7 +72,7 @@
 
 ---
 
-## Phase 6 — Similarité vidéos
+## Phase 6 - Similarité vidéos
 **Objectif : détecter les mêmes vidéos en formats/résolutions différents**
 
 - [ ] Intégrer `ffmpeg-next` pour l'extraction de frames

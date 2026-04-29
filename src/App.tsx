@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, startTransition, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -18,13 +18,66 @@ interface DuplicateGroup {
   files: DuplicateFile[];
 }
 
-interface ScanResult {
-  groups: DuplicateGroup[];
+interface ScanSummary {
+  id: string;
+  folder: string;
   total_wasted_bytes: number;
+  total_groups: number;
   scanned_files: number;
   duration_ms: number;
 }
 
+interface GroupsPage {
+  groups: DuplicateGroup[];
+  offset: number;
+  total: number;
+  has_more: boolean;
+}
+
+function relativeDate(id: string): string {
+  const diff = Date.now() - parseInt(id);
+  const minutes = Math.floor(diff / 60_000);
+  const hours = Math.floor(diff / 3_600_000);
+  const days = Math.floor(diff / 86_400_000);
+  if (minutes < 1) return "à l'instant";
+  if (minutes < 60) return `il y a ${minutes} min`;
+  if (hours < 24) return `il y a ${hours} h`;
+  return `il y a ${days} j`;
+}
+
+function SessionCard({
+  session,
+  active,
+  onResume,
+  onDelete,
+}: {
+  session: ScanSummary;
+  active: boolean;
+  onResume: (id: string) => void;
+  onDelete: (id: string) => void;
+}) {
+  return (
+    <div className={`session-card ${active ? "session-card--active" : ""}`}>
+      <div className="session-meta">
+        <span className="session-folder">📁 {session.folder}</span>
+        <span className="session-date">{relativeDate(session.id)}</span>
+      </div>
+      <div className="session-stats">
+        <span>{session.total_groups} groupes</span>
+        <span className="session-waste">{formatSize(session.total_wasted_bytes)} récupérables</span>
+        <span>{session.scanned_files} fichiers analysés</span>
+      </div>
+      <div className="session-actions">
+        <button className="btn-primary" onClick={() => onResume(session.id)} disabled={active}>
+          {active ? "En cours" : "Reprendre"}
+        </button>
+        <button className="btn-session-delete" onClick={() => onDelete(session.id)}>
+          Supprimer
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function GroupCard({
   group,
@@ -41,9 +94,7 @@ function GroupCard({
     <div className="group-card">
       <button className="group-header" onClick={() => setExpanded((v) => !v)}>
         <span className="group-chevron">{expanded ? "▾" : "▸"}</span>
-        <span className="group-count">
-          {group.files.length} fichiers identiques
-        </span>
+        <span className="group-count">{group.files.length} fichiers identiques</span>
         <span className="group-size">{formatSize(group.size)} chacun</span>
         <span className="group-waste">
           {formatSize(group.size * (group.files.length - 1))} en double
@@ -67,12 +118,14 @@ function GroupCard({
                 style={{ width: "15px", height: "15px", flexShrink: 0 }}
               />
               <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "2px" }}>
-                <div style={{ color: "#e0e0e0", fontSize: "13px", fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{file.name}</div>
-                <div style={{ color: "#888", fontSize: "11px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dirname(file.path)}</div>
+                <div style={{ color: "#e0e0e0", fontSize: "13px", fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {file.name}
+                </div>
+                <div style={{ color: "#888", fontSize: "11px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {dirname(file.path)}
+                </div>
               </div>
-              {idx === 0 && (
-                <span className="badge-original">original</span>
-              )}
+              {idx === 0 && <span className="badge-original">original</span>}
             </div>
           ))}
         </div>
@@ -81,16 +134,136 @@ function GroupCard({
   );
 }
 
+function ExclusionsPanel({
+  excluded,
+  onChange,
+  disabled,
+}: {
+  excluded: string[];
+  onChange: (v: string[]) => void;
+  disabled: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [input, setInput] = useState("");
+
+  function remove(name: string) {
+    onChange(excluded.filter((e) => e !== name));
+  }
+
+  function add() {
+    const name = input.trim();
+    if (name && !excluded.includes(name)) onChange([...excluded, name]);
+    setInput("");
+  }
+
+  return (
+    <div className="exclusions">
+      <button className="exclusions-toggle" onClick={() => setOpen((v) => !v)} disabled={disabled}>
+        <span>{open ? "▾" : "▸"}</span>
+        Dossiers exclus
+        <span className="exclusions-count">{excluded.length}</span>
+      </button>
+
+      {open && (
+        <div className="exclusions-body">
+          <div className="exclusions-chips">
+            {excluded.map((name) => (
+              <span key={name} className="chip">
+                {name}
+                <button className="chip-remove" onClick={() => remove(name)} disabled={disabled}>×</button>
+              </span>
+            ))}
+          </div>
+          <div className="exclusions-add">
+            <input
+              className="exclusions-input"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && add()}
+              placeholder="Ajouter un dossier…"
+              disabled={disabled}
+            />
+            <button className="btn-ghost" onClick={add} disabled={disabled || !input.trim()}>
+              Ajouter
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function App() {
-  const [folder, setFolder] = useState<string>("");
+  const [sessions, setSessions] = useState<ScanSummary[]>([]);
+  const [summary, setSummary] = useState<ScanSummary | null>(null);
+  const [groups, setGroups] = useState<DuplicateGroup[]>([]);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [scanning, setScanning] = useState(false);
-  const [result, setResult] = useState<ScanResult | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [picking, setPicking] = useState(false);
   const [progress, setProgress] = useState<{ current: number; total: number } | null>(null);
+  const [folder, setFolder] = useState("");
   const [recursive, setRecursive] = useState(false);
+  const [excluded, setExcluded] = useState<string[]>([
+    "node_modules", ".git", "target", "dist", ".next",
+    "__pycache__", ".cache", "vendor", "build", ".npm",
+  ]);
+
+  useEffect(() => {
+    invoke<ScanSummary[]>("list_sessions")
+      .then((s) => startTransition(() => setSessions(s)))
+      .catch(() => {});
+  }, []);
+
+  async function loadPage(offset: number, append: boolean) {
+    setLoadingMore(true);
+    try {
+      const page = await invoke<GroupsPage>("get_groups_page", { offset, limit: 50 });
+      startTransition(() => {
+        setGroups((prev) => (append ? [...prev, ...page.groups] : page.groups));
+        setHasMore(page.has_more);
+      });
+    } catch {
+      // session peut ne pas encore être chargée
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
+  async function resumeSession(id: string) {
+    try {
+      const s = await invoke<ScanSummary>("load_session", { id });
+      startTransition(() => {
+        setSummary(s);
+        setFolder(s.folder);
+        setGroups([]);
+        setSelected(new Set());
+        setError(null);
+      });
+      await loadPage(0, false);
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  async function removeSession(id: string) {
+    await invoke("delete_session", { id });
+    startTransition(() => {
+      setSessions((prev) => prev.filter((s) => s.id !== id));
+      if (summary?.id === id) {
+        setSummary(null);
+        setGroups([]);
+        setSelected(new Set());
+      }
+    });
+  }
+
+  async function cancelScan() {
+    await invoke("cancel_scan");
+  }
 
   async function pickFolder() {
     if (picking) return;
@@ -106,7 +279,9 @@ export default function App() {
   async function scan() {
     if (!folder) return;
     setScanning(true);
-    setResult(null);
+    setSummary(null);
+    setGroups([]);
+    setHasMore(false);
     setSelected(new Set());
     setError(null);
     setProgress(null);
@@ -117,10 +292,14 @@ export default function App() {
     );
 
     try {
-      const res = await invoke<ScanResult>("scan_folder", { path: folder, recursive });
-      setResult(res);
+      const s = await invoke<ScanSummary>("scan_folder", { path: folder, recursive, excluded });
+      startTransition(() => {
+        setSummary(s);
+        setSessions((prev) => [s, ...prev]);
+      });
+      await loadPage(0, false);
     } catch (e) {
-      setError(String(e));
+      if (String(e) !== "cancelled") setError(String(e));
     } finally {
       unlisten();
       setScanning(false);
@@ -138,9 +317,8 @@ export default function App() {
   }
 
   function selectAllDuplicates() {
-    if (!result) return;
     const paths = new Set<string>();
-    for (const group of result.groups) {
+    for (const group of groups) {
       group.files.slice(1).forEach((f) => paths.add(f.path));
     }
     setSelected(paths);
@@ -156,21 +334,16 @@ export default function App() {
     setError(null);
     try {
       await invoke("delete_files", { paths: Array.from(selected) });
-      setResult((prev) => {
-        if (!prev) return null;
-        const groups = prev.groups
-          .map((g) => ({
-            ...g,
-            files: g.files.filter((f) => !selected.has(f.path)),
-          }))
-          .filter((g) => g.files.length > 1);
-        const wasted = groups.reduce(
-          (acc, g) => acc + g.size * (g.files.length - 1),
-          0
-        );
-        return { ...prev, groups, total_wasted_bytes: wasted };
+      const deletedPaths = new Set(selected);
+      const updatedGroups = groups
+        .map((g) => ({ ...g, files: g.files.filter((f) => !deletedPaths.has(f.path)) }))
+        .filter((g) => g.files.length > 1);
+      const removedCount = groups.length - updatedGroups.length;
+      startTransition(() => {
+        setGroups(updatedGroups);
+        setSummary((s) => s ? { ...s, total_groups: s.total_groups - removedCount } : null);
+        setSelected(new Set());
       });
-      setSelected(new Set());
     } catch (e) {
       setError(String(e));
     } finally {
@@ -178,24 +351,34 @@ export default function App() {
     }
   }
 
-  const selectedSize = result
-    ? result.groups
-        .flatMap((g) => g.files)
-        .filter((f) => selected.has(f.path))
-        .reduce((acc, f) => acc + f.size, 0)
-    : 0;
+  const selectedSize = groups
+    .flatMap((g) => g.files)
+    .filter((f) => selected.has(f.path))
+    .reduce((acc, f) => acc + f.size, 0);
+
+  const showSessionPicker = !summary && !scanning && sessions.length > 0;
+  const showResults = summary !== null && summary.total_groups > 0;
 
   return (
     <div className="app">
       <header className="header">
-        <h1 className="title">Déduplicateur</h1>
+        <div className="header-top">
+          <h1 className="title">Déduplicateur</h1>
+          {summary && (
+            <button className="btn-ghost" onClick={() => { setSummary(null); setGroups([]); setSelected(new Set()); }}>
+              ← Mes analyses
+            </button>
+          )}
+        </div>
 
         <div className="folder-row">
-          <div className="folder-input" onClick={pickFolder} style={{ opacity: picking ? 0.5 : 1, pointerEvents: picking ? "none" : "auto" }}>
+          <div
+            className="folder-input"
+            onClick={pickFolder}
+            style={{ opacity: picking ? 0.5 : 1, pointerEvents: picking ? "none" : "auto" }}
+          >
             <span className="folder-icon">📁</span>
-            <span className="folder-path">
-              {folder || "Cliquer pour choisir un dossier…"}
-            </span>
+            <span className="folder-path">{folder || "Cliquer pour choisir un dossier…"}</span>
           </div>
           <label className="toggle-recursive">
             <input
@@ -206,48 +389,49 @@ export default function App() {
             />
             Sous-dossiers
           </label>
-          <button
-            className="btn-primary"
-            onClick={scan}
-            disabled={!folder || scanning}
-          >
-            {scanning ? "Analyse…" : "Analyser"}
-          </button>
+          {scanning ? (
+            <button className="btn-cancel" onClick={cancelScan}>Annuler</button>
+          ) : (
+            <button className="btn-primary" onClick={scan} disabled={!folder}>Analyser</button>
+          )}
         </div>
 
-        {result && (
+        <ExclusionsPanel excluded={excluded} onChange={setExcluded} disabled={scanning} />
+
+        {summary && (
           <div className="stats-row">
-            <span className="stat">
-              <strong>{result.scanned_files}</strong> fichiers analysés
-            </span>
-            <span className="stat">
-              <strong>{result.groups.length}</strong> groupes de doublons
-            </span>
-            <span className="stat waste">
-              <strong>{formatSize(result.total_wasted_bytes)}</strong> récupérables
-            </span>
-            <span className="stat duration">en {result.duration_ms} ms</span>
+            <span className="stat"><strong>{summary.scanned_files}</strong> fichiers analysés</span>
+            <span className="stat"><strong>{summary.total_groups}</strong> groupes</span>
+            <span className="stat waste"><strong>{formatSize(summary.total_wasted_bytes)}</strong> récupérables</span>
+            <span className="stat duration">en {summary.duration_ms} ms</span>
           </div>
         )}
       </header>
 
       {error && <div className="error-banner">{error}</div>}
 
-      {result && result.groups.length > 0 && (
+      {showSessionPicker && (
+        <div className="session-list">
+          <p className="session-list-title">Analyses précédentes</p>
+          {sessions.map((s) => (
+            <SessionCard
+              key={s.id}
+              session={s}
+              active={false}
+              onResume={resumeSession}
+              onDelete={removeSession}
+            />
+          ))}
+        </div>
+      )}
+
+      {showResults && (
         <>
           <div className="toolbar">
-            <button className="btn-ghost" onClick={selectAllDuplicates}>
-              Sélectionner les doublons
-            </button>
-            <button className="btn-ghost" onClick={clearSelection}>
-              Tout désélectionner
-            </button>
+            <button className="btn-ghost" onClick={selectAllDuplicates}>Sélectionner les doublons</button>
+            <button className="btn-ghost" onClick={clearSelection}>Tout désélectionner</button>
             {selected.size > 0 && (
-              <button
-                className="btn-danger"
-                onClick={deleteSelected}
-                disabled={deleting}
-              >
+              <button className="btn-danger" onClick={deleteSelected} disabled={deleting}>
                 {deleting
                   ? "Suppression…"
                   : `Supprimer ${selected.size} fichier${selected.size > 1 ? "s" : ""} (${formatSize(selectedSize)})`}
@@ -256,26 +440,32 @@ export default function App() {
           </div>
 
           <div className="groups-list">
-            {result.groups.map((group) => (
-              <GroupCard
-                key={group.id}
-                group={group}
-                selected={selected}
-                onToggle={toggleFile}
-              />
+            {groups.map((group) => (
+              <GroupCard key={group.id} group={group} selected={selected} onToggle={toggleFile} />
             ))}
+            {hasMore && (
+              <button
+                className="btn-load-more"
+                onClick={() => loadPage(groups.length, true)}
+                disabled={loadingMore}
+              >
+                {loadingMore
+                  ? "Chargement…"
+                  : `Afficher 50 de plus (${summary!.total_groups - groups.length} restants)`}
+              </button>
+            )}
           </div>
         </>
       )}
 
-      {result && result.groups.length === 0 && (
+      {summary && summary.total_groups === 0 && (
         <div className="empty-state">
           <span className="empty-icon">✓</span>
           <p>Aucun doublon trouvé dans ce dossier.</p>
         </div>
       )}
 
-      {!result && !scanning && (
+      {!summary && !scanning && sessions.length === 0 && (
         <div className="empty-state">
           <span className="empty-icon">🔍</span>
           <p>Choisissez un dossier et lancez l'analyse.</p>
@@ -295,9 +485,7 @@ export default function App() {
                   style={{ width: `${Math.round((progress.current / progress.total) * 100)}%` }}
                 />
               </div>
-              <p className="progress-pct">
-                {Math.round((progress.current / progress.total) * 100)} %
-              </p>
+              <p className="progress-pct">{Math.round((progress.current / progress.total) * 100)} %</p>
             </div>
           ) : (
             <>

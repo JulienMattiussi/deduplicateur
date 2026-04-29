@@ -2,7 +2,8 @@ use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::Read;
 use std::path::Path;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Instant;
 
 use rayon::prelude::*;
@@ -16,7 +17,7 @@ pub struct DuplicateFile {
     pub size: u64,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DuplicateGroup {
     pub id: String,
     pub hash: String,
@@ -32,20 +33,24 @@ pub struct ScanResult {
     pub duration_ms: u128,
 }
 
-const PARTIAL_SIZE: usize = 4 * 1024; // 4 Ko — filtre rapide avant hash complet
-const CHUNK_SIZE: usize = 64 * 1024;  // 64 Ko — buffer de lecture pour hash complet
+const PARTIAL_SIZE: usize = 4 * 1024;
+const CHUNK_SIZE: usize = 64 * 1024;
 
-pub fn scan_folder<F>(folder: &str, recursive: bool, on_progress: F) -> Result<ScanResult, String>
+pub fn scan_folder<F>(
+    folder: &str,
+    recursive: bool,
+    excluded: &[String],
+    cancelled: Arc<AtomicBool>,
+    on_progress: F,
+) -> Result<ScanResult, String>
 where
     F: Fn(usize, usize) + Send + Sync,
 {
     let start = Instant::now();
 
-    // Étape 1 : collecter tous les fichiers du dossier
-    let files = collect_files(Path::new(folder), recursive)?;
+    let files = collect_files(Path::new(folder), recursive, excluded, &cancelled)?;
     let scanned_files = files.len();
 
-    // Étape 2 : grouper par taille — les fichiers de taille unique ne peuvent pas être doublons
     let mut by_size: HashMap<u64, Vec<DuplicateFile>> = HashMap::new();
     for f in files {
         by_size.entry(f.size).or_default().push(f);
@@ -56,19 +61,25 @@ where
         .collect();
 
     let total_to_hash: usize = size_candidates.iter().map(|v| v.len()).sum();
-    let hashed = AtomicUsize::new(0);
+    let hashed = std::sync::atomic::AtomicUsize::new(0);
 
-    // Étape 3 : hash partiel (4 Ko) en parallèle — élimine les faux positifs sans lire les fichiers entiers
     let partial_results: Vec<(String, DuplicateFile)> = size_candidates
         .into_par_iter()
         .flat_map(|group| group.into_par_iter())
         .filter_map(|file| {
+            if cancelled.load(Ordering::Relaxed) {
+                return None;
+            }
             let h = hash_partial(&file.path).ok()?;
             let n = hashed.fetch_add(1, Ordering::Relaxed) + 1;
             on_progress(n, total_to_hash);
             Some((h, file))
         })
         .collect();
+
+    if cancelled.load(Ordering::Relaxed) {
+        return Err("cancelled".to_string());
+    }
 
     let mut by_partial: HashMap<String, Vec<DuplicateFile>> = HashMap::new();
     for (h, f) in partial_results {
@@ -79,22 +90,27 @@ where
         .filter(|v| v.len() >= 2)
         .collect();
 
-    // Étape 4 : hash complet en parallèle — seulement les survivants du filtre partiel
     let full_results: Vec<(String, DuplicateFile)> = partial_candidates
         .into_par_iter()
         .flat_map(|group| group.into_par_iter())
         .filter_map(|file| {
+            if cancelled.load(Ordering::Relaxed) {
+                return None;
+            }
             let h = hash_full(&file.path).ok()?;
             Some((h, file))
         })
         .collect();
+
+    if cancelled.load(Ordering::Relaxed) {
+        return Err("cancelled".to_string());
+    }
 
     let mut by_full: HashMap<String, Vec<DuplicateFile>> = HashMap::new();
     for (h, f) in full_results {
         by_full.entry(h).or_default().push(f);
     }
 
-    // Construire les groupes de doublons
     let mut groups: Vec<DuplicateGroup> = by_full
         .into_iter()
         .filter(|(_, files)| files.len() >= 2)
@@ -109,7 +125,6 @@ where
         })
         .collect();
 
-    // Trier par espace gaspillé décroissant
     groups.sort_by(|a, b| {
         let wa = a.size * (a.files.len() as u64 - 1);
         let wb = b.size * (b.files.len() as u64 - 1);
@@ -129,7 +144,12 @@ where
     })
 }
 
-fn collect_files(folder: &Path, recursive: bool) -> Result<Vec<DuplicateFile>, String> {
+fn collect_files(
+    folder: &Path,
+    recursive: bool,
+    excluded: &[String],
+    cancelled: &Arc<AtomicBool>,
+) -> Result<Vec<DuplicateFile>, String> {
     if !folder.exists() {
         return Err(format!("Dossier introuvable : {}", folder.display()));
     }
@@ -140,8 +160,23 @@ fn collect_files(folder: &Path, recursive: bool) -> Result<Vec<DuplicateFile>, S
         for entry in walkdir::WalkDir::new(folder)
             .follow_links(false)
             .into_iter()
-            .filter_map(|e| e.ok())
+            .filter_entry(|e| {
+                if e.file_type().is_dir() {
+                    let name = e.file_name().to_str().unwrap_or("");
+                    // Toujours garder le dossier racine (depth 0)
+                    e.depth() == 0 || !excluded.iter().any(|ex| ex == name)
+                } else {
+                    true
+                }
+            })
         {
+            if cancelled.load(Ordering::Relaxed) {
+                return Err("cancelled".to_string());
+            }
+            let entry = match entry {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
             if !entry.file_type().is_file() {
                 continue;
             }
@@ -221,6 +256,8 @@ mod tests {
     use tempfile::TempDir;
 
     fn no_progress(_: usize, _: usize) {}
+    fn no_cancel() -> Arc<AtomicBool> { Arc::new(AtomicBool::new(false)) }
+    fn no_excluded() -> Vec<String> { vec![] }
 
     fn write_file(dir: &std::path::Path, name: &str, content: &[u8]) {
         fs::write(dir.join(name), content).unwrap();
@@ -229,7 +266,7 @@ mod tests {
     #[test]
     fn dossier_vide() {
         let dir = TempDir::new().unwrap();
-        let r = scan_folder(dir.path().to_str().unwrap(), false, no_progress).unwrap();
+        let r = scan_folder(dir.path().to_str().unwrap(), false, &no_excluded(), no_cancel(), no_progress).unwrap();
         assert_eq!(r.groups.len(), 0);
         assert_eq!(r.scanned_files, 0);
         assert_eq!(r.total_wasted_bytes, 0);
@@ -241,7 +278,7 @@ mod tests {
         write_file(dir.path(), "a.txt", b"contenu A");
         write_file(dir.path(), "b.txt", b"contenu B");
         write_file(dir.path(), "c.txt", b"contenu C");
-        let r = scan_folder(dir.path().to_str().unwrap(), false, no_progress).unwrap();
+        let r = scan_folder(dir.path().to_str().unwrap(), false, &no_excluded(), no_cancel(), no_progress).unwrap();
         assert_eq!(r.groups.len(), 0);
         assert_eq!(r.scanned_files, 3);
     }
@@ -251,7 +288,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         write_file(dir.path(), "a.txt", b"contenu duplique");
         write_file(dir.path(), "b.txt", b"contenu duplique");
-        let r = scan_folder(dir.path().to_str().unwrap(), false, no_progress).unwrap();
+        let r = scan_folder(dir.path().to_str().unwrap(), false, &no_excluded(), no_cancel(), no_progress).unwrap();
         assert_eq!(r.groups.len(), 1);
         assert_eq!(r.groups[0].files.len(), 2);
     }
@@ -262,7 +299,7 @@ mod tests {
         write_file(dir.path(), "a.txt", b"triple exemplaire");
         write_file(dir.path(), "b.txt", b"triple exemplaire");
         write_file(dir.path(), "c.txt", b"triple exemplaire");
-        let r = scan_folder(dir.path().to_str().unwrap(), false, no_progress).unwrap();
+        let r = scan_folder(dir.path().to_str().unwrap(), false, &no_excluded(), no_cancel(), no_progress).unwrap();
         assert_eq!(r.groups.len(), 1);
         assert_eq!(r.groups[0].files.len(), 3);
     }
@@ -272,7 +309,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         write_file(dir.path(), "a.txt", b"aaaaaaa!!");
         write_file(dir.path(), "b.txt", b"bbbbbbb!!");
-        let r = scan_folder(dir.path().to_str().unwrap(), false, no_progress).unwrap();
+        let r = scan_folder(dir.path().to_str().unwrap(), false, &no_excluded(), no_cancel(), no_progress).unwrap();
         assert_eq!(r.groups.len(), 0);
     }
 
@@ -281,7 +318,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         write_file(dir.path(), "petit.txt", b"hi");
         write_file(dir.path(), "grand.txt", b"bonjour le monde");
-        let r = scan_folder(dir.path().to_str().unwrap(), false, no_progress).unwrap();
+        let r = scan_folder(dir.path().to_str().unwrap(), false, &no_excluded(), no_cancel(), no_progress).unwrap();
         assert_eq!(r.groups.len(), 0);
     }
 
@@ -293,7 +330,7 @@ mod tests {
         write_file(dir.path(), "b1.txt", b"groupe deux la!!");
         write_file(dir.path(), "b2.txt", b"groupe deux la!!");
         write_file(dir.path(), "c.txt",  b"fichier unique !!");
-        let r = scan_folder(dir.path().to_str().unwrap(), false, no_progress).unwrap();
+        let r = scan_folder(dir.path().to_str().unwrap(), false, &no_excluded(), no_cancel(), no_progress).unwrap();
         assert_eq!(r.groups.len(), 2);
         assert_eq!(r.scanned_files, 5);
     }
@@ -305,7 +342,7 @@ mod tests {
         write_file(dir.path(), "a.txt", content);
         write_file(dir.path(), "b.txt", content);
         write_file(dir.path(), "c.txt", content);
-        let r = scan_folder(dir.path().to_str().unwrap(), false, no_progress).unwrap();
+        let r = scan_folder(dir.path().to_str().unwrap(), false, &no_excluded(), no_cancel(), no_progress).unwrap();
         assert_eq!(r.total_wasted_bytes, content.len() as u64 * 2);
     }
 
@@ -317,13 +354,39 @@ mod tests {
         write_file(dir.path(), "a.txt", b"contenu commun");
         write_file(&sub, "b.txt", b"contenu commun");
 
-        let r = scan_folder(dir.path().to_str().unwrap(), false, no_progress).unwrap();
+        let r = scan_folder(dir.path().to_str().unwrap(), false, &no_excluded(), no_cancel(), no_progress).unwrap();
         assert_eq!(r.scanned_files, 1);
         assert_eq!(r.groups.len(), 0);
 
-        let r = scan_folder(dir.path().to_str().unwrap(), true, no_progress).unwrap();
+        let r = scan_folder(dir.path().to_str().unwrap(), true, &no_excluded(), no_cancel(), no_progress).unwrap();
         assert_eq!(r.scanned_files, 2);
         assert_eq!(r.groups.len(), 1);
+    }
+
+    #[test]
+    fn exclusion_de_dossier() {
+        let dir = TempDir::new().unwrap();
+        let nm = dir.path().join("node_modules");
+        fs::create_dir(&nm).unwrap();
+        write_file(dir.path(), "a.txt", b"contenu commun");
+        write_file(&nm, "b.txt", b"contenu commun");
+
+        let excluded = vec!["node_modules".to_string()];
+        let r = scan_folder(dir.path().to_str().unwrap(), true, &excluded, no_cancel(), no_progress).unwrap();
+        // node_modules exclu → seul a.txt vu → pas de doublon
+        assert_eq!(r.scanned_files, 1);
+        assert_eq!(r.groups.len(), 0);
+    }
+
+    #[test]
+    fn annulation_retourne_erreur() {
+        let dir = TempDir::new().unwrap();
+        write_file(dir.path(), "a.txt", b"contenu identique");
+        write_file(dir.path(), "b.txt", b"contenu identique");
+        let cancelled = Arc::new(AtomicBool::new(true)); // déjà annulé
+        let r = scan_folder(dir.path().to_str().unwrap(), false, &no_excluded(), cancelled, no_progress);
+        assert!(r.is_err());
+        assert_eq!(r.unwrap_err(), "cancelled");
     }
 
     #[test]
@@ -333,10 +396,9 @@ mod tests {
         write_file(dir.path(), "b.txt", b"contenu identique");
         let count = Arc::new(AtomicUsize::new(0));
         let c = Arc::clone(&count);
-        scan_folder(dir.path().to_str().unwrap(), false, move |_, _| {
+        scan_folder(dir.path().to_str().unwrap(), false, &no_excluded(), no_cancel(), move |_, _| {
             c.fetch_add(1, Ordering::Relaxed);
-        })
-        .unwrap();
+        }).unwrap();
         assert!(count.load(Ordering::Relaxed) > 0);
     }
 
@@ -347,7 +409,7 @@ mod tests {
         write_file(dir.path(), "p2.txt", b"petit");
         write_file(dir.path(), "g1.txt", b"grand ici!");
         write_file(dir.path(), "g2.txt", b"grand ici!");
-        let r = scan_folder(dir.path().to_str().unwrap(), false, no_progress).unwrap();
+        let r = scan_folder(dir.path().to_str().unwrap(), false, &no_excluded(), no_cancel(), no_progress).unwrap();
         assert_eq!(r.groups.len(), 2);
         assert!(r.groups[0].size >= r.groups[1].size);
     }
