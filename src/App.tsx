@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import "./App.css";
+import { formatSize, dirname } from "./utils";
 
 interface DuplicateFile {
   path: string;
@@ -23,19 +25,6 @@ interface ScanResult {
   duration_ms: number;
 }
 
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} o`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} Ko`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} Mo`;
-  return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} Go`;
-}
-
-function dirname(path: string): string {
-  const sep = path.includes("/") ? "/" : "\\";
-  const parts = path.split(sep);
-  parts.pop();
-  return parts.join(sep) || sep;
-}
 
 function GroupCard({
   group,
@@ -100,6 +89,8 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [picking, setPicking] = useState(false);
+  const [progress, setProgress] = useState<{ current: number; total: number } | null>(null);
+  const [recursive, setRecursive] = useState(false);
 
   async function pickFolder() {
     if (picking) return;
@@ -118,13 +109,22 @@ export default function App() {
     setResult(null);
     setSelected(new Set());
     setError(null);
+    setProgress(null);
+
+    const unlisten = await listen<{ current: number; total: number }>(
+      "scan:progress",
+      (event) => setProgress(event.payload)
+    );
+
     try {
-      const res = await invoke<ScanResult>("scan_folder", { path: folder });
+      const res = await invoke<ScanResult>("scan_folder", { path: folder, recursive });
       setResult(res);
     } catch (e) {
       setError(String(e));
     } finally {
+      unlisten();
       setScanning(false);
+      setProgress(null);
     }
   }
 
@@ -197,6 +197,15 @@ export default function App() {
               {folder || "Cliquer pour choisir un dossier…"}
             </span>
           </div>
+          <label className="toggle-recursive">
+            <input
+              type="checkbox"
+              checked={recursive}
+              onChange={(e) => setRecursive(e.target.checked)}
+              disabled={scanning}
+            />
+            Sous-dossiers
+          </label>
           <button
             className="btn-primary"
             onClick={scan}
@@ -275,8 +284,27 @@ export default function App() {
 
       {scanning && (
         <div className="empty-state">
-          <div className="spinner" />
-          <p>Analyse en cours…</p>
+          {progress ? (
+            <div className="progress-container">
+              <p className="progress-label">
+                Analyse en cours… {progress.current} / {progress.total} fichiers
+              </p>
+              <div className="progress-track">
+                <div
+                  className="progress-bar"
+                  style={{ width: `${Math.round((progress.current / progress.total) * 100)}%` }}
+                />
+              </div>
+              <p className="progress-pct">
+                {Math.round((progress.current / progress.total) * 100)} %
+              </p>
+            </div>
+          ) : (
+            <>
+              <div className="spinner" />
+              <p>Collecte des fichiers…</p>
+            </>
+          )}
         </div>
       )}
     </div>

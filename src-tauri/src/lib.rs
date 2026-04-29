@@ -1,9 +1,19 @@
 mod scanner;
 
 use scanner::{scan_folder as do_scan, ScanResult};
+use tauri::Emitter;
+
 #[tauri::command]
-fn scan_folder(path: String) -> Result<ScanResult, String> {
-    do_scan(&path)
+fn scan_folder(window: tauri::Window, path: String, recursive: bool) -> Result<ScanResult, String> {
+    do_scan(&path, recursive, |current, total| {
+        // Émettre toutes les 50 opérations pour limiter les événements IPC
+        if current % 50 == 0 || current == total {
+            let _ = window.emit(
+                "scan:progress",
+                serde_json::json!({ "current": current, "total": total }),
+            );
+        }
+    })
 }
 
 #[tauri::command]

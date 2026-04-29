@@ -18,7 +18,9 @@
       "Bash(convert -size 256x256 xc:'#4f8ef7' -alpha set -channel RGBA \"128x128@2x.png\")",
       "Bash(identify /home/julien/Documents/MyRepos/deduplicateur/src-tauri/icons/32x32.png)",
       "Bash(python3 -c ' *)",
-      "Bash(make help *)"
+      "Bash(make help *)",
+      "Read(//home/julien/.claude/projects/**)",
+      "Bash(awk '{print $2}')"
     ]
   }
 }

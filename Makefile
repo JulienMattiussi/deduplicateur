@@ -1,4 +1,4 @@
-.PHONY: help install start build lint typecheck clean
+.PHONY: help install start build lint typecheck check-rust test test-rust test-ts clean
 
 help: ## Afficher les commandes disponibles
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -20,6 +20,14 @@ typecheck: ## Vérifier les types TypeScript
 
 check-rust: ## Vérifier la compilation Rust sans produire de binaire
 	cd src-tauri && . "$$HOME/.cargo/env" && cargo check
+
+test: test-rust test-ts ## Lancer tous les tests
+
+test-rust: ## Lancer les tests Rust du moteur de déduplication
+	cd src-tauri && . "$$HOME/.cargo/env" && cargo test
+
+test-ts: ## Lancer les tests TypeScript des utilitaires
+	npm run test
 
 clean: ## Supprimer les artefacts de build
 	rm -rf dist
