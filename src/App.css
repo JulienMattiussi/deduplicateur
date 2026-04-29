@@ -85,23 +85,30 @@
 
 /* Exclusions */
 .exclusions {
-  margin-top: 8px;
+  margin-top: 10px;
+  background: #161616;
+  border: 1px solid #252525;
+  border-radius: 8px;
+  overflow: hidden;
 }
 
 .exclusions-toggle {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  width: 100%;
   background: transparent;
   border: none;
-  color: #555;
-  font-size: 12px;
+  color: #999;
+  font-size: 13px;
   cursor: pointer;
-  padding: 2px 0;
+  padding: 9px 14px;
+  text-align: left;
 }
 
 .exclusions-toggle:hover:not(:disabled) {
-  color: #888;
+  background: #1c1c1c;
+  color: #ccc;
 }
 
 .exclusions-toggle:disabled {
@@ -110,15 +117,17 @@
 }
 
 .exclusions-count {
-  background: #1e1e1e;
-  color: #666;
+  background: #252525;
+  color: #888;
   border-radius: 10px;
-  padding: 1px 6px;
+  padding: 1px 7px;
   font-size: 11px;
+  margin-left: auto;
 }
 
 .exclusions-body {
-  margin-top: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid #252525;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -262,6 +271,7 @@
   display: flex;
   gap: 20px;
   align-items: center;
+  margin-top: 12px;
 }
 
 .stat {
@@ -383,11 +393,67 @@
   flex-direction: column;
 }
 
+.file-row-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 5px 16px;
+  background: #111;
+  border-bottom: 1px solid #1a1a1a;
+}
+
+.file-row-header span {
+  font-size: 10px;
+  color: #444;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-col-cb {
+  width: 20px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.file-col-name {
+  flex: 2;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-col-date {
+  width: 110px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.file-col-dir {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-col-badge {
+  width: 68px;
+  flex-shrink: 0;
+  display: flex;
+  justify-content: flex-end;
+}
+
 .file-row {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 16px;
+  padding: 9px 16px;
   cursor: pointer;
   transition: background 0.1s;
   border-bottom: 1px solid #1a1a1a;
@@ -413,33 +479,18 @@
   width: 15px;
   height: 15px;
   accent-color: #4f8ef7;
-  flex-shrink: 0;
   cursor: pointer;
-}
-
-.file-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  flex: 1;
-  min-width: 0;
 }
 
 .file-name {
   font-size: 13px;
   font-weight: 500;
   color: #e0e0e0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
-.file-dir {
-  font-size: 11px;
+.file-meta {
+  font-size: 12px;
   color: #666;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .badge-original {
@@ -450,6 +501,48 @@
   padding: 2px 7px;
   font-size: 11px;
   flex-shrink: 0;
+}
+
+/* Modal */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.modal {
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: 12px;
+  padding: 24px;
+  width: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.modal-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+  margin: 0;
+}
+
+.modal-body {
+  font-size: 14px;
+  color: #888;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
 }
 
 /* Empty state */
@@ -558,6 +651,26 @@
   color: #f08080;
   border-color: #5a2a2a;
   background: #2a1a1a;
+}
+
+/* Toolbar loader */
+.toolbar-loader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #888;
+  margin-left: auto;
+}
+
+.toolbar-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid #2a2a2a;
+  border-top-color: #4f8ef7;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
 }
 
 /* Load more button */

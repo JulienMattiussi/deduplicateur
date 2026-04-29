@@ -206,6 +206,55 @@ fn make_page(groups: &[DuplicateGroup], offset: usize, limit: usize) -> GroupsPa
 }
 
 #[tauri::command]
+fn select_all_duplicates(app: tauri::AppHandle) -> Result<Vec<String>, String> {
+    let cache = app.state::<ScanCache>();
+    let guard = cache.0.lock().unwrap();
+    match *guard {
+        None => Err("Aucune session chargée".to_string()),
+        Some(ref loaded) => {
+            let paths: Vec<String> = loaded
+                .groups
+                .iter()
+                .flat_map(|group| group.files.iter().skip(1).map(|f| f.path.clone()))
+                .collect();
+            Ok(paths)
+        }
+    }
+}
+
+#[tauri::command]
+fn smart_select(app: tauri::AppHandle, mode: String) -> Result<Vec<String>, String> {
+    let cache = app.state::<ScanCache>();
+    let guard = cache.0.lock().unwrap();
+    match *guard {
+        None => Err("Aucune session chargée".to_string()),
+        Some(ref loaded) => {
+            let paths: Vec<String> = loaded
+                .groups
+                .iter()
+                .flat_map(|group| {
+                    if group.files.is_empty() {
+                        return vec![];
+                    }
+                    let keep = match mode.as_str() {
+                        "newest" => group.files.iter().max_by_key(|f| f.modified),
+                        "oldest" => group.files.iter().min_by_key(|f| f.modified),
+                        _ => group.files.first(),
+                    };
+                    group
+                        .files
+                        .iter()
+                        .filter(|f| keep.map_or(true, |k| k.path != f.path))
+                        .map(|f| f.path.clone())
+                        .collect::<Vec<_>>()
+                })
+                .collect();
+            Ok(paths)
+        }
+    }
+}
+
+#[tauri::command]
 fn delete_files(paths: Vec<String>) -> Result<(), String> {
     let mut errors: Vec<String> = Vec::new();
     for path in &paths {
@@ -239,6 +288,8 @@ pub fn run() {
             list_sessions,
             load_session,
             delete_session,
+            smart_select,
+            select_all_duplicates,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

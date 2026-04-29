@@ -24,7 +24,9 @@
       "Bash(xargs '-I{}' sh -c ' *)",
       "Bash(grep -v '^$')",
       "Bash(awk '{print $1, $2}')",
-      "Bash(python3 - ~/.claude/projects/-home-julien-Documents-MyRepos-deduplicateur/72f5cefd-c289-42c1-80f5-807471dcbadd.jsonl)"
+      "Bash(python3 - ~/.claude/projects/-home-julien-Documents-MyRepos-deduplicateur/72f5cefd-c289-42c1-80f5-807471dcbadd.jsonl)",
+      "Skill(update-config)",
+      "Skill(update-config:*)"
     ]
   }
 }

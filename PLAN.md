@@ -37,14 +37,14 @@
 
 ---
 
-## Phase 3 - Interface soignée
+## Phase 3 - Interface soignée ✅
 **Objectif : UX agréable et utilisable**
 
 - [x] Dark mode + thème cohérent
 - [x] Gestion des erreurs (banner d'erreur, fichier absent ignoré silencieusement)
-- [ ] Liste des groupes avec colonnes (nom, taille, date, chemin)
-- [ ] Sélection intelligente : "garder le plus récent", "garder le plus grand", "tout cocher"
-- [ ] Confirmation avant suppression avec récapitulatif (N fichiers, X Mo)
+- [x] Liste des groupes avec colonnes (nom, date modifié, dossier)
+- [x] Sélection intelligente : "tout cocher", "garder le plus récent", "garder le plus ancien"
+- [x] Confirmation avant suppression avec récapitulatif (N fichiers, X Mo)
 
 **Critère de validation : test utilisateur sur un vrai cas d'usage**
 

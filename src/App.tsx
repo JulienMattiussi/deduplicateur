@@ -9,6 +9,7 @@ interface DuplicateFile {
   path: string;
   size: number;
   name: string;
+  modified: number;
 }
 
 interface DuplicateGroup {
@@ -43,6 +44,15 @@ function relativeDate(id: string): string {
   if (minutes < 60) return `il y a ${minutes} min`;
   if (hours < 24) return `il y a ${hours} h`;
   return `il y a ${days} j`;
+}
+
+function formatDate(ts: number): string {
+  if (!ts) return "-";
+  return new Date(ts * 1000).toLocaleDateString("fr-FR", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
 }
 
 function SessionCard({
@@ -103,29 +113,33 @@ function GroupCard({
 
       {expanded && (
         <div className="group-files">
+          <div className="file-row-header">
+            <span className="file-col-cb" />
+            <span className="file-col-name">Nom</span>
+            <span className="file-col-date">Modifié</span>
+            <span className="file-col-dir">Dossier</span>
+            <span className="file-col-badge" />
+          </div>
           {group.files.map((file, idx) => (
             <div
               key={file.path}
               className={`file-row ${selected.has(file.path) ? "file-row--checked" : ""}`}
               onClick={() => onToggle(file.path)}
-              style={{ display: "flex", alignItems: "center", gap: "12px", padding: "10px 16px", cursor: "pointer", borderBottom: "1px solid #1a1a1a" }}
             >
-              <input
-                type="checkbox"
-                checked={selected.has(file.path)}
-                onChange={() => onToggle(file.path)}
-                onClick={(e) => e.stopPropagation()}
-                style={{ width: "15px", height: "15px", flexShrink: 0 }}
-              />
-              <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "2px" }}>
-                <div style={{ color: "#e0e0e0", fontSize: "13px", fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                  {file.name}
-                </div>
-                <div style={{ color: "#888", fontSize: "11px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                  {dirname(file.path)}
-                </div>
-              </div>
-              {idx === 0 && <span className="badge-original">original</span>}
+              <span className="file-col-cb">
+                <input
+                  type="checkbox"
+                  checked={selected.has(file.path)}
+                  onChange={() => onToggle(file.path)}
+                  onClick={(e) => e.stopPropagation()}
+                />
+              </span>
+              <span className="file-col-name file-name">{file.name}</span>
+              <span className="file-col-date file-meta">{formatDate(file.modified)}</span>
+              <span className="file-col-dir file-meta">{dirname(file.path)}</span>
+              <span className="file-col-badge">
+                {idx === 0 && <span className="badge-original">original</span>}
+              </span>
             </div>
           ))}
         </div>
@@ -170,7 +184,9 @@ function ExclusionsPanel({
             {excluded.map((name) => (
               <span key={name} className="chip">
                 {name}
-                <button className="chip-remove" onClick={() => remove(name)} disabled={disabled}>×</button>
+                <button className="chip-remove" onClick={() => remove(name)} disabled={disabled}>
+                  ×
+                </button>
               </span>
             ))}
           </div>
@@ -211,6 +227,8 @@ export default function App() {
     "node_modules", ".git", "target", "dist", ".next",
     "__pycache__", ".cache", "vendor", "build", ".npm",
   ]);
+  const [confirmPending, setConfirmPending] = useState(false);
+  const [selecting, setSelecting] = useState(false);
 
   useEffect(() => {
     invoke<ScanSummary[]>("list_sessions")
@@ -227,7 +245,7 @@ export default function App() {
         setHasMore(page.has_more);
       });
     } catch {
-      // session peut ne pas encore être chargée
+      // session pas encore chargée
     } finally {
       setLoadingMore(false);
     }
@@ -316,19 +334,38 @@ export default function App() {
     });
   }
 
-  function selectAllDuplicates() {
-    const paths = new Set<string>();
-    for (const group of groups) {
-      group.files.slice(1).forEach((f) => paths.add(f.path));
+  async function selectAllDuplicates() {
+    if (selecting) return;
+    setSelecting(true);
+    try {
+      const paths = await invoke<string[]>("select_all_duplicates");
+      startTransition(() => setSelected(new Set(paths)));
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setSelecting(false);
     }
-    setSelected(paths);
+  }
+
+  async function selectSmart(mode: "newest" | "oldest") {
+    if (selecting) return;
+    setSelecting(true);
+    try {
+      const paths = await invoke<string[]>("smart_select", { mode });
+      startTransition(() => setSelected(new Set(paths)));
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setSelecting(false);
+    }
   }
 
   function clearSelection() {
     setSelected(new Set());
   }
 
-  async function deleteSelected() {
+  async function doDelete() {
+    setConfirmPending(false);
     if (selected.size === 0) return;
     setDeleting(true);
     setError(null);
@@ -365,7 +402,10 @@ export default function App() {
         <div className="header-top">
           <h1 className="title">Déduplicateur</h1>
           {summary && (
-            <button className="btn-ghost" onClick={() => { setSummary(null); setGroups([]); setSelected(new Set()); }}>
+            <button
+              className="btn-ghost"
+              onClick={() => { setSummary(null); setGroups([]); setSelected(new Set()); }}
+            >
               ← Mes analyses
             </button>
           )}
@@ -428,14 +468,22 @@ export default function App() {
       {showResults && (
         <>
           <div className="toolbar">
-            <button className="btn-ghost" onClick={selectAllDuplicates}>Sélectionner les doublons</button>
-            <button className="btn-ghost" onClick={clearSelection}>Tout désélectionner</button>
-            {selected.size > 0 && (
-              <button className="btn-danger" onClick={deleteSelected} disabled={deleting}>
+            <button className="btn-ghost" onClick={selectAllDuplicates} disabled={selecting}>Tout cocher</button>
+            <button className="btn-ghost" onClick={() => selectSmart("newest")} disabled={selecting}>Garder le plus récent</button>
+            <button className="btn-ghost" onClick={() => selectSmart("oldest")} disabled={selecting}>Garder le plus ancien</button>
+            <button className="btn-ghost" onClick={clearSelection} disabled={selecting}>Désélectionner</button>
+            {selected.size > 0 && !selecting && (
+              <button className="btn-danger" onClick={() => setConfirmPending(true)} disabled={deleting}>
                 {deleting
                   ? "Suppression…"
                   : `Supprimer ${selected.size} fichier${selected.size > 1 ? "s" : ""} (${formatSize(selectedSize)})`}
               </button>
+            )}
+            {selecting && (
+              <span className="toolbar-loader">
+                <span className="toolbar-spinner" />
+                Calcul de la sélection…
+              </span>
             )}
           </div>
 
@@ -493,6 +541,22 @@ export default function App() {
               <p>Collecte des fichiers…</p>
             </>
           )}
+        </div>
+      )}
+
+      {confirmPending && (
+        <div className="modal-overlay" onClick={() => setConfirmPending(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h2 className="modal-title">Confirmer la suppression</h2>
+            <p className="modal-body">
+              {selected.size} fichier{selected.size > 1 ? "s" : ""} ({formatSize(selectedSize)}) seront
+              envoyés dans la corbeille.
+            </p>
+            <div className="modal-actions">
+              <button className="btn-ghost" onClick={() => setConfirmPending(false)}>Annuler</button>
+              <button className="btn-danger" onClick={doDelete}>Supprimer</button>
+            </div>
+          </div>
         </div>
       )}
     </div>

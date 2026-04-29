@@ -15,6 +15,7 @@ pub struct DuplicateFile {
     pub path: String,
     pub name: String,
     pub size: u64,
+    pub modified: u64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -181,8 +182,16 @@ fn collect_files(
                 continue;
             }
             let path = entry.path();
-            let size = match entry.metadata() {
-                Ok(m) => m.len(),
+            let (size, modified) = match entry.metadata() {
+                Ok(m) => {
+                    let modified = m
+                        .modified()
+                        .ok()
+                        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                        .map(|d| d.as_secs())
+                        .unwrap_or(0);
+                    (m.len(), modified)
+                }
                 Err(_) => continue,
             };
             let name = path
@@ -194,6 +203,7 @@ fn collect_files(
                 path: path.to_string_lossy().to_string(),
                 name,
                 size,
+                modified,
             });
         }
     } else {
@@ -208,6 +218,13 @@ fn collect_files(
             if !meta.is_file() {
                 continue;
             }
+            let size = meta.len();
+            let modified = meta
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
             let name = path
                 .file_name()
                 .and_then(|n| n.to_str())
@@ -216,7 +233,8 @@ fn collect_files(
             files.push(DuplicateFile {
                 path: path.to_string_lossy().to_string(),
                 name,
-                size: meta.len(),
+                size,
+                modified,
             });
         }
     }
@@ -400,6 +418,18 @@ mod tests {
             c.fetch_add(1, Ordering::Relaxed);
         }).unwrap();
         assert!(count.load(Ordering::Relaxed) > 0);
+    }
+
+    #[test]
+    fn modified_est_populate() {
+        let dir = TempDir::new().unwrap();
+        write_file(dir.path(), "a.txt", b"hello world");
+        write_file(dir.path(), "b.txt", b"hello world");
+        let r = scan_folder(dir.path().to_str().unwrap(), false, &no_excluded(), no_cancel(), no_progress).unwrap();
+        assert_eq!(r.groups.len(), 1);
+        for f in &r.groups[0].files {
+            assert!(f.modified > 0, "modified doit etre un timestamp unix non nul");
+        }
     }
 
     #[test]

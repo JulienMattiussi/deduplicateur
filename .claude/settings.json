@@ -13,6 +13,8 @@
       "Bash(npx prettier --check *)",
       "Bash(make typecheck *)",
       "Bash(. \"$HOME/.cargo/env\" && cargo test *)",
+      "Bash(. \"$HOME/.cargo/env\" && cargo test --manifest-path src-tauri/Cargo.toml *)",
+      "Bash(. \"$HOME/.cargo/env\" && cargo test --manifest-path src-tauri/Cargo.toml 2>&1)",
       "Bash(. \"$HOME/.cargo/env\" && cargo check *)",
       "Bash(cd * && . \"$HOME/.cargo/env\" && cargo test *)",
       "Bash(cd * && . \"$HOME/.cargo/env\" && cargo check *)",
