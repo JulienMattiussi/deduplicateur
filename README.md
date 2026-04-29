@@ -80,7 +80,7 @@ Chaque scan produit un fichier JSON dans `~/.local/share/deduplicateur/sessions/
 | Corbeille | trash | Suppression récupérable cross-platform |
 | Frontend | React 18 + TypeScript | UI réactive |
 | Bundler | Vite + Tauri CLI | Dev HMR + build `.exe` |
-| Tests Rust | cargo test + tempfile | 16 tests unitaires sur le moteur |
+| Tests Rust | cargo test + tempfile | 18 tests unitaires sur le moteur |
 | Tests TS | Vitest | Tests utilitaires |
 
 ---
@@ -121,7 +121,7 @@ Sur Windows, génère un `.exe` autonome.
 ### Tests
 
 ```bash
-# Moteur Rust (16 tests)
+# Moteur Rust (18 tests)
 cargo test --manifest-path src-tauri/Cargo.toml
 
 # Utilitaires TypeScript

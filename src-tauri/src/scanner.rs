@@ -529,6 +529,45 @@ mod tests {
     }
 
     #[test]
+    fn by_folder_met_a_plat_les_sous_sous_dossiers() {
+        let dir = TempDir::new().unwrap();
+        let sub_a = dir.path().join("A");
+        let sub_a_deep = sub_a.join("deep").join("deeper");
+        fs::create_dir_all(&sub_a_deep).unwrap();
+
+        // Un fichier directement dans A, un dans A/deep/deeper : même contenu
+        write_file(&sub_a, "f1.txt", b"contenu commun");
+        write_file(&sub_a_deep, "f2.txt", b"contenu commun");
+
+        // Les deux doivent etre attribues a la cle "A", pas "deep"
+        let r = scan_folder(dir.path().to_str().unwrap(), true, &no_excluded(), true, no_cancel(), no_progress).unwrap();
+        assert_eq!(r.groups.len(), 1);
+        assert_eq!(r.groups[0].files.len(), 2);
+        assert_eq!(r.groups[0].folder_key.as_deref(), Some("A"));
+    }
+
+    #[test]
+    fn by_folder_trie_par_dossier_puis_espace() {
+        let dir = TempDir::new().unwrap();
+        let sub_a = dir.path().join("A");
+        let sub_b = dir.path().join("B");
+        fs::create_dir(&sub_a).unwrap();
+        fs::create_dir(&sub_b).unwrap();
+
+        // B a de plus gros doublons que A
+        write_file(&sub_b, "big1.txt", b"grand contenu!!");
+        write_file(&sub_b, "big2.txt", b"grand contenu!!");
+        write_file(&sub_a, "s1.txt", b"petit");
+        write_file(&sub_a, "s2.txt", b"petit");
+
+        // Ordre attendu : A avant B (tri alphabetique), malgre le fait que B a plus de gaspillage
+        let r = scan_folder(dir.path().to_str().unwrap(), true, &no_excluded(), true, no_cancel(), no_progress).unwrap();
+        assert_eq!(r.groups.len(), 2);
+        assert_eq!(r.groups[0].folder_key.as_deref(), Some("A"));
+        assert_eq!(r.groups[1].folder_key.as_deref(), Some("B"));
+    }
+
+    #[test]
     fn by_folder_fichiers_racine_ont_cle_vide() {
         let dir = TempDir::new().unwrap();
         // Two identical files directly in root

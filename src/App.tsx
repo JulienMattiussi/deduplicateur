@@ -306,6 +306,17 @@ export default function App() {
   const [scanMode, setScanMode] = useState<"all" | "by_folder">("all");
   const [folderSummaries, setFolderSummaries] = useState<FolderSummary[]>([]);
   const [folderState, setFolderState] = useState<Record<string, { loading: boolean; hasMore: boolean; offset: number }>>({});
+  const [folderSort, setFolderSort] = useState<"name" | "waste">("waste");
+
+  const sortedFolderSummaries = useMemo(() => {
+    const sorted = [...folderSummaries];
+    if (folderSort === "name") {
+      sorted.sort((a, b) => a.folder_key.localeCompare(b.folder_key));
+    } else {
+      sorted.sort((a, b) => b.total_wasted_bytes - a.total_wasted_bytes);
+    }
+    return sorted;
+  }, [folderSummaries, folderSort]);
 
   const groupsByFolder = useMemo(() => {
     const map = new Map<string, DuplicateGroup[]>();
@@ -631,9 +642,27 @@ export default function App() {
             )}
           </div>
 
+          {summary?.by_folder && (
+            <div className="folder-sort-bar">
+              <span className="folder-sort-label">Trier par</span>
+              <button
+                className={`btn-sort${folderSort === "waste" ? " btn-sort--active" : ""}`}
+                onClick={() => setFolderSort("waste")}
+              >
+                Taille récupérable
+              </button>
+              <button
+                className={`btn-sort${folderSort === "name" ? " btn-sort--active" : ""}`}
+                onClick={() => setFolderSort("name")}
+              >
+                Nom
+              </button>
+            </div>
+          )}
+
           <div className="groups-list">
             {summary?.by_folder ? (
-              folderSummaries.map((fs) => (
+              sortedFolderSummaries.map((fs) => (
                 <FolderSection
                   key={fs.folder_key}
                   summary={fs}

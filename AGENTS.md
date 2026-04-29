@@ -144,3 +144,33 @@ hauteur naturelle. Toujours ajouter `flex-shrink: 0` sur les cards enfants.
   flex-shrink: 0; /* empêche la compression dans un flex column scrollable */
 }
 ```
+
+### Mode "par dossier" : first_level_subdir et mise à plat
+En mode `by_folder=true`, chaque fichier est attribué au premier niveau de sous-dossier
+sous la racine scannée. Les niveaux plus profonds sont mis à plat (ignorés). Exemples :
+- `root/Photos/img.jpg` → clé `"Photos"`
+- `root/Photos/2023/summer/img.jpg` → clé `"Photos"` (pas `"2023"`)
+- `root/img.jpg` → clé `""` (dossier racine)
+
+Les groupes sont triés par `folder_key` alphabétique, puis par espace gaspillé décroissant
+à l'intérieur de chaque dossier. La clé vide `""` passe donc avant toute lettre.
+
+### Paramètres Tauri : camelCase JS → snake_case Rust
+Tauri 2 convertit automatiquement les paramètres de commande entre camelCase (JS) et
+snake_case (Rust). Ne pas nommer les paramètres Rust en camelCase.
+```ts
+// JS (invoke)
+invoke("scan_folder", { byFolder: true })  // camelCase
+```
+```rust
+// Rust (command)
+async fn scan_folder(by_folder: bool) { ... }  // snake_case
+```
+
+### Chargement lazy des FolderSection
+En mode `by_folder`, les en-têtes de dossiers sont disponibles via `list_folder_keys`
+(léger : juste les résumés). Les groupes ne sont chargés qu'au premier dépliage via
+`get_folder_groups_page(folder_key, offset, limit)`. Le composant `FolderSection`
+démarre collapsed et appelle `onExpand()` uniquement si `groups.length === 0 && !loading`.
+Re-collapse puis re-expand ne refait pas d'appel réseau (groupes déjà en mémoire dans
+l'état App via `groupsByFolder` useMemo).
