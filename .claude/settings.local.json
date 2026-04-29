@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm --version)",
+      "Bash(rustc --version)",
+      "Bash(cargo --version)",
+      "Bash(curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs)",
+      "Bash(sh -s -- -y)",
+      "Bash(npm install *)",
+      "Bash(convert --version)",
+      "Bash(mkdir -p /home/julien/Documents/MyRepos/deduplicateur/src-tauri/icons)",
+      "Bash(convert -size 32x32 xc:'#4f8ef7' 32x32.png)",
+      "Bash(convert -size 128x128 xc:'#4f8ef7' 128x128.png)",
+      "Bash(convert -size 256x256 xc:'#4f8ef7' \"128x128@2x.png\")",
+      "Bash(convert -size 256x256 xc:'#4f8ef7' icon.png)",
+      "Bash(convert -size 32x32 xc:'#4f8ef7' -alpha set -channel RGBA 32x32.png)",
+      "Bash(convert -size 128x128 xc:'#4f8ef7' -alpha set -channel RGBA 128x128.png)",
+      "Bash(convert -size 256x256 xc:'#4f8ef7' -alpha set -channel RGBA \"128x128@2x.png\")",
+      "Bash(identify /home/julien/Documents/MyRepos/deduplicateur/src-tauri/icons/32x32.png)",
+      "Bash(python3 -c ' *)",
+      "Bash(make help *)"
+    ]
+  }
+}
