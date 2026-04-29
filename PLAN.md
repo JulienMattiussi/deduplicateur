@@ -22,13 +22,16 @@
 
 ---
 
-## Phase 2 - Performance + filtrage en cascade
+## Phase 2 - Performance + filtrage en cascade ✅
 **Objectif : tenir sur des dossiers de plusieurs milliers de fichiers**
 
-- [ ] Ajouter hash partiel (4 Ko) entre tri par taille et hash complet
-- [ ] Parallélisme avec Rayon
-- [ ] Barre de progression dans l'UI (fichiers traités / total)
-- [ ] Affichage du temps d'analyse et de l'espace récupérable
+- [x] Ajouter hash partiel (4 Ko) entre tri par taille et hash complet
+- [x] Parallélisme avec Rayon
+- [x] Barre de progression dans l'UI (fichiers traités / total)
+- [x] Affichage du temps d'analyse et de l'espace récupérable
+- [x] Sessions persistantes (JSON dans `~/.local/share/deduplicateur/sessions/`)
+- [x] Pagination des résultats (50 groupes par page, chargement à la demande)
+- [x] Annulation du scan en cours
 
 **Critère de validation : analyser 50 000 fichiers en moins de 30 secondes**
 
@@ -37,11 +40,11 @@
 ## Phase 3 - Interface soignée
 **Objectif : UX agréable et utilisable**
 
-- [ ] Dark mode + thème cohérent (Tailwind + shadcn/ui)
+- [x] Dark mode + thème cohérent
+- [x] Gestion des erreurs (banner d'erreur, fichier absent ignoré silencieusement)
 - [ ] Liste des groupes avec colonnes (nom, taille, date, chemin)
 - [ ] Sélection intelligente : "garder le plus récent", "garder le plus grand", "tout cocher"
 - [ ] Confirmation avant suppression avec récapitulatif (N fichiers, X Mo)
-- [ ] Gestion des erreurs (fichier verrouillé, droits insuffisants)
 
 **Critère de validation : test utilisateur sur un vrai cas d'usage**
 
@@ -50,10 +53,10 @@
 ## Phase 4 - Sous-dossiers
 **Objectif : traiter une arborescence entière, dossier par dossier**
 
-- [ ] Parcours récursif de l'arborescence
-- [ ] Analyse indépendante par dossier (pas de comparaison cross-dossiers)
+- [x] Parcours récursif de l'arborescence (walkdir)
+- [x] Option : inclure ou exclure les sous-dossiers (toggle + panneau d'exclusions)
+- [ ] Analyse indépendante par dossier (pas de comparaison cross-dossiers) - actuellement tout est mis à plat
 - [ ] UI : vue arborescente des résultats (dossier → groupes de doublons)
-- [ ] Option : inclure ou exclure les sous-dossiers
 
 **Critère de validation : analyser `/Photos` avec 20 sous-dossiers sans mélanger les résultats**
 
