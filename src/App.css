@@ -807,6 +807,21 @@
   flex-shrink: 0;
 }
 
+.session-tags {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.session-tag {
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 10px;
+  background: #1e2a3a;
+  color: #5a8fc8;
+  border: 1px solid #2a3a50;
+}
+
 .session-stats {
   display: flex;
   gap: 16px;
@@ -1095,6 +1110,31 @@
 .advanced-panel-toggle:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.adv-reset {
+  display: block;
+  margin: 4px 0 0 auto;
+  padding: 3px 10px;
+  font-size: 11px;
+  background: none;
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #888;
+  cursor: pointer;
+}
+.adv-reset:hover:not(:disabled) {
+  border-color: #555;
+  color: #ccc;
+}
+.adv-reset:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.progress-eta {
+  color: #888;
+  font-size: 11px;
 }
 
 .advanced-panel-body {

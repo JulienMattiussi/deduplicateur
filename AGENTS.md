@@ -278,6 +278,11 @@ et `on_progress` n'est jamais appele - la progression reste bloquee a la valeur 
 exact. Solution : appeler `on_progress` dans la boucle de check du cache pour les hits aussi,
 avec un compteur atomique partage entre hits et misses.
 
+### Icone de fenetre : set_icon invisible sur GNOME/Wayland en mode dev
+Sur GNOME Shell, `window.set_icon()` n'affecte pas la barre des taches - GNOME utilise
+le fichier `.desktop` installe. En mode dev, aucun `.desktop` n'est present.
+Voir [docs/icone.md](docs/icone.md) pour le setup complet et le comportement par plateforme.
+
 ### Vitest + worktrees : plusieurs instances React -> "Invalid hook call"
 Quand des agents travaillent en worktree isole, leurs `node_modules/` sont dans
 `.claude/worktrees/<id>/`. Vitest decouvre leurs fichiers de test et charge plusieurs

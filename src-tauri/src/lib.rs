@@ -34,6 +34,10 @@ struct ScanSummary {
     total_folders: usize,
     #[serde(default)]
     partial: bool,
+    #[serde(default)]
+    recursive: bool,
+    #[serde(default)]
+    find_similar: bool,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -172,6 +176,8 @@ async fn scan_folder(
         by_folder,
         total_folders,
         partial: result.partial,
+        recursive,
+        find_similar,
     };
 
     save_session(&app, &summary, &result.groups);
@@ -481,6 +487,15 @@ async fn get_image_thumbnail(path: String, max_size: u32) -> Result<String, Stri
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .setup(|app| {
+            if let Some(window) = app.get_webview_window("main") {
+                let icon_bytes = include_bytes!("../icons/128x128.png");
+                if let Ok(icon) = tauri::image::Image::from_bytes(icon_bytes) {
+                    let _ = window.set_icon(icon);
+                }
+            }
+            Ok(())
+        })
         .manage(CancelFlag(Arc::new(AtomicBool::new(false))))
         .manage(ScanCache(Mutex::new(None)))
         .plugin(tauri_plugin_dialog::init())

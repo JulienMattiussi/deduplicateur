@@ -1,4 +1,4 @@
-import { useState, startTransition, useEffect, useMemo } from "react";
+import { useState, startTransition, useEffect, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -31,6 +31,8 @@ interface ScanSummary {
   by_folder: boolean;
   total_folders: number;
   partial?: boolean;
+  recursive?: boolean;
+  find_similar?: boolean;
 }
 
 interface PHashConfig {
@@ -86,6 +88,27 @@ async function revealInFolder(path: string) {
   }
 }
 
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms} ms`;
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s} s`;
+  const m = Math.floor(s / 60);
+  const rem = s % 60;
+  if (m < 60) return rem > 0 ? `${m} min ${rem} s` : `${m} min`;
+  const h = Math.floor(m / 60);
+  const remMin = m % 60;
+  return remMin > 0 ? `${h} h ${remMin} min` : `${h} h`;
+}
+
+function sessionTags(session: ScanSummary): string[] {
+  const tags: string[] = [];
+  if (session.by_folder) tags.push("par dossier");
+  else if (session.recursive) tags.push("récursif");
+  else tags.push("dossier plat");
+  tags.push(session.find_similar ? "similarité images" : "doublons exacts");
+  return tags;
+}
+
 function relativeDate(id: string): string {
   const diff = Date.now() - parseInt(id);
   const minutes = Math.floor(diff / 60_000);
@@ -122,6 +145,9 @@ function SessionCard({
       <div className="session-meta">
         <span className="session-folder">📁 {session.folder}</span>
         <span className="session-date">{relativeDate(session.id)}</span>
+      </div>
+      <div className="session-tags">
+        {sessionTags(session).map((t) => <span key={t} className="session-tag">{t}</span>)}
       </div>
       <div className="session-stats">
         <span>{session.total_groups} groupes</span>
@@ -401,6 +427,16 @@ function AdvancedPanel({
         Paramètres avancés de détection
       </button>
       {open && (
+        <button
+          className="adv-reset"
+          onClick={() => onChange(DEFAULT_PHASH_CONFIG)}
+          disabled={disabled}
+          title="Remettre tous les paramètres aux valeurs par défaut"
+        >
+          Réinitialiser
+        </button>
+      )}
+      {open && (
         <div className="advanced-panel-body">
           <div className="adv-section">
             <span className="adv-section-title">Filtre de taille</span>
@@ -554,6 +590,7 @@ export default function App() {
   const [cancelling, setCancelling] = useState(false);
   const [picking, setPicking] = useState(false);
   const [progress, setProgress] = useState<{ current: number; total: number; file?: string } | null>(null);
+  const progressHistoryRef = useRef<{ time: number; current: number }[]>([]);
   const [folder, setFolder] = useState("");
   const [recursive, setRecursive] = useState(false);
   const [excluded, setExcluded] = useState<string[]>([
@@ -712,10 +749,15 @@ export default function App() {
     setHasMore(false);
     setError(null);
     setProgress(null);
+    progressHistoryRef.current = [];
 
     const unlisten = await listen<{ current: number; total: number; file?: string }>(
       "scan:progress",
-      (event) => setProgress(event.payload)
+      (event) => {
+        const p = event.payload;
+        progressHistoryRef.current.push({ time: Date.now(), current: p.current });
+        setProgress(p);
+      }
     );
 
     try {
@@ -905,7 +947,7 @@ export default function App() {
             )}
             <span className="stat"><strong>{summary.total_groups}</strong> groupes</span>
             <span className="stat waste"><strong>{formatSize(summary.total_wasted_bytes)}</strong> récupérables</span>
-            <span className="stat duration">en {summary.duration_ms} ms</span>
+            <span className="stat duration">en {formatDuration(summary.duration_ms)}</span>
           </div>
         )}
       </header>
@@ -1036,7 +1078,51 @@ export default function App() {
                   style={{ width: `${Math.round((progress.current / progress.total) * 100)}%` }}
                 />
               </div>
-              <p className="progress-pct">{Math.round((progress.current / progress.total) * 100)} %</p>
+              <p className="progress-pct">
+                {Math.round((progress.current / progress.total) * 100)} %
+                {(() => {
+                  const pct = progress.current / progress.total;
+                  const hist = progressHistoryRef.current;
+                  const now = Date.now();
+                  const elapsed = hist.length >= 2 ? now - hist[0].time : 0;
+
+                  // "presque fini" uses recent rate (last ~20 samples)
+                  const recentRef = hist.length >= 2 ? hist[Math.max(0, hist.length - 20)] : null;
+                  const recentRate = recentRef ? (progress.current - recentRef.current) / (now - recentRef.time) : 0;
+                  if (pct >= 0.95 || (recentRate > 0 && (progress.total - progress.current) / recentRate < 15_000)) {
+                    return <span className="progress-eta"> - c'est presque fini</span>;
+                  }
+
+                  // warmup: before 2 min, show pessimistic estimate (x1.5) once we have 15s of data
+                  if (elapsed < 120_000) {
+                    if (elapsed < 15_000 || hist.length < 2) {
+                      return <span className="progress-eta"> - estimation en cours…</span>;
+                    }
+                    const earlyRate = (progress.current - hist[0].current) / elapsed;
+                    if (earlyRate <= 0) return <span className="progress-eta"> - estimation en cours…</span>;
+                    const earlyRemainS = Math.round((progress.total - progress.current) / earlyRate / 1000 * 1.5);
+                    if (earlyRemainS < 15) return null;
+                    const earlyLabel = earlyRemainS < 60
+                      ? `${earlyRemainS} s`
+                      : `${Math.round(earlyRemainS / 60)} min`;
+                    return <span className="progress-eta"> - environ {earlyLabel}</span>;
+                  }
+
+                  // rate from ~3 min ago to skip initial burst phase
+                  const target = now - 180_000;
+                  const refIdx = hist.findIndex(s => s.time >= target);
+                  const ref = refIdx > 0 ? hist[refIdx] : hist[0];
+                  const rate = (progress.current - ref.current) / (now - ref.time);
+                  if (rate <= 0) return null;
+                  const remainMs = (progress.total - progress.current) / rate;
+                  const remainS = Math.round(remainMs / 1000);
+                  if (remainS < 15) return null;
+                  const label = remainS < 60
+                    ? `${remainS} s`
+                    : `${Math.round(remainS / 60)} min`;
+                  return <span className="progress-eta"> - environ {label}</span>;
+                })()}
+              </p>
               {progress.file && (
                 <p className="progress-filename">{progress.file}</p>
               )}

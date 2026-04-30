@@ -64,6 +64,7 @@ pub struct ScanParams {
 }
 
 impl ScanParams {
+    #[allow(dead_code)]
     pub fn new(folder: &str) -> Self {
         ScanParams {
             folder: folder.to_string(),
@@ -424,7 +425,7 @@ where
             .filter_map(|(i, r)| if r.is_none() { Some(i) } else { None })
             .collect();
 
-        let n_to_decode = miss_indices.len();
+        let _n_to_decode = miss_indices.len();
 
         let miss_hashes: Vec<(usize, Option<(Vec<u8>, Vec<u8>)>)> = miss_indices
             .into_par_iter()

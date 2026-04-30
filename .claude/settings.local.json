@@ -33,7 +33,10 @@
       "Bash(ls /home/julien/Documents/MyRepos/deduplicateur/.claude/worktrees/*/vite.config.ts 2>&1)",
       "Bash(ls /home/julien/.nvm/versions/node/*/bin/npm 2>/dev/null | head -5)",
       "Bash(ls /home/julien/.nvm/versions/node/*/bin/npm 2>/dev/null | tail -5)",
-      "Bash(which node npm npx 2>/dev/null; ls /usr/local/bin/npm /home/julien/.nvm/versions/node/*/bin/npm 2>/dev/null | head -5)"
+      "Bash(which node npm npx 2>/dev/null; ls /usr/local/bin/npm /home/julien/.nvm/versions/node/*/bin/npm 2>/dev/null | head -5)",
+      "Bash(python3 -c ' *)",
+      "Bash(grep -A3 \"--- stderr\")",
+      "Read(//home/julien/.cargo/registry/src/**)"
     ]
   }
 }
