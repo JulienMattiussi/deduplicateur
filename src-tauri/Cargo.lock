@@ -558,6 +558,7 @@ dependencies = [
  "tauri-plugin-fs",
  "tauri-plugin-shell",
  "tempfile",
+ "tokio",
  "trash",
  "uuid",
  "walkdir",

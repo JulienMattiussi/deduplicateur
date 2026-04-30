@@ -30,6 +30,7 @@ interface ScanSummary {
   duration_ms: number;
   by_folder: boolean;
   total_folders: number;
+  partial?: boolean;
 }
 
 interface PHashConfig {
@@ -150,14 +151,25 @@ function ThumbnailStrip({ files }: { files: DuplicateFile[] }) {
     }
   }, [files]);
 
+  async function openFile(path: string) {
+    try { await invoke("open_file", { path }); } catch { /* best-effort */ }
+  }
+
   return (
     <div className="similar-thumbnails">
       {files.map((file) => (
         <div key={file.path} className="similar-thumb" title={file.name}>
           {thumbs[file.path] ? (
-            <img src={thumbs[file.path]} alt={file.name} className="similar-thumb-img" />
+            <img
+              src={thumbs[file.path]}
+              alt={file.name}
+              className="similar-thumb-img similar-thumb-img--clickable"
+              onClick={() => openFile(file.path)}
+            />
           ) : (
-            <div className="similar-thumb-placeholder" />
+            <div className="similar-thumb-placeholder">
+              <div className="similar-thumb-spinner" />
+            </div>
           )}
           <span className="similar-thumb-name">{file.name}</span>
         </div>
@@ -539,8 +551,9 @@ export default function App() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const [picking, setPicking] = useState(false);
-  const [progress, setProgress] = useState<{ current: number; total: number } | null>(null);
+  const [progress, setProgress] = useState<{ current: number; total: number; file?: string } | null>(null);
   const [folder, setFolder] = useState("");
   const [recursive, setRecursive] = useState(false);
   const [excluded, setExcluded] = useState<string[]>([
@@ -551,7 +564,7 @@ export default function App() {
   const [selecting, setSelecting] = useState(false);
   const [scanMode, setScanMode] = useState<"all" | "by_folder">("all");
   const [findSimilar, setFindSimilar] = useState(false);
-  const [simSimilarity, setSimSimilarity] = useState(85);
+  const [simSimilarity, setSimSimilarity] = useState(100);
   const [phashConfig, setPhashConfig] = useState<PHashConfig>(DEFAULT_PHASH_CONFIG);
   const [folderSummaries, setFolderSummaries] = useState<FolderSummary[]>([]);
   const [folderState, setFolderState] = useState<Record<string, { loading: boolean; hasMore: boolean; offset: number }>>({});
@@ -599,10 +612,15 @@ export default function App() {
     setLoadingMore(true);
     try {
       const page = await invoke<GroupsPage>("get_groups_page", { offset, limit: 50 });
-      startTransition(() => {
-        setGroups((prev) => (append ? [...prev, ...page.groups] : page.groups));
+      if (append) {
+        startTransition(() => {
+          setGroups((prev) => [...prev, ...page.groups]);
+          setHasMore(page.has_more);
+        });
+      } else {
+        setGroups(page.groups);
         setHasMore(page.has_more);
-      });
+      }
     } catch {
       // session pas encore chargée
     } finally {
@@ -671,6 +689,7 @@ export default function App() {
   }
 
   async function cancelScan() {
+    setCancelling(true);
     await invoke("cancel_scan");
   }
 
@@ -697,7 +716,7 @@ export default function App() {
     setFolderSummaries([]);
     setFolderState({});
 
-    const unlisten = await listen<{ current: number; total: number }>(
+    const unlisten = await listen<{ current: number; total: number; file?: string }>(
       "scan:progress",
       (event) => setProgress(event.payload)
     );
@@ -712,21 +731,20 @@ export default function App() {
         findSimilar,
         simThreshold: Math.round((1 - simSimilarity / 100) * 64),
       });
-      startTransition(() => {
-        setSummary(s);
-        setSessions((prev) => [s, ...prev]);
-      });
+      setSummary(s);
+      startTransition(() => setSessions((prev) => [s, ...prev]));
       if (s.by_folder) {
         const summaries = await invoke<FolderSummary[]>("list_folder_keys");
-        startTransition(() => setFolderSummaries(summaries));
+        setFolderSummaries(summaries);
       } else {
         await loadPage(0, false);
       }
     } catch (e) {
-      if (String(e) !== "cancelled") setError(String(e));
+      setError(String(e));
     } finally {
       unlisten();
       setScanning(false);
+      setCancelling(false);
       setProgress(null);
     }
   }
@@ -845,7 +863,11 @@ export default function App() {
             Sous-dossiers
           </label>
           {scanning ? (
-            <button className="btn-cancel" onClick={cancelScan}>Annuler</button>
+            <button className="btn-cancel" onClick={cancelScan} disabled={cancelling}>
+              {cancelling
+                ? <><span className="btn-spinner" /> Annulation…</>
+                : "Annuler"}
+            </button>
           ) : (
             <button className="btn-primary" onClick={scan} disabled={!folder}>Analyser</button>
           )}
@@ -897,6 +919,11 @@ export default function App() {
       </header>
 
       {error && <div className="error-banner">{error}</div>}
+      {summary?.partial && (
+        <div className="partial-banner">
+          Analyse annulée - résultats partiels affichés
+        </div>
+      )}
 
       {showSessionPicker && (
         <div className="session-list">
@@ -1018,6 +1045,9 @@ export default function App() {
                 />
               </div>
               <p className="progress-pct">{Math.round((progress.current / progress.total) * 100)} %</p>
+              {progress.file && (
+                <p className="progress-filename">{progress.file}</p>
+              )}
             </div>
           ) : (
             <>

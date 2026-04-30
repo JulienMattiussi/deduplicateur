@@ -23,7 +23,8 @@ Outil de détection et suppression de fichiers en double - rapide, local, sans c
 - **Similarité images** - détecte les images visuellement identiques même si les résolutions, formats ou compressions diffèrent (gradient hash via `image_hasher`, seuil configurable)
 - **Pipeline pHash optimisé** - 5 optimisations configurables (filtre taille, filtre ratio d'aspect, hash 2 passes, cache inter-scans, comparaison parallèle) avec seuils intelligents par nombre d'images
 - **Paramètres avancés** - panneau configurable dans l'UI (taille minimale, tolérance ratio, cache, mode développeur avec log de perf)
-- **Thumbnails** - aperçu côte à côte des images similaires directement dans la liste
+- **Thumbnails cliquables** - aperçu côte à côte des images similaires ; cliquer sur une image l'ouvre dans le visualisateur par défaut du système
+- **Résultats partiels** - si l'analyse est annulée, les groupes déjà trouvés sont affichés avec un bandeau orange "résultats partiels"
 - **Interface sombre** - UI réactive, barre de progression, statistiques en temps réel
 
 ---

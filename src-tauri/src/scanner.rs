@@ -43,6 +43,8 @@ pub struct ScanResult {
     pub total_wasted_bytes: u64,
     pub scanned_files: usize,
     pub duration_ms: u128,
+    #[serde(default)]
+    pub partial: bool,
 }
 
 /// Parametres d'un scan. Utiliser `ScanParams::new(folder)` pour les valeurs par defaut.
@@ -178,9 +180,10 @@ pub fn scan_folder<F>(
     on_progress: F,
 ) -> Result<ScanResult, String>
 where
-    F: Fn(usize, usize) + Send + Sync,
+    F: Fn(usize, usize, &str) + Send + Sync,
 {
     let start = Instant::now();
+    let mut was_cancelled = false;
 
     let files = collect_files(Path::new(&params.folder), params.recursive, &params.excluded, &cancelled)?;
     let scanned_files = files.len();
@@ -231,7 +234,8 @@ where
     // --- Phase 1 : doublons exacts ---
     for (folder_key, size_candidates) in partition_candidates {
         if cancelled.load(Ordering::Relaxed) {
-            return Err("cancelled".to_string());
+            was_cancelled = true;
+            break;
         }
 
         let partial_results: Vec<(String, DuplicateFile)> = size_candidates
@@ -243,13 +247,14 @@ where
                 }
                 let h = hash_partial(&file.path).ok()?;
                 let n = hashed.fetch_add(1, Ordering::Relaxed) + 1;
-                on_progress(n, total_work);
+                on_progress(n, total_work, &file.name);
                 Some((h, file))
             })
             .collect();
 
         if cancelled.load(Ordering::Relaxed) {
-            return Err("cancelled".to_string());
+            was_cancelled = true;
+            break;
         }
 
         let mut by_partial: HashMap<String, Vec<DuplicateFile>> = HashMap::new();
@@ -272,7 +277,8 @@ where
             .collect();
 
         if cancelled.load(Ordering::Relaxed) {
-            return Err("cancelled".to_string());
+            was_cancelled = true;
+            break;
         }
 
         let mut by_full: HashMap<String, Vec<DuplicateFile>> = HashMap::new();
@@ -300,7 +306,8 @@ where
     }
 
     // --- Phase 2 : images similaires (pHash) ---
-    if params.find_similar && !cancelled.load(Ordering::Relaxed) {
+    if params.find_similar && !was_cancelled && !cancelled.load(Ordering::Relaxed) {
+        'phash: {
         let t_phase_start = Instant::now();
         let cfg = &params.phash_config;
         let data_dir_path = params.data_dir.as_deref().map(Path::new);
@@ -336,11 +343,19 @@ where
         let t_aspect_start = Instant::now();
         let use_aspect_filter = after_size >= cfg.min_images_aspect_filter;
         let dimensions: Vec<Option<(u32, u32)>> = if use_aspect_filter {
-            candidates.par_iter().map(|f| get_image_dimensions(&f.path)).collect()
+            candidates.par_iter().map(|f| {
+                if cancelled.load(Ordering::Relaxed) { return None; }
+                get_image_dimensions(&f.path)
+            }).collect()
         } else {
             vec![None; after_size]
         };
         let t_aspect_ms = t_aspect_start.elapsed().as_millis() as u64;
+
+        if cancelled.load(Ordering::Relaxed) {
+            was_cancelled = true;
+            break 'phash;
+        }
 
         // Optimisation 3 : cache inter-scans.
         let mut cache = if cfg.cache_enabled {
@@ -352,16 +367,25 @@ where
         // Optimisation 4 : calcul des hashs (cache + decode parallele).
         let t_hash_start = Instant::now();
 
+        // Compteur partagé hits + misses pour que le progress avance meme si tout est en cache.
+        let phash_done = Arc::new(AtomicUsize::new(0));
+        let phash_done_for_decode = Arc::clone(&phash_done);
+
         let cache_results: Vec<Option<(Vec<u8>, Vec<u8>)>> = candidates
             .iter()
             .map(|f| {
-                cache
+                let result = cache
                     .get(&f.path, f.modified, cfg.coarse_hash_size, cfg.fine_hash_size)
                     .and_then(|e| {
                         let c = BASE64.decode(&e.coarse).ok()?;
                         let fi = BASE64.decode(&e.fine).ok()?;
                         Some((c, fi))
-                    })
+                    });
+                if result.is_some() {
+                    let n = phash_done.fetch_add(1, Ordering::Relaxed) + 1;
+                    on_progress(total_to_hash + n, total_work, &f.name);
+                }
+                result
             })
             .collect();
 
@@ -373,7 +397,6 @@ where
             .filter_map(|(i, r)| if r.is_none() { Some(i) } else { None })
             .collect();
 
-        let phash_decoded = Arc::new(AtomicUsize::new(0));
         let n_to_decode = miss_indices.len();
 
         let miss_hashes: Vec<(usize, Option<(Vec<u8>, Vec<u8>)>)> = miss_indices
@@ -387,11 +410,16 @@ where
                     cfg.coarse_hash_size,
                     cfg.fine_hash_size,
                 );
-                let n = phash_decoded.fetch_add(1, Ordering::Relaxed) + 1;
-                on_progress(total_to_hash + cache_hits + n, total_work.max(total_to_hash + n_to_decode));
+                let n = phash_done_for_decode.fetch_add(1, Ordering::Relaxed) + 1;
+                on_progress(total_to_hash + n, total_work, &candidates[i].name);
                 (i, hash)
             })
             .collect();
+
+        if cancelled.load(Ordering::Relaxed) {
+            was_cancelled = true;
+            break 'phash;
+        }
 
         let mut all_hashes: Vec<Option<(Vec<u8>, Vec<u8>)>> = cache_results;
         let mut cache_misses = 0usize;
@@ -443,12 +471,20 @@ where
         let skipped_coarse = Arc::new(AtomicUsize::new(0));
         let compared_fine = Arc::new(AtomicUsize::new(0));
 
+        if cancelled.load(Ordering::Relaxed) {
+            was_cancelled = true;
+            break 'phash;
+        }
+
         let similar_pairs: Vec<(usize, usize)> = if use_parallel {
             let sc = Arc::clone(&skipped_coarse);
             let cf = Arc::clone(&compared_fine);
             (0..n)
                 .into_par_iter()
                 .flat_map_iter(|i| {
+                    if cancelled.load(Ordering::Relaxed) {
+                        return vec![].into_iter();
+                    }
                     let sc = Arc::clone(&sc);
                     let cf = Arc::clone(&cf);
                     let mut local = Vec::new();
@@ -486,6 +522,10 @@ where
             let mut sc = 0usize;
             let mut cf = 0usize;
             for i in 0..n {
+                if cancelled.load(Ordering::Relaxed) {
+                    was_cancelled = true;
+                    break 'phash;
+                }
                 for j in (i + 1)..n {
                     if use_aspect_filter {
                         if let (Some(ai), Some(aj)) = (images[i].aspect, images[j].aspect) {
@@ -585,6 +625,7 @@ where
                 );
             }
         }
+        }  // end 'phash
     }
 
     if params.by_folder {
@@ -613,6 +654,7 @@ where
         total_wasted_bytes,
         scanned_files,
         duration_ms: start.elapsed().as_millis(),
+        partial: was_cancelled,
     })
 }
 
@@ -761,7 +803,7 @@ mod tests {
     use std::sync::Arc;
     use tempfile::TempDir;
 
-    fn no_progress(_: usize, _: usize) {}
+    fn no_progress(_: usize, _: usize, _: &str) {}
     fn no_cancel() -> Arc<AtomicBool> {
         Arc::new(AtomicBool::new(false))
     }
@@ -913,14 +955,14 @@ mod tests {
     }
 
     #[test]
-    fn annulation_retourne_erreur() {
+    fn annulation_retourne_resultat_partiel() {
         let dir = TempDir::new().unwrap();
         write_file(dir.path(), "a.txt", b"contenu identique");
         write_file(dir.path(), "b.txt", b"contenu identique");
         let cancelled = Arc::new(AtomicBool::new(true));
         let r = scan_folder(ScanParams::new(dir.path().to_str().unwrap()), cancelled, no_progress);
-        assert!(r.is_err());
-        assert_eq!(r.unwrap_err(), "cancelled");
+        let result = r.expect("scan_folder doit reussir meme si annule");
+        assert!(result.partial, "le resultat doit etre marque partiel");
     }
 
     #[test]
@@ -933,7 +975,7 @@ mod tests {
         scan_folder(
             ScanParams::new(dir.path().to_str().unwrap()),
             no_cancel(),
-            move |_, _| { c.fetch_add(1, Ordering::Relaxed); },
+            move |_, _, _: &str| { c.fetch_add(1, Ordering::Relaxed); },
         ).unwrap();
         assert!(count.load(Ordering::Relaxed) > 0);
     }

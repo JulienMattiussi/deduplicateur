@@ -32,6 +32,8 @@ struct ScanSummary {
     by_folder: bool,
     #[serde(default)]
     total_folders: usize,
+    #[serde(default)]
+    partial: bool,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -103,6 +105,27 @@ async fn scan_folder(
         .map(|d| load_config(std::path::Path::new(d)))
         .unwrap_or_default();
 
+    // Shared progress state written by rayon threads, read by the async emitter task.
+    // Never call window.emit() from rayon threads directly - it deadlocks the GTK main loop.
+    let progress_state: Arc<Mutex<Option<(usize, usize, String)>>> = Arc::new(Mutex::new(None));
+    let progress_for_scan = Arc::clone(&progress_state);
+    let progress_for_emit = Arc::clone(&progress_state);
+
+    let window_emit = window.clone();
+    let emit_task = tauri::async_runtime::spawn(async move {
+        let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(100));
+        loop {
+            interval.tick().await;
+            let snapshot = progress_for_emit.lock().unwrap().clone();
+            if let Some((current, total, file)) = snapshot {
+                let _ = window_emit.emit(
+                    "scan:progress",
+                    serde_json::json!({ "current": current, "total": total, "file": file }),
+                );
+            }
+        }
+    });
+
     let folder = path.clone();
     let result = tauri::async_runtime::spawn_blocking(move || {
         let params = ScanParams {
@@ -115,17 +138,14 @@ async fn scan_folder(
             phash_config: phash_cfg,
             data_dir: data_dir_str,
         };
-        do_scan(params, cancelled, |current, total| {
-            if current % 50 == 0 || current == total {
-                let _ = window.emit(
-                    "scan:progress",
-                    serde_json::json!({ "current": current, "total": total }),
-                );
-            }
+        do_scan(params, cancelled, move |current, total, file: &str| {
+            *progress_for_scan.lock().unwrap() = Some((current, total, file.to_string()));
         })
     })
     .await
     .map_err(|e| e.to_string())??;
+
+    emit_task.abort();
 
     let id = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -151,6 +171,7 @@ async fn scan_folder(
         duration_ms: result.duration_ms,
         by_folder,
         total_folders,
+        partial: result.partial,
     };
 
     save_session(&app, &summary, &result.groups);
@@ -392,6 +413,29 @@ fn reveal_in_folder(path: String) -> Result<(), String> {
     open_in_file_manager(&path).map_err(|e| e.to_string())
 }
 
+#[cfg(target_os = "windows")]
+fn open_file_default(path: &str) -> std::io::Result<()> {
+    std::process::Command::new("cmd")
+        .args(["/C", &format!("start \"\" \"{}\"", path)])
+        .spawn()
+        .map(|_| ())
+}
+
+#[cfg(target_os = "macos")]
+fn open_file_default(path: &str) -> std::io::Result<()> {
+    std::process::Command::new("open").arg(path).spawn().map(|_| ())
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+fn open_file_default(path: &str) -> std::io::Result<()> {
+    std::process::Command::new("xdg-open").arg(path).spawn().map(|_| ())
+}
+
+#[tauri::command]
+fn open_file(path: String) -> Result<(), String> {
+    open_file_default(&path).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 fn delete_files(paths: Vec<String>) -> Result<(), String> {
     let mut errors: Vec<String> = Vec::new();
@@ -425,16 +469,20 @@ fn set_phash_config(app: tauri::AppHandle, config: PHashConfig) -> Result<(), St
 }
 
 #[tauri::command]
-fn get_image_thumbnail(path: String, max_size: u32) -> Result<String, String> {
-    let img = image::open(&path).map_err(|e| e.to_string())?;
-    let thumb = img.thumbnail(max_size, max_size);
-    let mut buf = Vec::new();
-    thumb
-        .write_to(&mut std::io::Cursor::new(&mut buf), image::ImageOutputFormat::Jpeg(75))
-        .map_err(|e| e.to_string())?;
-    use base64::Engine;
-    let encoded = base64::engine::general_purpose::STANDARD.encode(&buf);
-    Ok(format!("data:image/jpeg;base64,{}", encoded))
+async fn get_image_thumbnail(path: String, max_size: u32) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let img = image::open(&path).map_err(|e| e.to_string())?;
+        let thumb = img.thumbnail(max_size, max_size);
+        let mut buf = Vec::new();
+        thumb
+            .write_to(&mut std::io::Cursor::new(&mut buf), image::ImageOutputFormat::Jpeg(75))
+            .map_err(|e| e.to_string())?;
+        use base64::Engine;
+        let encoded = base64::engine::general_purpose::STANDARD.encode(&buf);
+        Ok(format!("data:image/jpeg;base64,{}", encoded))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -458,6 +506,7 @@ pub fn run() {
             list_folder_keys,
             get_folder_groups_page,
             reveal_in_folder,
+            open_file,
             get_image_thumbnail,
             get_phash_config,
             set_phash_config,

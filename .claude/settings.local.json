@@ -30,7 +30,9 @@
       "Bash(/usr/bin/env npm *)",
       "Bash(node_modules/.bin/tsc --noEmit)",
       "Bash(nvm use *)",
-      "Bash(/home/julien/.nvm/versions/node/v22.22.0/bin/node /home/julien/.nvm/versions/node/v22.22.0/bin/npx tsc --noEmit)"
+      "Bash(/home/julien/.nvm/versions/node/v22.22.0/bin/node /home/julien/.nvm/versions/node/v22.22.0/bin/npx tsc --noEmit)",
+      "Bash(cargo test *)",
+      "Bash(cargo build *)"
     ]
   }
 }

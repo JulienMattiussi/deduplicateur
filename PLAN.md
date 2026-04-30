@@ -93,6 +93,11 @@
 - [x] UI : taille individuelle par fichier dans les groupes similaires
 - [x] 43 tests Rust (dont 5 nouveaux sur les optimisations)
 
+### Ameliorations UX ✅
+- [x] Clic sur thumbnail ouvre l'image dans le visualisateur par defaut du systeme
+- [x] Resultats partiels affiches en cas d'annulation (banner orange, `partial: bool` dans `ScanResult`)
+- [x] Similarite minimum a 100% par defaut (seuil Hamming = 0 bits)
+
 ---
 
 ## Phase 6 - Similarité vidéos
