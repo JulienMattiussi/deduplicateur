@@ -178,7 +178,7 @@ function ThumbnailStrip({ files }: { files: DuplicateFile[] }) {
   );
 }
 
-function GroupCard({
+export function GroupCard({
   group,
   selected,
   onToggle,
@@ -628,6 +628,14 @@ export default function App() {
     }
   }
 
+  function resetResults() {
+    setSummary(null);
+    setGroups([]);
+    setSelected(new Set());
+    setFolderSummaries([]);
+    setFolderState({});
+  }
+
   async function loadFolderPage(folderKey: string) {
     const state = folderState[folderKey];
     if (state?.loading) return;
@@ -655,13 +663,10 @@ export default function App() {
     try {
       const s = await invoke<ScanSummary>("load_session", { id });
       startTransition(() => {
+        resetResults();
         setSummary(s);
         setFolder(s.folder);
-        setGroups([]);
-        setSelected(new Set());
         setError(null);
-        setFolderSummaries([]);
-        setFolderState({});
       });
       if (s.by_folder) {
         const summaries = await invoke<FolderSummary[]>("list_folder_keys");
@@ -679,11 +684,7 @@ export default function App() {
     startTransition(() => {
       setSessions((prev) => prev.filter((s) => s.id !== id));
       if (summary?.id === id) {
-        setSummary(null);
-        setGroups([]);
-        setSelected(new Set());
-        setFolderSummaries([]);
-        setFolderState({});
+        resetResults();
       }
     });
   }
@@ -707,14 +708,10 @@ export default function App() {
   async function scan() {
     if (!folder) return;
     setScanning(true);
-    setSummary(null);
-    setGroups([]);
+    resetResults();
     setHasMore(false);
-    setSelected(new Set());
     setError(null);
     setProgress(null);
-    setFolderSummaries([]);
-    setFolderState({});
 
     const unlisten = await listen<{ current: number; total: number; file?: string }>(
       "scan:progress",
@@ -758,11 +755,11 @@ export default function App() {
     });
   }
 
-  async function selectAllDuplicates() {
+  async function runSelection(cmd: string, params?: object) {
     if (selecting) return;
     setSelecting(true);
     try {
-      const paths = await invoke<string[]>("select_all_duplicates");
+      const paths = await invoke<string[]>(cmd, params);
       startTransition(() => setSelected(new Set(paths)));
     } catch (e) {
       setError(String(e));
@@ -771,17 +768,12 @@ export default function App() {
     }
   }
 
-  async function selectSmart(mode: "newest" | "oldest") {
-    if (selecting) return;
-    setSelecting(true);
-    try {
-      const paths = await invoke<string[]>("smart_select", { mode });
-      startTransition(() => setSelected(new Set(paths)));
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setSelecting(false);
-    }
+  function selectAllDuplicates() {
+    return runSelection("select_all_duplicates");
+  }
+
+  function selectSmart(mode: "newest" | "oldest") {
+    return runSelection("smart_select", { mode });
   }
 
   function clearSelection() {
@@ -828,7 +820,7 @@ export default function App() {
           {summary && (
             <button
               className="btn-ghost"
-              onClick={() => { setSummary(null); setGroups([]); setSelected(new Set()); setFolderSummaries([]); setFolderState({}); }}
+              onClick={resetResults}
             >
               ← Mes analyses
             </button>

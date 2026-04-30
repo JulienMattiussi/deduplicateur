@@ -97,6 +97,18 @@
 - [x] Clic sur thumbnail ouvre l'image dans le visualisateur par defaut du systeme
 - [x] Resultats partiels affiches en cas d'annulation (banner orange, `partial: bool` dans `ScanResult`)
 - [x] Similarite minimum a 100% par defaut (seuil Hamming = 0 bits)
+- [x] Noms de fichiers defilants sous la barre de progression (rafraichissement 100ms, architecture mutex+tache async)
+- [x] Spinner dans les thumbnails en cours de chargement
+
+### Qualite code ✅
+- [x] `pair_passes_filters()` : logique de comparaison pHash extraite (supprime ~70 lignes en double entre branches parallele et sequentielle)
+- [x] `resetResults()` : remise a zero du state React factorisee (4 occurrences)
+- [x] `runSelection()` : `selectAllDuplicates` et `selectSmart` factorisees
+- [x] `get_folder_groups_page` utilise `make_page()` (plus de pagination manuelle en double)
+- [x] `after_aspect_filter` dans le log de perf : corrige pour refleter le vrai count post-filtre
+- [x] `@keyframes spin` en double dans App.css supprime
+- [x] 46 tests Rust (+3 : annulation pHash, invalidation cache mtime, filtre aspect ratio)
+- [x] 13 tests TypeScript (+5 App.test.tsx : bouton retour, toggle, suppression, erreur) + setup jsdom/RTL
 
 ---
 

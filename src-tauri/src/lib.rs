@@ -369,14 +369,7 @@ fn get_folder_groups_page(
                 .filter(|g| g.folder_key.as_deref().unwrap_or("") == folder_key.as_str())
                 .cloned()
                 .collect();
-            let total = folder_groups.len();
-            let end = (offset + limit).min(total);
-            Ok(GroupsPage {
-                groups: if offset < total { folder_groups[offset..end].to_vec() } else { vec![] },
-                offset,
-                total,
-                has_more: end < total,
-            })
+            Ok(make_page(&folder_groups, offset, limit))
         }
     }
 }

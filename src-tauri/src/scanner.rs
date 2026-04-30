@@ -174,6 +174,33 @@ fn hamming_distance(a: &[u8], b: &[u8]) -> u32 {
     a.iter().zip(b.iter()).map(|(x, y)| (x ^ y).count_ones()).sum()
 }
 
+/// Retourne true si la paire (a, b) passe tous les filtres de comparaison pHash :
+/// 1. Filtre de rapport d'aspect (si use_aspect_filter)
+/// 2. Filtre hash grossier (si use_two_pass)
+/// 3. Comparaison hash fin (seuil de Hamming)
+fn pair_passes_filters(
+    a: &ImageData,
+    b: &ImageData,
+    use_aspect_filter: bool,
+    aspect_tolerance: f32,
+    use_two_pass: bool,
+    coarse_threshold: u32,
+    threshold: u32,
+) -> bool {
+    if use_aspect_filter {
+        if let (Some(ai), Some(aj)) = (a.aspect, b.aspect) {
+            let max_r = ai.max(aj);
+            if max_r > 0.0 && (ai - aj).abs() / max_r > aspect_tolerance {
+                return false;
+            }
+        }
+    }
+    if use_two_pass && hamming_distance(&a.coarse, &b.coarse) > coarse_threshold {
+        return false;
+    }
+    hamming_distance(&a.fine, &b.fine) <= threshold
+}
+
 pub fn scan_folder<F>(
     params: ScanParams,
     cancelled: Arc<AtomicBool>,
@@ -489,28 +516,25 @@ where
                     let cf = Arc::clone(&cf);
                     let mut local = Vec::new();
                     for j in (i + 1)..n {
-                        if use_aspect_filter {
-                            if let (Some(ai), Some(aj)) = (images[i].aspect, images[j].aspect) {
-                                let max_r = ai.max(aj);
-                                if max_r > 0.0
-                                    && (ai - aj).abs() / max_r > cfg.aspect_ratio_tolerance
-                                {
-                                    continue;
-                                }
-                            }
-                        }
-                        if use_two_pass {
-                            if hamming_distance(&images[i].coarse, &images[j].coarse)
+                        // Filtre grossier separe pour comptabiliser skipped_coarse avant
+                        // d'appeler pair_passes_filters
+                        if use_two_pass
+                            && hamming_distance(&images[i].coarse, &images[j].coarse)
                                 > coarse_threshold
-                            {
-                                sc.fetch_add(1, Ordering::Relaxed);
-                                continue;
-                            }
+                        {
+                            sc.fetch_add(1, Ordering::Relaxed);
+                            continue;
                         }
                         cf.fetch_add(1, Ordering::Relaxed);
-                        if hamming_distance(&images[i].fine, &images[j].fine)
-                            <= params.sim_threshold
-                        {
+                        if pair_passes_filters(
+                            &images[i],
+                            &images[j],
+                            use_aspect_filter,
+                            cfg.aspect_ratio_tolerance,
+                            false,
+                            0,
+                            params.sim_threshold,
+                        ) {
                             local.push((i, j));
                         }
                     }
@@ -527,26 +551,25 @@ where
                     break 'phash;
                 }
                 for j in (i + 1)..n {
-                    if use_aspect_filter {
-                        if let (Some(ai), Some(aj)) = (images[i].aspect, images[j].aspect) {
-                            let max_r = ai.max(aj);
-                            if max_r > 0.0
-                                && (ai - aj).abs() / max_r > cfg.aspect_ratio_tolerance
-                            {
-                                continue;
-                            }
-                        }
-                    }
-                    if use_two_pass {
-                        if hamming_distance(&images[i].coarse, &images[j].coarse)
+                    // Filtre grossier separe pour comptabiliser sc avant d'appeler
+                    // pair_passes_filters
+                    if use_two_pass
+                        && hamming_distance(&images[i].coarse, &images[j].coarse)
                             > coarse_threshold
-                        {
-                            sc += 1;
-                            continue;
-                        }
+                    {
+                        sc += 1;
+                        continue;
                     }
                     cf += 1;
-                    if hamming_distance(&images[i].fine, &images[j].fine) <= params.sim_threshold {
+                    if pair_passes_filters(
+                        &images[i],
+                        &images[j],
+                        use_aspect_filter,
+                        cfg.aspect_ratio_tolerance,
+                        false,
+                        0,
+                        params.sim_threshold,
+                    ) {
                         pairs.push((i, j));
                     }
                 }
@@ -608,7 +631,7 @@ where
                         timestamp,
                         total_images,
                         after_size_filter: after_size,
-                        after_aspect_filter: after_size,
+                        after_aspect_filter: n,
                         pairs_skipped_coarse: skipped_coarse.load(Ordering::Relaxed),
                         pairs_compared_fine: compared_fine.load(Ordering::Relaxed),
                         pairs_found_similar: pairs_found,
@@ -1306,5 +1329,110 @@ mod tests {
         let groups_par: usize = r_par.groups.iter().filter(|g| g.similar).count();
         let groups_seq: usize = r_seq.groups.iter().filter(|g| g.similar).count();
         assert_eq!(groups_par, groups_seq, "parallele et sequentiel doivent trouver les memes groupes");
+    }
+
+    // --- Nouveaux tests ---
+
+    #[test]
+    fn annulation_pendant_phash_retourne_resultat_partiel() {
+        let dir = TempDir::new().unwrap();
+        write_solid_png(dir.path(), "a.png", [255, 0, 0], 20);
+        write_solid_png(dir.path(), "b.png", [0, 255, 0], 20);
+        write_solid_png(dir.path(), "c.png", [0, 0, 255], 20);
+        write_solid_png(dir.path(), "d.png", [128, 128, 0], 20);
+
+        let path = dir.path().to_str().unwrap();
+        let cancelled = Arc::new(AtomicBool::new(true));
+
+        let r = scan_folder(
+            ScanParams {
+                find_similar: true,
+                phash_config: PHashConfig { cache_enabled: false, ..PHashConfig::default() },
+                ..ScanParams::new(path)
+            },
+            cancelled,
+            no_progress,
+        ).expect("scan_folder doit reussir meme si annule");
+
+        assert!(r.partial, "le resultat doit etre marque partiel quand annule pendant phash");
+    }
+
+    #[test]
+    fn phash_cache_invalide_si_mtime_change() {
+        let dir = TempDir::new().unwrap();
+        let cache_dir = TempDir::new().unwrap();
+        write_solid_png(dir.path(), "a.png", [10, 20, 30], 30);
+        write_solid_png(dir.path(), "b.png", [10, 20, 30], 30);
+
+        let path = dir.path().to_str().unwrap();
+        let data_dir = cache_dir.path().to_str().unwrap().to_string();
+
+        // Scan 1 : peuple le cache
+        let r1 = scan_folder(
+            ScanParams {
+                find_similar: true,
+                phash_config: PHashConfig { cache_enabled: true, ..PHashConfig::default() },
+                data_dir: Some(data_dir.clone()),
+                ..ScanParams::new(path)
+            },
+            no_cancel(),
+            no_progress,
+        ).expect("scan 1 doit reussir");
+        assert!(!r1.partial, "scan 1 ne doit pas etre partiel");
+
+        // Modification du fichier pour changer son mtime
+        write_solid_png(dir.path(), "a.png", [255, 128, 64], 30);
+
+        // Attendre que le mtime change (resolution 1 seconde sur certains systemes)
+        std::thread::sleep(std::time::Duration::from_millis(10));
+
+        // Scan 2 : le cache doit detecter le changement de mtime et ne pas planter
+        let r2 = scan_folder(
+            ScanParams {
+                find_similar: true,
+                phash_config: PHashConfig { cache_enabled: true, ..PHashConfig::default() },
+                data_dir: Some(data_dir),
+                ..ScanParams::new(path)
+            },
+            no_cancel(),
+            no_progress,
+        ).expect("scan 2 doit reussir meme apres changement de mtime");
+
+        // Le resultat doit etre valide (pas de panique, pas de crash)
+        assert!(!r2.partial, "scan 2 ne doit pas etre partiel");
+    }
+
+    #[test]
+    fn phash_aspect_ratio_exclut_exactement_au_seuil() {
+        let dir = TempDir::new().unwrap();
+        // 1x4 (portrait tres etroit, ratio 0.25) et 4x1 (paysage tres large, ratio 4.0)
+        // Meme couleur unie = meme gradient hash
+        write_solid_png_dims(dir.path(), "portrait.png", [100, 200, 150], 1, 4);
+        write_solid_png_dims(dir.path(), "landscape.png", [100, 200, 150], 4, 1);
+
+        let path = dir.path().to_str().unwrap();
+
+        // Tolerance stricte : 0.1 (10%)
+        // Ratios : 0.25 et 4.0, diff relative = |0.25 - 4.0| / 4.0 = 0.9375 >> 0.1
+        let mut cfg = PHashConfig::default();
+        cfg.aspect_ratio_tolerance = 0.1;
+        cfg.min_images_aspect_filter = 2; // actif des 2 images
+        cfg.cache_enabled = false;
+
+        let r = scan_folder(
+            ScanParams {
+                find_similar: true,
+                phash_config: cfg,
+                ..ScanParams::new(path)
+            },
+            no_cancel(),
+            no_progress,
+        ).unwrap();
+
+        let similar: Vec<_> = r.groups.iter().filter(|g| g.similar).collect();
+        assert_eq!(
+            similar.len(), 0,
+            "avec tolerance stricte, portrait et paysage ne doivent pas etre groupes"
+        );
     }
 }

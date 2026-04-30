@@ -6,16 +6,46 @@ Programme Windows de détection et suppression de fichiers en double.
 
 Le caractère `—` (tiret cadratin, U+2014) est **interdit dans l'ensemble du projet** : code source, documentation, commentaires, messages de commit. Utiliser `-` (trait d'union ASCII) à la place.
 
-## Règle impérative - Documentation et tests
+## Règle impérative - Checklist de clôture de tâche
 
-**Après chaque ajout ou modification de feature, l'agent DOIT :**
+**Toute tâche est incomplète tant que cette checklist n'est pas entièrement traitée.**
+Parcourir chaque point dans l'ordre, même si la réponse est "rien à faire ici".
 
-1. **Mettre à jour les tests Rust** (`scanner.rs` ou nouveau fichier de test) pour couvrir le comportement ajouté ou modifié. Ne pas clore la tâche sans que `cargo test` passe au vert.
-2. **Mettre à jour ce fichier** (`AGENTS.md`) si un nouveau piège Tauri ou un comportement non-évident a été découvert.
-3. **Mettre à jour `README.md`** si la feature est visible par l'utilisateur (nouvelle section Fonctionnalités, tableau Roadmap, etc.).
-4. **Mettre à jour `PLAN.md`** pour cocher les étapes accomplies.
+### 1. Tests - obligatoire avant tout le reste
 
-Cette règle s'applique même pour des modifications mineures.
+- [ ] `cargo test --manifest-path src-tauri/Cargo.toml` passe au vert
+- [ ] `PATH="/home/julien/.nvm/versions/node/v22.22.0/bin:$PATH" npm test -- --run` passe au vert
+- [ ] Tout comportement nouveau ou modifié dans `scanner.rs` a un test Rust correspondant
+- [ ] Tout composant React nouveau ou modifié a un test dans `src/App.test.tsx` si le comportement est testable sans l'app Tauri réelle
+
+### 2. PLAN.md
+
+- [ ] Les étapes accomplies sont cochées `[x]`
+- [ ] Si les counts de tests ont changé (ex. "43 tests Rust"), mettre à jour le chiffre
+- [ ] Si une nouvelle sous-section est nécessaire pour décrire le travail accompli, l'ajouter
+
+### 3. README.md
+
+- [ ] Si une feature est visible par l'utilisateur : ajouter ou mettre à jour la section **Fonctionnalités**
+- [ ] Si le count de tests a changé : mettre à jour le tableau **Stack technique** et la section **Tests**
+- [ ] Si une dépendance a été ajoutée : mettre à jour le tableau **Stack technique**
+
+### 4. AGENTS.md (ce fichier)
+
+Mettre à jour si l'un de ces cas s'applique :
+
+- Un piège Tauri, Rust ou React a été découvert (freeze, deadlock, comportement silencieux...)
+- Un pattern architectural non-évident a été introduit (ex. mutex+tache async pour la progression)
+- Une règle de développement a changé (commandes, conventions, structure)
+- Un outil ou une dépendance de test a été ajouté (ex. jsdom, RTL) avec ses contraintes
+
+Ne pas documenter ce qui est déjà évident depuis le code.
+
+### 5. Vérification finale
+
+Avant de déclarer la tâche terminée, répondre explicitement à :
+- Les deux suites de tests passent-elles ? (donner les counts exacts)
+- Y a-t-il des fichiers de documentation qui auraient dû être mis à jour et ne l'ont pas été ?
 
 ## Plan d'action
 
@@ -207,3 +237,54 @@ En mode `by_folder`, les en-têtes de dossiers sont disponibles via `list_folder
 démarre collapsed et appelle `onExpand()` uniquement si `groups.length === 0 && !loading`.
 Re-collapse puis re-expand ne refait pas d'appel réseau (groupes déjà en mémoire dans
 l'état App via `groupsByFolder` useMemo).
+
+### window.emit() depuis les threads rayon gele le GTK main loop
+Appeler `window.emit()` directement depuis les threads rayon (via un callback `on_progress`)
+provoque un deadlock avec le GTK main loop sur Linux - l'app affiche "ne repond pas" apres
+quelques secondes. Pattern correct : ecrire l'etat dans un `Arc<Mutex<Option<...>>>` depuis
+rayon, et emettre depuis une tache tokio separee a intervalle regulier :
+```rust
+let progress_state = Arc::new(Mutex::new(None));
+let emit_task = tauri::async_runtime::spawn(async move {
+    let mut interval = tokio::time::interval(Duration::from_millis(100));
+    loop {
+        interval.tick().await;
+        let snapshot = progress_state.lock().unwrap().clone(); // relache avant emit
+        if let Some((current, total, file)) = snapshot {
+            let _ = window.emit("scan:progress", json!({...}));
+        }
+    }
+});
+// ... spawn_blocking pour le scan ...
+emit_task.abort();
+```
+Ajouter `tokio = { version = "1", features = ["time"] }` dans Cargo.toml.
+
+### Commandes Tauri synchrones bloquent le thread principal
+Une commande `fn` (non `async`) s'execute sur le thread principal de Tauri sous Linux.
+Avec de nombreux appels simultanees (ex. thumbnails de 60+ groupes au rendu), cela gele l'UI.
+Toute commande faisant du I/O ou du traitement CPU doit etre `async fn` + `spawn_blocking` :
+```rust
+#[tauri::command]
+async fn get_image_thumbnail(path: String, max_size: u32) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || { ... })
+        .await.map_err(|e| e.to_string())?
+}
+```
+
+### Progression pHash avec cache chaud : emettre aussi pour les cache hits
+Quand le cache pHash est entierement chaud, la boucle de decodage (`miss_indices`) est vide
+et `on_progress` n'est jamais appele - la progression reste bloquee a la valeur de la phase
+exact. Solution : appeler `on_progress` dans la boucle de check du cache pour les hits aussi,
+avec un compteur atomique partage entre hits et misses.
+
+### Vitest + worktrees : plusieurs instances React -> "Invalid hook call"
+Quand des agents travaillent en worktree isole, leurs `node_modules/` sont dans
+`.claude/worktrees/<id>/`. Vitest decouvre leurs fichiers de test et charge plusieurs
+instances de React, causant "Invalid hook call". Fix dans `vite.config.ts` :
+```ts
+test: {
+  include: ["src/**/*.test.{ts,tsx}"],
+  exclude: [".claude/**", "node_modules/**"],
+}
+```

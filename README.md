@@ -86,8 +86,8 @@ Chaque scan produit un fichier JSON dans `~/.local/share/deduplicateur/sessions/
 | Similarité images | image_hasher + image | Gradient hash, résolution-agnostique |
 | Frontend | React 18 + TypeScript | UI réactive |
 | Bundler | Vite + Tauri CLI | Dev HMR + build `.exe` |
-| Tests Rust | cargo test + tempfile | 43 tests unitaires sur le moteur |
-| Tests TS | Vitest | Tests utilitaires |
+| Tests Rust | cargo test + tempfile | 46 tests unitaires sur le moteur |
+| Tests TS | Vitest + jsdom + React Testing Library | 13 tests (utilitaires + composants App) |
 
 ---
 
@@ -127,10 +127,10 @@ Sur Windows, génère un `.exe` autonome.
 ### Tests
 
 ```bash
-# Moteur Rust (18 tests)
+# Moteur Rust (46 tests)
 cargo test --manifest-path src-tauri/Cargo.toml
 
-# Utilitaires TypeScript
+# TypeScript - utilitaires + composants React (13 tests)
 npm test
 ```
 
