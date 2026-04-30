@@ -20,6 +20,10 @@ Outil de détection et suppression de fichiers en double - rapide, local, sans c
 - **Pagination sans freeze** - les résultats sont chargés par tranches de 50, le système ne sature jamais
 - **Suppression sûre** - les fichiers sont envoyés dans la corbeille, récupérables
 - **Fichiers disparus** - si un fichier a été supprimé entre deux sessions, l'app l'ignore sans planter
+- **Similarité images** - détecte les images visuellement identiques même si les résolutions, formats ou compressions diffèrent (gradient hash via `image_hasher`, seuil configurable)
+- **Pipeline pHash optimisé** - 5 optimisations configurables (filtre taille, filtre ratio d'aspect, hash 2 passes, cache inter-scans, comparaison parallèle) avec seuils intelligents par nombre d'images
+- **Paramètres avancés** - panneau configurable dans l'UI (taille minimale, tolérance ratio, cache, mode développeur avec log de perf)
+- **Thumbnails** - aperçu côte à côte des images similaires directement dans la liste
 - **Interface sombre** - UI réactive, barre de progression, statistiques en temps réel
 
 ---
@@ -78,9 +82,10 @@ Chaque scan produit un fichier JSON dans `~/.local/share/deduplicateur/sessions/
 | Parallélisme | Rayon | Multi-cœurs transparent |
 | Parcours | walkdir | Récursion avec filtrage de dossiers |
 | Corbeille | trash | Suppression récupérable cross-platform |
+| Similarité images | image_hasher + image | Gradient hash, résolution-agnostique |
 | Frontend | React 18 + TypeScript | UI réactive |
 | Bundler | Vite + Tauri CLI | Dev HMR + build `.exe` |
-| Tests Rust | cargo test + tempfile | 18 tests unitaires sur le moteur |
+| Tests Rust | cargo test + tempfile | 43 tests unitaires sur le moteur |
 | Tests TS | Vitest | Tests utilitaires |
 
 ---
@@ -138,7 +143,8 @@ npm test
 | 2 | Hash partiel, Rayon, progression, sessions | ✅ |
 | 3 | Interface soignée (thème, sélection intelligente) | ✅ |
 | 4 | Analyse par sous-dossier indépendante | ✅ |
-| 5 | Similarité images (pHash, résolution-agnostique) | 🔜 |
+| 5 | Similarité images (gradient hash, résolution-agnostique) | ✅ |
+| 5b | Optimisations pHash (5 filtres, cache, config UI, log perf) | ✅ |
 | 6 | Similarité vidéos (échantillonnage de frames) | 🔜 |
 
 ---

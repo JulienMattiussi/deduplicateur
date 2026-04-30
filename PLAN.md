@@ -62,16 +62,36 @@
 
 ---
 
-## Phase 5 - Similarité images
+## Phase 5 - Similarité images ✅
 **Objectif : détecter les mêmes images en formats/résolutions différents**
 
-- [ ] Intégrer `image-hasher` (pHash, résolution-agnostique)
-- [ ] Pipeline séparé pour les fichiers image (jpg, png, webp, bmp, gif...)
-- [ ] Seuil de similarité configurable dans l'UI
-- [ ] Thumbnails dans la liste des groupes
-- [ ] Affichage côte à côte des doublons visuels
+- [x] Intégrer `image_hasher` (gradient hash, résolution-agnostique)
+- [x] Pipeline séparé pour les fichiers image (jpg, png, webp, bmp, gif, tiff, avif)
+- [x] Seuil de similarité configurable dans l'UI (slider 0-20 bits, défaut 10)
+- [x] Thumbnails dans la liste des groupes (backend resize + base64 data URL)
+- [x] Affichage côte à côte des doublons visuels (grille de thumbnails 120x120)
+- [x] Les doublons exacts sont exclus de la phase pHash (pas de double signalement)
+- [x] Option "Détecter les images similaires" - inactif par défaut (pas d'impact sur les scans sans images)
 
-**Critère de validation : détecter photo.jpg (640×480) et photo_hd.webp (1920×1080) comme doublons**
+**Critère de validation : détecter photo.jpg (640x480) et photo_hd.webp (1920x1080) comme doublons**
+
+---
+
+### Optimisations pHash ✅
+- [x] `ScanParams` struct (remplace les parametres individuels de `scan_folder`)
+- [x] `phash_config.rs` : `PHashConfig` (13 champs, JSON, defauts raisonnables), 4 tests
+- [x] `phash_cache.rs` : `HashCache` (mtime + tailles de hash = invalidation), 8 tests
+- [x] `phash_perf.rs` : `PerfEntry` (timings, compteurs, snapshot config), JSONL, 4 tests
+- [x] Optimisation 1 : filtre de taille minimale (s'active si n >= `min_images_size_filter`)
+- [x] Optimisation 2 : filtre de ratio d'aspect (lecture d'en-tete, s'active si n >= `min_images_aspect_filter`)
+- [x] Optimisation 3 : hash en 2 passes (coarse 4x4 + fine 8x8 en un decode, s'active si n >= `min_images_two_pass`)
+- [x] Optimisation 4 : cache inter-scans (phash_cache.json, invalide si mtime ou tailles changent)
+- [x] Optimisation 5 : comparaison parallele rayon (`flat_map_iter`, s'active si n >= `min_images_parallel_compare`)
+- [x] Log de perf (phash_perf.jsonl, mode dev, desactive par defaut)
+- [x] Commandes Tauri : `get_phash_config`, `set_phash_config`
+- [x] UI : panneau avancé collapsible (taille min, tolerance ratio, cache, parallelisme, dev)
+- [x] UI : taille individuelle par fichier dans les groupes similaires
+- [x] 43 tests Rust (dont 5 nouveaux sur les optimisations)
 
 ---
 

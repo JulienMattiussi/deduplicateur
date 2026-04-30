@@ -18,6 +18,7 @@ interface DuplicateGroup {
   size: number;
   files: DuplicateFile[];
   folder_key?: string;
+  similar?: boolean;
 }
 
 interface ScanSummary {
@@ -30,6 +31,38 @@ interface ScanSummary {
   by_folder: boolean;
   total_folders: number;
 }
+
+interface PHashConfig {
+  min_file_size_bytes: number;
+  min_images_size_filter: number;
+  aspect_ratio_tolerance: number;
+  min_images_aspect_filter: number;
+  two_pass_enabled: boolean;
+  coarse_hash_size: number;
+  fine_hash_size: number;
+  coarse_threshold_multiplier: number;
+  min_images_two_pass: number;
+  cache_enabled: boolean;
+  parallel_compare_enabled: boolean;
+  min_images_parallel_compare: number;
+  perf_log_enabled: boolean;
+}
+
+const DEFAULT_PHASH_CONFIG: PHashConfig = {
+  min_file_size_bytes: 10240,
+  min_images_size_filter: 50,
+  aspect_ratio_tolerance: 0.20,
+  min_images_aspect_filter: 10,
+  two_pass_enabled: true,
+  coarse_hash_size: 4,
+  fine_hash_size: 8,
+  coarse_threshold_multiplier: 2.0,
+  min_images_two_pass: 20,
+  cache_enabled: true,
+  parallel_compare_enabled: true,
+  min_images_parallel_compare: 200,
+  perf_log_enabled: false,
+};
 
 interface FolderSummary {
   folder_key: string;
@@ -106,6 +139,33 @@ function SessionCard({
   );
 }
 
+function ThumbnailStrip({ files }: { files: DuplicateFile[] }) {
+  const [thumbs, setThumbs] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    for (const file of files) {
+      invoke<string>("get_image_thumbnail", { path: file.path, maxSize: 150 })
+        .then((dataUrl) => setThumbs((prev) => ({ ...prev, [file.path]: dataUrl })))
+        .catch(() => {});
+    }
+  }, [files]);
+
+  return (
+    <div className="similar-thumbnails">
+      {files.map((file) => (
+        <div key={file.path} className="similar-thumb" title={file.name}>
+          {thumbs[file.path] ? (
+            <img src={thumbs[file.path]} alt={file.name} className="similar-thumb-img" />
+          ) : (
+            <div className="similar-thumb-placeholder" />
+          )}
+          <span className="similar-thumb-name">{file.name}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function GroupCard({
   group,
   selected,
@@ -116,17 +176,22 @@ function GroupCard({
   onToggle: (path: string) => void;
 }) {
   const [expanded, setExpanded] = useState(true);
+  const isSimilar = group.similar === true;
 
   return (
     <div className="group-card">
       <button className="group-header" onClick={() => setExpanded((v) => !v)}>
         <span className="group-chevron">{expanded ? "▾" : "▸"}</span>
-        <span className="group-count">{group.files.length} fichiers identiques</span>
-        <span className="group-size">{formatSize(group.size)} chacun</span>
+        <span className="group-count">
+          {isSimilar ? "🖼 " : ""}{group.files.length} fichiers {isSimilar ? "similaires" : "identiques"}
+        </span>
+        {!isSimilar && <span className="group-size">{formatSize(group.size)} chacun</span>}
         <span className="group-waste">
           {formatSize(group.size * (group.files.length - 1))} en double
         </span>
       </button>
+
+      {expanded && isSimilar && <ThumbnailStrip files={group.files} />}
 
       {expanded && (
         <div className="group-files">
@@ -134,6 +199,7 @@ function GroupCard({
             <span className="file-col-cb" />
             <span className="file-col-name">Nom</span>
             <span className="file-col-date">Modifié</span>
+            {isSimilar && <span className="file-col-size">Taille</span>}
             <span className="file-col-dir">Dossier</span>
             <span className="file-col-badge" />
           </div>
@@ -153,6 +219,7 @@ function GroupCard({
               </span>
               <span className="file-col-name file-name">{file.name}</span>
               <span className="file-col-date file-meta">{formatDate(file.modified)}</span>
+              {isSimilar && <span className="file-col-size file-meta">{formatSize(file.size)}</span>}
               <span className="file-col-dir">
                 <span className="file-col-dir-text file-meta">{dirname(file.path)}</span>
                 <button
@@ -300,6 +367,168 @@ function ExclusionsPanel({
   );
 }
 
+function AdvancedPanel({
+  config,
+  onChange,
+  disabled,
+}: {
+  config: PHashConfig;
+  onChange: (cfg: PHashConfig) => void;
+  disabled: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+
+  function set<K extends keyof PHashConfig>(key: K, value: PHashConfig[K]) {
+    onChange({ ...config, [key]: value });
+  }
+
+  return (
+    <div className="advanced-panel">
+      <button className="advanced-panel-toggle" onClick={() => setOpen((v) => !v)} disabled={disabled}>
+        <span>{open ? "▾" : "▸"}</span>
+        Paramètres avancés de détection
+      </button>
+      {open && (
+        <div className="advanced-panel-body">
+          <div className="adv-section">
+            <span className="adv-section-title">Filtre de taille</span>
+            <label className="adv-row">
+              <span>Taille minimale (Ko)</span>
+              <input
+                type="number"
+                min={0}
+                className="adv-input"
+                defaultValue={Math.round(config.min_file_size_bytes / 1024)}
+                onBlur={(e) => set("min_file_size_bytes", Number(e.target.value) * 1024)}
+                disabled={disabled}
+              />
+            </label>
+            <label className="adv-row">
+              <span>Activer si au moins N images</span>
+              <input
+                type="number"
+                min={1}
+                className="adv-input"
+                defaultValue={config.min_images_size_filter}
+                onBlur={(e) => set("min_images_size_filter", Number(e.target.value))}
+                disabled={disabled}
+              />
+            </label>
+          </div>
+          <div className="adv-section">
+            <span className="adv-section-title">Filtre de ratio d'aspect</span>
+            <label className="adv-row">
+              <span>Tolérance (%)</span>
+              <input
+                type="number"
+                min={0}
+                max={100}
+                className="adv-input"
+                defaultValue={Math.round(config.aspect_ratio_tolerance * 100)}
+                onBlur={(e) => set("aspect_ratio_tolerance", Number(e.target.value) / 100)}
+                disabled={disabled}
+              />
+            </label>
+            <label className="adv-row">
+              <span>Activer si au moins N images</span>
+              <input
+                type="number"
+                min={1}
+                className="adv-input"
+                defaultValue={config.min_images_aspect_filter}
+                onBlur={(e) => set("min_images_aspect_filter", Number(e.target.value))}
+                disabled={disabled}
+              />
+            </label>
+          </div>
+          <div className="adv-section">
+            <span className="adv-section-title">Hash en 2 passes</span>
+            <label className="adv-row">
+              <span>Activer</span>
+              <input
+                type="checkbox"
+                checked={config.two_pass_enabled}
+                onChange={(e) => set("two_pass_enabled", e.target.checked)}
+                disabled={disabled}
+              />
+            </label>
+            <label className="adv-row">
+              <span>Activer si au moins N images</span>
+              <input
+                type="number"
+                min={1}
+                className="adv-input"
+                defaultValue={config.min_images_two_pass}
+                onBlur={(e) => set("min_images_two_pass", Number(e.target.value))}
+                disabled={disabled}
+              />
+            </label>
+            <label className="adv-row">
+              <span>Multiplicateur de seuil grossier</span>
+              <input
+                type="number"
+                min={1}
+                step={0.1}
+                className="adv-input"
+                defaultValue={config.coarse_threshold_multiplier}
+                onBlur={(e) => set("coarse_threshold_multiplier", Number(e.target.value))}
+                disabled={disabled}
+              />
+            </label>
+          </div>
+          <div className="adv-section">
+            <span className="adv-section-title">Cache entre scans</span>
+            <label className="adv-row">
+              <span>Activer</span>
+              <input
+                type="checkbox"
+                checked={config.cache_enabled}
+                onChange={(e) => set("cache_enabled", e.target.checked)}
+                disabled={disabled}
+              />
+            </label>
+          </div>
+          <div className="adv-section">
+            <span className="adv-section-title">Comparaison parallèle</span>
+            <label className="adv-row">
+              <span>Activer</span>
+              <input
+                type="checkbox"
+                checked={config.parallel_compare_enabled}
+                onChange={(e) => set("parallel_compare_enabled", e.target.checked)}
+                disabled={disabled}
+              />
+            </label>
+            <label className="adv-row">
+              <span>Activer si au moins N images</span>
+              <input
+                type="number"
+                min={1}
+                className="adv-input"
+                defaultValue={config.min_images_parallel_compare}
+                onBlur={(e) => set("min_images_parallel_compare", Number(e.target.value))}
+                disabled={disabled}
+              />
+            </label>
+          </div>
+          <div className="adv-section">
+            <span className="adv-section-title">Mode développeur</span>
+            <label className="adv-row">
+              <span>Enregistrer les métriques (phash_perf.jsonl)</span>
+              <input
+                type="checkbox"
+                checked={config.perf_log_enabled}
+                onChange={(e) => set("perf_log_enabled", e.target.checked)}
+                disabled={disabled}
+              />
+            </label>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function App() {
   const [sessions, setSessions] = useState<ScanSummary[]>([]);
   const [summary, setSummary] = useState<ScanSummary | null>(null);
@@ -321,6 +550,9 @@ export default function App() {
   const [confirmPending, setConfirmPending] = useState(false);
   const [selecting, setSelecting] = useState(false);
   const [scanMode, setScanMode] = useState<"all" | "by_folder">("all");
+  const [findSimilar, setFindSimilar] = useState(false);
+  const [simSimilarity, setSimSimilarity] = useState(85);
+  const [phashConfig, setPhashConfig] = useState<PHashConfig>(DEFAULT_PHASH_CONFIG);
   const [folderSummaries, setFolderSummaries] = useState<FolderSummary[]>([]);
   const [folderState, setFolderState] = useState<Record<string, { loading: boolean; hasMore: boolean; offset: number }>>({});
   const [folderSort, setFolderSort] = useState<"name" | "waste">("waste");
@@ -349,7 +581,19 @@ export default function App() {
     invoke<ScanSummary[]>("list_sessions")
       .then((s) => startTransition(() => setSessions(s)))
       .catch(() => {});
+    invoke<PHashConfig>("get_phash_config")
+      .then((cfg) => setPhashConfig(cfg))
+      .catch(() => {});
   }, []);
+
+  async function updatePhashConfig(cfg: PHashConfig) {
+    setPhashConfig(cfg);
+    try {
+      await invoke("set_phash_config", { config: cfg });
+    } catch {
+      // best-effort
+    }
+  }
 
   async function loadPage(offset: number, append: boolean) {
     setLoadingMore(true);
@@ -465,6 +709,8 @@ export default function App() {
         recursive: effectiveRecursive,
         excluded,
         byFolder: scanMode === "by_folder",
+        findSimilar,
+        simThreshold: Math.round((1 - simSimilarity / 100) * 64),
       });
       startTransition(() => {
         setSummary(s);
@@ -605,6 +851,36 @@ export default function App() {
           )}
         </div>
 
+        <div className="similar-options-row">
+          <label className="toggle-find-similar">
+            <input
+              type="checkbox"
+              checked={findSimilar}
+              onChange={(e) => setFindSimilar(e.target.checked)}
+              disabled={scanning}
+            />
+            Détecter les images similaires
+          </label>
+          {findSimilar && (
+            <label className="slider-threshold">
+              Similarité min&nbsp;: <strong>{simSimilarity}&nbsp;%</strong>
+              <input
+                type="range"
+                min={60}
+                max={100}
+                step={1}
+                value={simSimilarity}
+                onChange={(e) => setSimSimilarity(Number(e.target.value))}
+                disabled={scanning}
+                className="threshold-slider"
+              />
+            </label>
+          )}
+        </div>
+
+        {findSimilar && (
+          <AdvancedPanel config={phashConfig} onChange={updatePhashConfig} disabled={scanning} />
+        )}
         <ExclusionsPanel excluded={excluded} onChange={setExcluded} disabled={scanning} />
 
         {summary && (

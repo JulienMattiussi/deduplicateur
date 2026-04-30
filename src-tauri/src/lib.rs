@@ -1,6 +1,10 @@
+mod phash_cache;
+mod phash_config;
+mod phash_perf;
 mod scanner;
 
-use scanner::{scan_folder as do_scan, DuplicateGroup};
+use phash_config::{load_config, save_config, PHashConfig};
+use scanner::{scan_folder as do_scan, DuplicateGroup, ScanParams};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -44,6 +48,12 @@ struct SessionFile {
     groups: Vec<DuplicateGroup>,
 }
 
+fn app_data_dir(app: &tauri::AppHandle) -> Option<PathBuf> {
+    let dir = app.path().app_local_data_dir().ok()?;
+    std::fs::create_dir_all(&dir).ok()?;
+    Some(dir)
+}
+
 fn sessions_dir(app: &tauri::AppHandle) -> Option<PathBuf> {
     let dir = app.path().app_local_data_dir().ok()?.join("sessions");
     std::fs::create_dir_all(&dir).ok()?;
@@ -78,6 +88,8 @@ async fn scan_folder(
     recursive: bool,
     excluded: Vec<String>,
     by_folder: bool,
+    find_similar: bool,
+    sim_threshold: u32,
 ) -> Result<ScanSummary, String> {
     let app = window.app_handle().clone();
     let cancelled = {
@@ -86,9 +98,24 @@ async fn scan_folder(
         Arc::clone(&state.0)
     };
 
+    let data_dir_str = app.path().app_local_data_dir().ok().map(|p| p.to_string_lossy().to_string());
+    let phash_cfg = data_dir_str.as_deref()
+        .map(|d| load_config(std::path::Path::new(d)))
+        .unwrap_or_default();
+
     let folder = path.clone();
     let result = tauri::async_runtime::spawn_blocking(move || {
-        do_scan(&path, recursive, &excluded, by_folder, cancelled, |current, total| {
+        let params = ScanParams {
+            folder: path,
+            recursive,
+            excluded,
+            by_folder,
+            find_similar,
+            sim_threshold,
+            phash_config: phash_cfg,
+            data_dir: data_dir_str,
+        };
+        do_scan(params, cancelled, |current, total| {
             if current % 50 == 0 || current == total {
                 let _ = window.emit(
                     "scan:progress",
@@ -383,6 +410,33 @@ fn delete_files(paths: Vec<String>) -> Result<(), String> {
     }
 }
 
+#[tauri::command]
+fn get_phash_config(app: tauri::AppHandle) -> PHashConfig {
+    app_data_dir(&app)
+        .as_deref()
+        .map(load_config)
+        .unwrap_or_default()
+}
+
+#[tauri::command]
+fn set_phash_config(app: tauri::AppHandle, config: PHashConfig) -> Result<(), String> {
+    let dir = app_data_dir(&app).ok_or("Impossible d'acceder au dossier de donnees")?;
+    save_config(&dir, &config)
+}
+
+#[tauri::command]
+fn get_image_thumbnail(path: String, max_size: u32) -> Result<String, String> {
+    let img = image::open(&path).map_err(|e| e.to_string())?;
+    let thumb = img.thumbnail(max_size, max_size);
+    let mut buf = Vec::new();
+    thumb
+        .write_to(&mut std::io::Cursor::new(&mut buf), image::ImageOutputFormat::Jpeg(75))
+        .map_err(|e| e.to_string())?;
+    use base64::Engine;
+    let encoded = base64::engine::general_purpose::STANDARD.encode(&buf);
+    Ok(format!("data:image/jpeg;base64,{}", encoded))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -404,6 +458,9 @@ pub fn run() {
             list_folder_keys,
             get_folder_groups_page,
             reveal_in_folder,
+            get_image_thumbnail,
+            get_phash_config,
+            set_phash_config,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

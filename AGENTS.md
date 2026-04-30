@@ -167,6 +167,39 @@ invoke("scan_folder", { byFolder: true })  // camelCase
 async fn scan_folder(by_folder: bool) { ... }  // snake_case
 ```
 
+### Phase pHash : doublons exacts exclus pour eviter double signalement
+En mode `find_similar=true`, la phase pHash ne traite que les fichiers image qui NE sont PAS
+deja dans un groupe de doublons exacts. Cela evite de reporter un doublon exact comme "similaire".
+La detection transitive utilise Union-Find (path compression). Le seuil de Hamming par defaut
+est 10 bits sur 64 (gradient hash 8x8).
+
+### get_image_thumbnail : base64 data URL (pas d'asset:// protocol)
+`core:asset:default` n'existe pas dans cette version de Tauri. Pour afficher des thumbnails,
+utiliser la commande `get_image_thumbnail(path, max_size)` qui lit l'image via le crate `image`,
+la reduit, l'encode en JPEG et retourne une data URL `data:image/jpeg;base64,...`.
+Ne pas chercher a configurer `convertFileSrc` ou `assetProtocol` pour ce cas d'usage.
+
+### ScanParams : struct au lieu de parametres individuels
+`scan_folder` prend un `ScanParams` (struct avec champs pub) au lieu de parametres individuels.
+`ScanParams::new(folder)` donne les valeurs par defaut. Dans les tests, utiliser la syntaxe
+de mise a jour : `ScanParams { recursive: true, ..ScanParams::new(path) }`.
+
+### Pipeline pHash optimise : 5 optimisations configurables
+Les 5 optimisations sont dans `phash_config::PHashConfig` (fichier `phash_config.json`) :
+1. Filtre de taille minimale - s'active si `n >= min_images_size_filter`
+2. Filtre de ratio d'aspect - lecture d'en-tete uniquement, s'active si `n >= min_images_aspect_filter`
+3. Hash en 2 passes - coarse+fine en un seul decode, s'active si `n >= min_images_two_pass`
+4. Cache inter-scans - `phash_cache.json`, invalide automatiquement si mtime ou tailles de hash changent
+5. Comparaison parallele rayon - `flat_map_iter` (pas `flat_map`), s'active si `n >= min_images_parallel_compare`
+
+Note : `flat_map` en rayon attend `IntoParallelIterator` ; utiliser `flat_map_iter` pour un
+iterateur standard (`Vec::into_iter()`).
+
+### Log de perf pHash : JSONL, un objet par scan
+Quand `perf_log_enabled=true`, chaque scan similaire ajoute une ligne JSON dans
+`<data_dir>/phash_perf.jsonl`. Contient timings, compteurs, et un snapshot de `PHashConfig`.
+Visible seulement via le panneau avancé (checkbox "Mode développeur").
+
 ### Chargement lazy des FolderSection
 En mode `by_folder`, les en-têtes de dossiers sont disponibles via `list_folder_keys`
 (léger : juste les résumés). Les groupes ne sont chargés qu'au premier dépliage via
