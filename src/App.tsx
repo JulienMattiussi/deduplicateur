@@ -9,6 +9,7 @@ import { useScanConfig, DEFAULT_PHASH_CONFIG, DEFAULT_VIDEO_CONFIG } from "./hoo
 import { useScanExecution } from "./hooks/useScanExecution";
 import { useResults } from "./hooks/useResults";
 import { useSelectionState } from "./hooks/useSelectionState";
+import { ImageComparator } from "./ImageComparator";
 
 // Nombre de bits dans le hash Hamming (grille 8x8)
 const HAMMING_BITS = 64;
@@ -85,11 +86,13 @@ function formatDate(ts: number, dateLocale: string): string {
 function SessionCard({
   session,
   active,
+  resuming,
   onResume,
   onDelete,
 }: {
   session: ScanSummary;
   active: boolean;
+  resuming: boolean;
   onResume: (id: string) => void;
   onDelete: (id: string) => void;
 }) {
@@ -109,10 +112,10 @@ function SessionCard({
         <span>{session.scanned_files} {t.filesScanned}</span>
       </div>
       <div className="session-actions">
-        <button className="btn-primary" onClick={() => onResume(session.id)} disabled={active}>
-          {active ? t.sessionActive : t.sessionResume}
+        <button className="btn-primary" onClick={() => onResume(session.id)} disabled={active || resuming}>
+          {resuming ? <><span className="btn-spinner" /> {t.loading}</> : active ? t.sessionActive : t.sessionResume}
         </button>
-        <button className="btn-session-delete" onClick={() => onDelete(session.id)}>
+        <button className="btn-session-delete" onClick={() => onDelete(session.id)} disabled={resuming}>
           {t.sessionDelete}
         </button>
       </div>
@@ -155,10 +158,12 @@ export function GroupCard({
   group,
   selected,
   onToggle,
+  onCompare,
 }: {
   group: DuplicateGroup;
   selected: Set<string>;
   onToggle: (path: string) => void;
+  onCompare?: () => void;
 }) {
   const { t } = useLang();
   const [expanded, setExpanded] = useState(true);
@@ -214,6 +219,14 @@ export function GroupCard({
           {group.files.length} {isVideoGroup ? t.typeVideos : isImageGroup ? t.typeImages : t.typeFiles} {(isSimilar || isVideoSimilar) ? t.similar : t.identical}
         </span>
         {!isImageGroup && !isVideoGroup && <span className="group-size">{formatSize(group.size)} {t.each}</span>}
+        {isImageGroup && onCompare && (
+          <button
+            className="btn-compare"
+            onClick={(e) => { e.stopPropagation(); onCompare(); }}
+          >
+            {t.compare}
+          </button>
+        )}
         <span className="group-waste">
           {formatSize(group.size * (group.files.length - 1))} {t.duplicate}
         </span>
@@ -595,6 +608,8 @@ export default function App() {
   );
   const [dragOver, setDragOver] = useState(false);
   const [filterText, setFilterText] = useState("");
+  const [comparatorIdx, setComparatorIdx] = useState<number | null>(null);
+  const [resumingId, setResumingId] = useState<string | null>(null);
 
   const config = useScanConfig();
   const results = useResults(setError);
@@ -634,6 +649,7 @@ export default function App() {
   // Keyboard shortcuts
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
+      if (comparatorIdx !== null) return;
       const target = e.target as HTMLElement;
       const inInput = target.tagName === "INPUT" || target.tagName === "TEXTAREA";
 
@@ -654,7 +670,7 @@ export default function App() {
     }
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [summary, selection, scanExec.scanning]);
+  }, [summary, selection, scanExec.scanning, comparatorIdx]);
 
   useEffect(() => {
     invoke<ScanSummary[]>("list_sessions")
@@ -693,6 +709,7 @@ export default function App() {
   }
 
   async function resumeSession(id: string) {
+    setResumingId(id);
     try {
       const s = await invoke<ScanSummary>("load_session", { id });
       startTransition(() => {
@@ -709,6 +726,8 @@ export default function App() {
       }
     } catch (e) {
       setError(String(e));
+    } finally {
+      setResumingId(null);
     }
   }
 
@@ -745,6 +764,20 @@ export default function App() {
       g.files.some((f) => f.name.toLowerCase().includes(q) || f.path.toLowerCase().includes(q))
     );
   }, [results.groups, filterText]);
+
+  const imageGroups = useMemo(() =>
+    filteredGroups.filter((g) =>
+      g.similar || (!g.video_similar && IMAGE_EXTS.has(fileExt(g.files[0]?.path ?? "")))
+    ),
+    [filteredGroups]
+  );
+
+  function handleSelectPaths(toAdd: string[], toRemove: string[]) {
+    const next = new Set(selection.selected);
+    for (const p of toRemove) next.delete(p);
+    for (const p of toAdd) next.add(p);
+    selection.setSelected(next);
+  }
 
   const filteredFolderSummaries = useMemo(() => {
     if (!filterText.trim()) return results.sortedFolderSummaries;
@@ -869,7 +902,7 @@ export default function App() {
         <div className="session-list">
           <p className="session-list-title">{t.previousSessions}</p>
           {sessions.map((s) => (
-            <SessionCard key={s.id} session={s} active={false} onResume={resumeSession} onDelete={removeSession} />
+            <SessionCard key={s.id} session={s} active={false} resuming={resumingId === s.id} onResume={resumeSession} onDelete={removeSession} />
           ))}
         </div>
       )}
@@ -939,9 +972,18 @@ export default function App() {
                 {filteredGroups.length === 0 && filterText.trim() ? (
                   <p className="filter-no-results">{t.filterNoResults}</p>
                 ) : (
-                  filteredGroups.map((group) => (
-                    <GroupCard key={group.id} group={group} selected={selection.selected} onToggle={selection.toggleFile} />
-                  ))
+                  filteredGroups.map((group) => {
+                    const imgIdx = imageGroups.indexOf(group);
+                    return (
+                      <GroupCard
+                        key={group.id}
+                        group={group}
+                        selected={selection.selected}
+                        onToggle={selection.toggleFile}
+                        onCompare={imgIdx >= 0 ? () => setComparatorIdx(imgIdx) : undefined}
+                      />
+                    );
+                  })
                 )}
                 {!filterText.trim() && results.hasMore && (
                   <button className="btn-load-more" onClick={() => results.loadPage(results.groups.length, true)}
@@ -999,6 +1041,16 @@ export default function App() {
             </>
           )}
         </div>
+      )}
+
+      {comparatorIdx !== null && (
+        <ImageComparator
+          groups={imageGroups}
+          startIdx={comparatorIdx}
+          selected={selection.selected}
+          onSelectPaths={handleSelectPaths}
+          onClose={() => setComparatorIdx(null)}
+        />
       )}
 
       {selection.confirmPending && (

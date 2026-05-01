@@ -165,16 +165,19 @@
 
 ---
 
-## Phase 9 - Comparateur d'images
+## Phase 9 - Comparateur d'images ✅
 
 **Objectif : permettre de choisir en connaissance de cause laquelle des deux images garder**
 
-- [ ] Ouverture d'une vue plein écran au clic sur un groupe d'images similaires
-- [ ] Affichage côte à côte des deux images en taille réelle (ou mise à l'échelle fenêtre)
-- [ ] Slider de comparaison (masquage alternant gauche/droite pour voir les différences de qualité/détail)
-- [ ] Affichage des métadonnées complètes sous chaque image : dimensions, taille fichier, format, date EXIF si disponible
-- [ ] Navigation entre groupes depuis la vue plein écran (flèches ou raccourcis)
-- [ ] Bouton "Garder celui-ci" directement depuis la vue (marque l'autre comme à supprimer)
+- [x] Ouverture d'une vue plein écran au clic sur un groupe d'images similaires (bouton "Comparer" dans l'en-tête du groupe)
+- [x] Affichage côte à côte des deux images en taille réelle (ou mise à l'échelle fenêtre)
+- [x] Slider de comparaison (overlay avec handle draggable - bouton ⧉ pour activer)
+- [x] Affichage des métadonnées complètes sous chaque image : dimensions, taille fichier, format, date EXIF si disponible
+- [x] Navigation entre groupes depuis la vue plein écran (flèches ◀▶ + raccourcis ArrowLeft/ArrowRight/Esc)
+- [x] Bouton "Garder celui-ci" directement depuis la vue (marque les autres comme à supprimer)
+- [x] Sélecteur de fichier pour les groupes avec 3+ images
+- [x] `get_image_meta` commande Rust : dimensions (header-only), format, date EXIF via `kamadak-exif`
+- [x] `ImageComparator.tsx` composant séparé ; 66 tests Rust, 29 tests TypeScript
 
 **Critère de validation : comparer photo.jpg (1920x1080, 4 Mo) et photo_resized.jpg (800x600, 400 Ko) et choisir en un geste**
 

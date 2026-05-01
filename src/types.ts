@@ -55,6 +55,13 @@ export interface PHashConfig {
   perf_log_enabled: boolean;
 }
 
+export interface ImageMeta {
+  width: number;
+  height: number;
+  format: string;
+  exif_date?: string;
+}
+
 export interface VideoConfig {
   n_frames: number;
   duration_tolerance: number;

@@ -543,6 +543,46 @@ fn check_path_is_dir(path: String) -> bool {
     std::path::Path::new(&path).is_dir()
 }
 
+#[derive(Debug, serde::Serialize)]
+struct ImageMeta {
+    width: u32,
+    height: u32,
+    format: String,
+    exif_date: Option<String>,
+}
+
+fn try_read_exif_date(path: &str) -> Option<String> {
+    let file = std::fs::File::open(path).ok()?;
+    let mut buf = std::io::BufReader::new(file);
+    let exif = exif::Reader::new().read_from_container(&mut buf).ok()?;
+    let field = exif.get_field(exif::Tag::DateTimeOriginal, exif::In::PRIMARY)?;
+    Some(field.display_value().to_string())
+}
+
+#[tauri::command]
+async fn get_image_meta(path: String) -> Result<ImageMeta, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let (width, height) = image::image_dimensions(&path).map_err(|e| e.to_string())?;
+        let format = image::io::Reader::open(&path)
+            .map_err(|e| e.to_string())?
+            .with_guessed_format()
+            .map_err(|e| e.to_string())?
+            .format()
+            .map(|f| format!("{:?}", f))
+            .unwrap_or_else(|| {
+                std::path::Path::new(&path)
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .map(|e| e.to_uppercase())
+                    .unwrap_or_else(|| "?".to_string())
+            });
+        let exif_date = try_read_exif_date(&path);
+        Ok(ImageMeta { width, height, format, exif_date })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -581,6 +621,7 @@ pub fn run() {
             get_video_config,
             set_video_config,
             check_path_is_dir,
+            get_image_meta,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
