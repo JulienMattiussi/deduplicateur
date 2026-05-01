@@ -5,11 +5,19 @@ import { open } from "@tauri-apps/plugin-dialog";
 import "./App.css";
 import { formatSize, dirname } from "./utils";
 
+interface VideoMetadata {
+  duration_secs: number;
+  width: number;
+  height: number;
+  codec: string;
+}
+
 interface DuplicateFile {
   path: string;
   size: number;
   name: string;
   modified: number;
+  video_metadata?: VideoMetadata;
 }
 
 interface DuplicateGroup {
@@ -19,6 +27,7 @@ interface DuplicateGroup {
   files: DuplicateFile[];
   folder_key?: string;
   similar?: boolean;
+  video_similar?: boolean;
 }
 
 interface ScanSummary {
@@ -33,6 +42,7 @@ interface ScanSummary {
   partial?: boolean;
   recursive?: boolean;
   find_similar?: boolean;
+  find_similar_videos?: boolean;
 }
 
 interface PHashConfig {
@@ -105,7 +115,9 @@ function sessionTags(session: ScanSummary): string[] {
   if (session.by_folder) tags.push("par dossier");
   else if (session.recursive) tags.push("récursif");
   else tags.push("dossier plat");
-  tags.push(session.find_similar ? "similarité images" : "doublons exacts");
+  if (session.find_similar) tags.push("similarité images");
+  if (session.find_similar_videos) tags.push("similarité vidéos");
+  if (!session.find_similar && !session.find_similar_videos) tags.push("doublons exacts");
   return tags;
 }
 
@@ -166,6 +178,53 @@ function SessionCard({
   );
 }
 
+function VideoThumbnailStrip({ files }: { files: DuplicateFile[] }) {
+  const [thumbs, setThumbs] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    for (const file of files) {
+      invoke<string>("get_video_thumbnail", {
+        path: file.path,
+        maxSize: 150,
+        duration: file.video_metadata?.duration_secs ?? null,
+      })
+        .then((dataUrl) => setThumbs((prev) => ({ ...prev, [file.path]: dataUrl })))
+        .catch(() => {});
+    }
+  }, [files]);
+
+  async function openFile(path: string) {
+    try { await invoke("open_file", { path }); } catch { /* best-effort */ }
+  }
+
+  return (
+    <div className="similar-thumbnails">
+      {files.map((file) => (
+        <div key={file.path} className="similar-thumb" title={file.name}>
+          {thumbs[file.path] ? (
+            <img
+              src={thumbs[file.path]}
+              alt={file.name}
+              className="similar-thumb-img similar-thumb-img--clickable"
+              onClick={() => openFile(file.path)}
+            />
+          ) : (
+            <div className="similar-thumb-placeholder">
+              <div className="similar-thumb-spinner" />
+            </div>
+          )}
+          {file.video_metadata && (
+            <span className="video-thumb-meta">
+              {Math.round(file.video_metadata.duration_secs)}s · {file.video_metadata.width}x{file.video_metadata.height}
+            </span>
+          )}
+          <span className="similar-thumb-name">{file.name}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function ThumbnailStrip({ files }: { files: DuplicateFile[] }) {
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
 
@@ -215,21 +274,24 @@ export function GroupCard({
 }) {
   const [expanded, setExpanded] = useState(true);
   const isSimilar = group.similar === true;
+  const isVideoSimilar = group.video_similar === true;
 
   return (
     <div className="group-card">
       <button className="group-header" onClick={() => setExpanded((v) => !v)}>
         <span className="group-chevron">{expanded ? "▾" : "▸"}</span>
         <span className="group-count">
-          {isSimilar ? "🖼 " : ""}{group.files.length} fichiers {isSimilar ? "similaires" : "identiques"}
+          {isVideoSimilar ? "🎬 " : isSimilar ? "🖼 " : ""}
+          {group.files.length} fichiers {(isSimilar || isVideoSimilar) ? "similaires" : "identiques"}
         </span>
-        {!isSimilar && <span className="group-size">{formatSize(group.size)} chacun</span>}
+        {!isSimilar && !isVideoSimilar && <span className="group-size">{formatSize(group.size)} chacun</span>}
         <span className="group-waste">
           {formatSize(group.size * (group.files.length - 1))} en double
         </span>
       </button>
 
       {expanded && isSimilar && <ThumbnailStrip files={group.files} />}
+      {expanded && isVideoSimilar && <VideoThumbnailStrip files={group.files} />}
 
       {expanded && (
         <div className="group-files">
@@ -237,7 +299,8 @@ export function GroupCard({
             <span className="file-col-cb" />
             <span className="file-col-name">Nom</span>
             <span className="file-col-date">Modifié</span>
-            {isSimilar && <span className="file-col-size">Taille</span>}
+            {(isSimilar || isVideoSimilar) && <span className="file-col-size">Taille</span>}
+            {isVideoSimilar && <span className="file-col-video-meta">Durée · Résolution</span>}
             <span className="file-col-dir">Dossier</span>
             <span className="file-col-badge" />
           </div>
@@ -257,7 +320,14 @@ export function GroupCard({
               </span>
               <span className="file-col-name file-name">{file.name}</span>
               <span className="file-col-date file-meta">{formatDate(file.modified)}</span>
-              {isSimilar && <span className="file-col-size file-meta">{formatSize(file.size)}</span>}
+              {(isSimilar || isVideoSimilar) && <span className="file-col-size file-meta">{formatSize(file.size)}</span>}
+              {isVideoSimilar && (
+                <span className="file-col-video-meta file-meta">
+                  {file.video_metadata
+                    ? `${Math.round(file.video_metadata.duration_secs)}s · ${file.video_metadata.width}x${file.video_metadata.height} · ${file.video_metadata.codec}`
+                    : "-"}
+                </span>
+              )}
               <span className="file-col-dir">
                 <span className="file-col-dir-text file-meta">{dirname(file.path)}</span>
                 <button
@@ -600,8 +670,9 @@ export default function App() {
   const [confirmPending, setConfirmPending] = useState(false);
   const [selecting, setSelecting] = useState(false);
   const [scanMode, setScanMode] = useState<"all" | "by_folder">("all");
-  const [findSimilar, setFindSimilar] = useState(false);
+  const [detectionMode, setDetectionMode] = useState<"files" | "images" | "videos">("files");
   const [simSimilarity, setSimSimilarity] = useState(100);
+  const [videoSimilarity, setVideoSimilarity] = useState(100);
   const [phashConfig, setPhashConfig] = useState<PHashConfig>(DEFAULT_PHASH_CONFIG);
   const [folderSummaries, setFolderSummaries] = useState<FolderSummary[]>([]);
   const [folderState, setFolderState] = useState<Record<string, { loading: boolean; hasMore: boolean; offset: number }>>({});
@@ -767,8 +838,10 @@ export default function App() {
         recursive: effectiveRecursive,
         excluded,
         byFolder: scanMode === "by_folder",
-        findSimilar,
+        findSimilar: detectionMode === "images",
         simThreshold: Math.round((1 - simSimilarity / 100) * 64),
+        findSimilarVideos: detectionMode === "videos",
+        videoSimThreshold: Math.round((1 - videoSimilarity / 100) * 64),
       });
       setSummary(s);
       startTransition(() => setSessions((prev) => [s, ...prev]));
@@ -908,16 +981,19 @@ export default function App() {
         </div>
 
         <div className="similar-options-row">
-          <label className="toggle-find-similar">
-            <input
-              type="checkbox"
-              checked={findSimilar}
-              onChange={(e) => setFindSimilar(e.target.checked)}
-              disabled={scanning}
-            />
-            Détecter les images similaires
-          </label>
-          {findSimilar && (
+          <div className="detection-mode-selector">
+            {(["files", "images", "videos"] as const).map((mode) => (
+              <button
+                key={mode}
+                className={`detection-mode-btn${detectionMode === mode ? " detection-mode-btn--active" : ""}`}
+                onClick={() => setDetectionMode(mode)}
+                disabled={scanning}
+              >
+                {mode === "files" ? "Fichiers" : mode === "images" ? "🖼 Images" : "🎬 Vidéos"}
+              </button>
+            ))}
+          </div>
+          {detectionMode === "images" && (
             <label className="slider-threshold">
               Similarité min&nbsp;: <strong>{simSimilarity}&nbsp;%</strong>
               <input
@@ -932,9 +1008,24 @@ export default function App() {
               />
             </label>
           )}
+          {detectionMode === "videos" && (
+            <label className="slider-threshold">
+              Similarité min&nbsp;: <strong>{videoSimilarity}&nbsp;%</strong>
+              <input
+                type="range"
+                min={60}
+                max={100}
+                step={1}
+                value={videoSimilarity}
+                onChange={(e) => setVideoSimilarity(Number(e.target.value))}
+                disabled={scanning}
+                className="threshold-slider"
+              />
+            </label>
+          )}
         </div>
 
-        {findSimilar && (
+        {detectionMode === "images" && (
           <AdvancedPanel config={phashConfig} onChange={updatePhashConfig} disabled={scanning} />
         )}
         <ExclusionsPanel excluded={excluded} onChange={setExcluded} disabled={scanning} />

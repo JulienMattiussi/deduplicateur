@@ -2,6 +2,7 @@ mod phash_cache;
 mod phash_config;
 mod phash_perf;
 mod scanner;
+mod video_hash;
 
 use phash_config::{load_config, save_config, PHashConfig};
 use scanner::{scan_folder as do_scan, DuplicateGroup, ScanParams};
@@ -38,6 +39,8 @@ struct ScanSummary {
     recursive: bool,
     #[serde(default)]
     find_similar: bool,
+    #[serde(default)]
+    find_similar_videos: bool,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -96,6 +99,8 @@ async fn scan_folder(
     by_folder: bool,
     find_similar: bool,
     sim_threshold: u32,
+    find_similar_videos: bool,
+    video_sim_threshold: u32,
 ) -> Result<ScanSummary, String> {
     let app = window.app_handle().clone();
     let cancelled = {
@@ -141,6 +146,9 @@ async fn scan_folder(
             sim_threshold,
             phash_config: phash_cfg,
             data_dir: data_dir_str,
+            find_similar_videos,
+            video_sim_threshold,
+            video_frames: 8,
         };
         do_scan(params, cancelled, move |current, total, file: &str| {
             *progress_for_scan.lock().unwrap() = Some((current, total, file.to_string()));
@@ -178,6 +186,7 @@ async fn scan_folder(
         partial: result.partial,
         recursive,
         find_similar,
+        find_similar_videos,
     };
 
     save_session(&app, &summary, &result.groups);
@@ -484,6 +493,22 @@ async fn get_image_thumbnail(path: String, max_size: u32) -> Result<String, Stri
     .map_err(|e| e.to_string())?
 }
 
+#[tauri::command]
+async fn get_video_thumbnail(path: String, max_size: u32, duration: Option<f64>) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let dur = match duration.filter(|&d| d > 0.0) {
+            Some(d) => d,
+            None => video_hash::get_video_metadata(&path)
+                .ok_or_else(|| "impossible de lire les metadonnees video".to_string())?
+                .duration_secs,
+        };
+        video_hash::extract_thumbnail(&path, dur, max_size)
+            .ok_or_else(|| "impossible d'extraire la frame".to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -516,6 +541,7 @@ pub fn run() {
             reveal_in_folder,
             open_file,
             get_image_thumbnail,
+            get_video_thumbnail,
             get_phash_config,
             set_phash_config,
         ])

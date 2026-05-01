@@ -16,6 +16,10 @@ use xxhash_rust::xxh3::Xxh3;
 use crate::phash_cache::{CacheEntry, HashCache};
 use crate::phash_config::PHashConfig;
 use crate::phash_perf::{append_perf_log, PerfEntry};
+use crate::video_hash::{
+    extract_frame_hashes, get_video_metadata, is_ffmpeg_available, sequence_distance,
+    VideoMetadata,
+};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DuplicateFile {
@@ -23,6 +27,8 @@ pub struct DuplicateFile {
     pub name: String,
     pub size: u64,
     pub modified: u64,
+    #[serde(default)]
+    pub video_metadata: Option<VideoMetadata>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -35,6 +41,8 @@ pub struct DuplicateGroup {
     pub folder_key: Option<String>,
     #[serde(default)]
     pub similar: bool,
+    #[serde(default)]
+    pub video_similar: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -61,6 +69,11 @@ pub struct ScanParams {
     /// Dossier de donnees de l'app (pour le cache et le perf log).
     /// None = cache et perf log desactives.
     pub data_dir: Option<String>,
+    pub find_similar_videos: bool,
+    /// Seuil de distance de Hamming moyenne sur les frames (en bits, sur 64).
+    pub video_sim_threshold: u32,
+    /// Nombre de frames a extraire par video pour le hash.
+    pub video_frames: usize,
 }
 
 impl ScanParams {
@@ -75,6 +88,9 @@ impl ScanParams {
             sim_threshold: 10,
             phash_config: PHashConfig::default(),
             data_dir: None,
+            find_similar_videos: false,
+            video_sim_threshold: 10,
+            video_frames: 8,
         }
     }
 }
@@ -125,6 +141,25 @@ struct ImageData {
     fine: Vec<u8>,
     /// Ratio largeur/hauteur. None si les dimensions n'ont pas ete lues.
     aspect: Option<f32>,
+}
+
+struct VideoData {
+    file: DuplicateFile,
+    hashes: Vec<u64>,
+    metadata: VideoMetadata,
+}
+
+fn is_video(path: &str) -> bool {
+    let ext = Path::new(path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    matches!(
+        ext.as_str(),
+        "mp4" | "avi" | "mkv" | "mov" | "wmv" | "webm" | "flv" | "m4v" | "mpg" | "mpeg"
+            | "3gp" | "ts" | "mts" | "m2ts"
+    )
 }
 
 fn is_image(path: &str) -> bool {
@@ -224,6 +259,13 @@ where
     };
     let phash_estimate = phash_candidates_all.len();
 
+    let video_candidates_all: Vec<DuplicateFile> = if params.find_similar_videos {
+        files.iter().filter(|f| is_video(&f.path)).cloned().collect()
+    } else {
+        vec![]
+    };
+    let video_estimate = video_candidates_all.len();
+
     let partitions: Vec<(Option<String>, Vec<DuplicateFile>)> = if params.by_folder {
         let root = Path::new(&params.folder);
         let mut map: HashMap<String, Vec<DuplicateFile>> = HashMap::new();
@@ -254,7 +296,7 @@ where
         .map(|(_, cands)| cands.iter().map(|v| v.len()).sum::<usize>())
         .sum();
 
-    let total_work = total_to_hash + phash_estimate;
+    let total_work = total_to_hash + phash_estimate + video_estimate;
 
     let hashed = Arc::new(AtomicUsize::new(0));
     let mut groups: Vec<DuplicateGroup> = Vec::new();
@@ -325,6 +367,7 @@ where
                     size,
                     folder_key: folder_key.clone(),
                     similar: false,
+                    video_similar: false,
                     files,
                 }
             })
@@ -607,6 +650,7 @@ where
                 size,
                 folder_key: None,
                 similar: true,
+                video_similar: false,
                 files,
             });
         }
@@ -650,6 +694,82 @@ where
             }
         }
         }  // end 'phash
+    }
+
+    // --- Phase 3 : videos similaires ---
+    if params.find_similar_videos && !was_cancelled && !cancelled.load(Ordering::Relaxed)
+        && is_ffmpeg_available()
+    {
+        let exact_paths: HashSet<String> = groups
+            .iter()
+            .flat_map(|g| g.files.iter().map(|f| f.path.clone()))
+            .collect();
+
+        let candidates: Vec<DuplicateFile> = video_candidates_all
+            .into_iter()
+            .filter(|f| !exact_paths.contains(&f.path))
+            .collect();
+
+        let offset = total_to_hash + phash_estimate;
+        let mut video_data: Vec<VideoData> = Vec::new();
+
+        for (n, file) in candidates.iter().enumerate() {
+            if cancelled.load(Ordering::Relaxed) {
+                was_cancelled = true;
+                break;
+            }
+            on_progress(offset + n + 1, total_work, &file.name);
+
+            if let Some(meta) = get_video_metadata(&file.path) {
+                if let Some(hashes) =
+                    extract_frame_hashes(&file.path, params.video_frames, meta.duration_secs)
+                {
+                    let mut file_with_meta = file.clone();
+                    file_with_meta.video_metadata = Some(meta.clone());
+                    video_data.push(VideoData { file: file_with_meta, hashes, metadata: meta });
+                }
+            }
+        }
+
+        if !cancelled.load(Ordering::Relaxed) {
+            let n = video_data.len();
+            let threshold = params.video_sim_threshold as f64;
+
+            let mut uf = UnionFind::new(n);
+            for i in 0..n {
+                for j in (i + 1)..n {
+                    if sequence_distance(&video_data[i].hashes, &video_data[j].hashes)
+                        <= threshold
+                    {
+                        uf.union(i, j);
+                    }
+                }
+            }
+
+            let mut group_map: HashMap<usize, Vec<usize>> = HashMap::new();
+            for i in 0..n {
+                let root = uf.find(i);
+                group_map.entry(root).or_default().push(i);
+            }
+
+            for (_, indices) in group_map {
+                if indices.len() < 2 {
+                    continue;
+                }
+                let files: Vec<DuplicateFile> =
+                    indices.iter().map(|&i| video_data[i].file.clone()).collect();
+                let size = files[0].size;
+                groups.push(DuplicateGroup {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    hash: "video".to_string(),
+                    size,
+                    folder_key: None,
+                    similar: false,
+                    video_similar: true,
+                    files,
+                });
+            }
+        }
     }
 
     if params.by_folder {
@@ -758,6 +878,7 @@ fn collect_files(
                 name,
                 size,
                 modified,
+                video_metadata: None,
             });
         }
     } else {
@@ -789,6 +910,7 @@ fn collect_files(
                 name,
                 size,
                 modified,
+                video_metadata: None,
             });
         }
     }
