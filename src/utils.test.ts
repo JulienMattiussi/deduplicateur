@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatSize, dirname } from "./utils";
+import { formatSize, dirname, fileExt, formatDate, formatDurationSecs } from "./utils";
 
 describe("formatSize", () => {
   it("affiche les octets", () => {
@@ -41,5 +41,42 @@ describe("dirname", () => {
 
   it("gère un fichier sans dossier parent", () => {
     expect(dirname("fichier.txt")).toBe("");
+  });
+});
+
+describe("fileExt", () => {
+  it("retourne l'extension en minuscules", () => {
+    expect(fileExt("/photos/img.JPG")).toBe("jpg");
+    expect(fileExt("archive.TAR.GZ")).toBe("gz");
+  });
+
+  it("retourne une chaîne vide si pas d'extension", () => {
+    expect(fileExt("fichier_sans_ext")).toBe("fichier_sans_ext");
+  });
+});
+
+describe("formatDate", () => {
+  it("retourne - pour un timestamp nul", () => {
+    expect(formatDate(0, "fr-FR")).toBe("-");
+  });
+
+  it("formate un timestamp Unix valide", () => {
+    // 2023-11-14 UTC
+    const result = formatDate(1699920000, "fr-FR");
+    expect(result).toContain("2023");
+    expect(result).toContain("nov");
+  });
+});
+
+describe("formatDurationSecs", () => {
+  it("formate moins d'une heure", () => {
+    expect(formatDurationSecs(0)).toBe("0:00");
+    expect(formatDurationSecs(65)).toBe("1:05");
+    expect(formatDurationSecs(3599)).toBe("59:59");
+  });
+
+  it("formate une heure ou plus", () => {
+    expect(formatDurationSecs(3600)).toBe("1:00:00");
+    expect(formatDurationSecs(3661)).toBe("1:01:01");
   });
 });

@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 use serde::{Deserialize, Serialize};
+use crate::cache_io::{load_json_map, save_json_map};
 
 /// Entree de cache pour un fichier video.
 /// Cle d'invalidation : mtime + size + n_frames (si l'un change, l'entree est ignoree).
@@ -23,12 +24,7 @@ impl VideoCache {
     /// Charge le cache depuis <data_dir>/video_cache.json.
     /// Retourne un cache vide si le fichier est absent ou invalide.
     pub fn load(data_dir: &Path) -> Self {
-        let path = data_dir.join("video_cache.json");
-        let entries = std::fs::read_to_string(&path)
-            .ok()
-            .and_then(|s| serde_json::from_str::<HashMap<String, VideoCacheEntry>>(&s).ok())
-            .unwrap_or_default();
-        VideoCache { entries, dirty: false }
+        VideoCache { entries: load_json_map(data_dir, "video_cache.json"), dirty: false }
     }
 
     pub fn empty() -> Self {
@@ -37,14 +33,7 @@ impl VideoCache {
 
     /// Sauvegarde le cache si des modifications ont ete apportees.
     pub fn save(&mut self, data_dir: &Path) -> Result<(), String> {
-        if !self.dirty {
-            return Ok(());
-        }
-        std::fs::create_dir_all(data_dir).map_err(|e| e.to_string())?;
-        let json = serde_json::to_string(&self.entries).map_err(|e| e.to_string())?;
-        std::fs::write(data_dir.join("video_cache.json"), json).map_err(|e| e.to_string())?;
-        self.dirty = false;
-        Ok(())
+        save_json_map(&self.entries, data_dir, "video_cache.json", &mut self.dirty)
     }
 
     /// Retourne les hashes si l'entree est valide (mtime, size et n_frames identiques).

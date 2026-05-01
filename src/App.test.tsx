@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import App, { GroupCard, FiltersPanel } from "./App";
+import App from "./App";
+import { GroupCard } from "./components/GroupCard";
+import { FiltersPanel } from "./components/FiltersPanel";
 import { LangProvider } from "./LangContext";
 
 // ----- Mocks globaux -----
@@ -327,6 +329,36 @@ describe("F - FiltersPanel", () => {
     const inputs = screen.getAllByPlaceholderText(/ex\./i);
     await user.type(inputs[0], "bak{Enter}");
     expect(onChangeExclude).toHaveBeenCalledWith(["tmp", "bak"]);
+  });
+
+  it("appelle onChangeInclude avec la nouvelle extension via Entrée", async () => {
+    const user = userEvent.setup();
+    const onChangeInclude = vi.fn();
+    renderWithLang(<FiltersPanel {...makeProps({ onChangeInclude })} />);
+    await user.click(screen.getByText(/Filtres/));
+    const inputs = screen.getAllByPlaceholderText(/ex\./i);
+    await user.type(inputs[1], "jpg{Enter}");
+    expect(onChangeInclude).toHaveBeenCalledWith(["jpg"]);
+  });
+
+  it("appelle onChangeMin quand on change la taille minimale", async () => {
+    const user = userEvent.setup();
+    const onChangeMin = vi.fn();
+    renderWithLang(<FiltersPanel {...makeProps({ onChangeMin })} />);
+    await user.click(screen.getByText(/Filtres/));
+    const sizeInputs = screen.getAllByDisplayValue("0");
+    fireEvent.change(sizeInputs[0], { target: { value: "100" } });
+    expect(onChangeMin).toHaveBeenCalledWith(100);
+  });
+
+  it("appelle onChangeCache quand on coche/décoche le cache exact", async () => {
+    const user = userEvent.setup();
+    const onChangeCache = vi.fn();
+    renderWithLang(<FiltersPanel {...makeProps({ onChangeCache })} />);
+    await user.click(screen.getByText(/Filtres/));
+    const cacheCheckbox = screen.getByRole("checkbox");
+    await user.click(cacheCheckbox);
+    expect(onChangeCache).toHaveBeenCalledWith(false);
   });
 });
 

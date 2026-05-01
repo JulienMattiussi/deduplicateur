@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 use serde::{Deserialize, Serialize};
+use crate::cache_io::{load_json_map, save_json_map};
 
 /// Entree de cache pour un fichier image.
 /// Les hashs sont stockes en base64 pour la serialisation JSON.
@@ -32,12 +33,7 @@ impl HashCache {
     /// Charge le cache depuis <data_dir>/phash_cache.json.
     /// Retourne un cache vide si le fichier est absent ou invalide.
     pub fn load(data_dir: &Path) -> Self {
-        let path = data_dir.join("phash_cache.json");
-        let entries = std::fs::read_to_string(&path)
-            .ok()
-            .and_then(|s| serde_json::from_str::<HashMap<String, CacheEntry>>(&s).ok())
-            .unwrap_or_default();
-        HashCache { entries, dirty: false }
+        HashCache { entries: load_json_map(data_dir, "phash_cache.json"), dirty: false }
     }
 
     /// Retourne un cache vide sans fichier associe.
@@ -48,14 +44,7 @@ impl HashCache {
     /// Sauvegarde le cache si des modifications ont ete apportees.
     /// Ne fait rien si `dirty == false`.
     pub fn save(&mut self, data_dir: &Path) -> Result<(), String> {
-        if !self.dirty {
-            return Ok(());
-        }
-        std::fs::create_dir_all(data_dir).map_err(|e| e.to_string())?;
-        let json = serde_json::to_string(&self.entries).map_err(|e| e.to_string())?;
-        std::fs::write(data_dir.join("phash_cache.json"), json).map_err(|e| e.to_string())?;
-        self.dirty = false;
-        Ok(())
+        save_json_map(&self.entries, data_dir, "phash_cache.json", &mut self.dirty)
     }
 
     /// Retourne l'entree si elle existe, si le mtime correspond ET si les tailles de hash

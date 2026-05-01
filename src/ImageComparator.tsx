@@ -3,10 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { DuplicateGroup, DuplicateFile, ImageMeta } from "./types";
 import { formatSize } from "./utils";
 import { useLang } from "./LangContext";
-
-function openFile(path: string) {
-  invoke("open_file", { path }).catch(() => {});
-}
+import { openFile } from "./fileActions";
 
 export function ImageComparator({
   groups,

@@ -1,4 +1,6 @@
+mod cache_io;
 mod exact_cache;
+mod filters;
 mod phash_cache;
 mod phash_config;
 mod phash_perf;
