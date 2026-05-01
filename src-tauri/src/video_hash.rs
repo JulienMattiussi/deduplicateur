@@ -1,5 +1,20 @@
 use std::process::Command;
 
+trait NoWindowExt {
+    fn no_window(&mut self) -> &mut Self;
+}
+
+impl NoWindowExt for Command {
+    fn no_window(&mut self) -> &mut Self {
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::process::CommandExt;
+            self.creation_flags(0x08000000);
+        }
+        self
+    }
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct VideoMetadata {
     pub duration_secs: f64,
@@ -12,6 +27,7 @@ pub struct VideoMetadata {
 pub fn is_ffmpeg_available() -> bool {
     Command::new("ffprobe")
         .arg("-version")
+        .no_window()
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false)
@@ -29,6 +45,7 @@ pub fn get_video_metadata(path: &str) -> Option<VideoMetadata> {
             "-show_format",
             path,
         ])
+        .no_window()
         .output()
         .ok()?;
 
@@ -89,6 +106,7 @@ pub fn extract_frame_hashes(path: &str, n_frames: usize, duration: f64) -> Optio
                 "quiet",
                 "-nostdin",
             ])
+            .no_window()
             .output()
             .ok()?;
 
@@ -126,6 +144,7 @@ pub fn extract_thumbnail(path: &str, duration: f64, max_size: u32) -> Option<Str
             "quiet",
             "-nostdin",
         ])
+        .no_window()
         .output()
         .ok()?;
 

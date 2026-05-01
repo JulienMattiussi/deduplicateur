@@ -245,6 +245,13 @@ et `on_progress` n'est jamais appele - la progression reste bloquee a la valeur 
 exact. Solution : appeler `on_progress` dans la boucle de check du cache pour les hits aussi,
 avec un compteur atomique partage entre hits et misses.
 
+### Subprocessus Windows (ffmpeg, explorer) : ajouter CREATE_NO_WINDOW
+Tout `Command::new(...)` lancé depuis Tauri sur Windows ouvre un terminal visible si le
+processus cible est une application console. Utiliser le flag `CREATE_NO_WINDOW` (0x08000000)
+via le trait `NoWindowExt` defini dans `video_hash.rs`, ou via `CommandExt::creation_flags`
+dans un bloc `#[cfg(target_os = "windows")]`. S'applique a ffmpeg, ffprobe, et tout
+subprocess console (pas a `explorer.exe` qui est une app GUI).
+
 ### Icone de fenetre : set_icon invisible sur GNOME/Wayland en mode dev
 Sur GNOME Shell, `window.set_icon()` n'affecte pas la barre des taches - GNOME utilise
 le fichier `.desktop` installe. En mode dev, aucun `.desktop` n'est present.
