@@ -111,17 +111,24 @@ Chaque scan produit un fichier JSON dans `~/.local/share/deduplicateur/sessions/
 
 ## Démarrage
 
-### Télécharger (Windows)
+### Télécharger
 
-Le binaire Windows est produit automatiquement par le CI à chaque push sur `main`.
+Les binaires sont produits automatiquement par le CI à chaque push sur `main`.
 
-1. Aller dans l'onglet **Actions** du dépôt GitHub
-2. Cliquer sur le dernier run **Build Windows**
-3. Télécharger l'artifact **deduplicateur-windows-portable** (`.exe` autonome, aucune installation)
+1. Aller dans l'onglet **Releases** du dépôt GitHub (ou cliquer sur **latest** dans la barre latérale)
+2. Télécharger le fichier correspondant à votre système :
 
-> Lors du premier lancement, Windows peut afficher un avertissement SmartScreen - cliquer sur « Plus d'informations » puis « Exécuter quand même ».
+| Système | Fichier | Notes |
+|---------|---------|-------|
+| Windows | `deduplicateur.exe` | Portable, aucune installation |
+| Windows | `deduplicateur_x.x.x_x64-setup.exe` | Installeur NSIS |
+| Windows | `deduplicateur_x.x.x_x64_en-US.msi` | Installeur MSI |
+| Linux | `deduplicateur_x.x.x_amd64.AppImage` | Portable, toutes distros |
+| Linux | `deduplicateur_x.x.x_amd64.deb` | Paquet Debian/Ubuntu |
 
-> **Similarité vidéos sur Windows** : nécessite [ffmpeg](https://www.gyan.dev/ffmpeg/builds/) installé et présent dans le `PATH` système. Sans ffmpeg, les modes fichiers et images fonctionnent normalement.
+> **Windows** : lors du premier lancement, Windows peut afficher un avertissement SmartScreen - cliquer sur « Plus d'informations » puis « Exécuter quand même ».
+
+> **Similarité vidéos** : nécessite ffmpeg installé et présent dans le `PATH` système. Sans ffmpeg, les modes fichiers et images fonctionnent normalement. Voir [docs/ffmpeg.md](docs/ffmpeg.md).
 
 ### Prérequis (compilation depuis les sources)
 
