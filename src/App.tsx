@@ -120,52 +120,33 @@ function SessionCard({
   );
 }
 
-function ThumbnailStrip({ files, mode }: { files: DuplicateFile[]; mode: "image" | "video" }) {
-  const [thumbs, setThumbs] = useState<Record<string, string>>({});
+function FileThumbnail({ file, mode }: { file: DuplicateFile; mode: "image" | "video" }) {
+  const [thumb, setThumb] = useState<string | null>(null);
 
   useEffect(() => {
-    for (const file of files) {
-      const cmd = mode === "video" ? "get_video_thumbnail" : "get_image_thumbnail";
-      const args = mode === "video"
-        ? { path: file.path, maxSize: 150, duration: file.video_metadata?.duration_secs ?? null }
-        : { path: file.path, maxSize: 150 };
-      invoke<string>(cmd, args)
-        .then((dataUrl) => setThumbs((prev) => ({ ...prev, [file.path]: dataUrl })))
-        .catch(() => setThumbs((prev) => ({ ...prev, [file.path]: "error" })));
-    }
-  }, [files, mode]);
+    const cmd = mode === "video" ? "get_video_thumbnail" : "get_image_thumbnail";
+    const args = mode === "video"
+      ? { path: file.path, maxSize: 64, duration: file.video_metadata?.duration_secs ?? null }
+      : { path: file.path, maxSize: 64 };
+    invoke<string>(cmd, args)
+      .then(setThumb)
+      .catch(() => setThumb("error"));
+  }, [file.path, mode]);
 
-  return (
-    <div className="similar-thumbnails">
-      {files.map((file) => (
-        <div key={file.path} className="similar-thumb" title={file.name}>
-          {thumbs[file.path] && thumbs[file.path] !== "error" ? (
-            <img
-              src={thumbs[file.path]}
-              alt={file.name}
-              className="similar-thumb-img similar-thumb-img--clickable"
-              onClick={() => openFile(file.path)}
-            />
-          ) : thumbs[file.path] === "error" ? (
-            <div className="similar-thumb-placeholder similar-thumb-placeholder--error">
-              {mode === "video" ? "🎬" : "🖼"}
-            </div>
-          ) : (
-            <div className="similar-thumb-placeholder">
-              <div className="similar-thumb-spinner" />
-            </div>
-          )}
-          {mode === "video" && file.video_metadata && (
-            <span className="video-thumb-meta">
-              {file.video_metadata.width}x{file.video_metadata.height} · {file.video_metadata.codec}
-            </span>
-          )}
-          {mode === "video" && <span className="video-thumb-meta">{formatSize(file.size)}</span>}
-          <span className="similar-thumb-name">{file.name}</span>
-        </div>
-      ))}
-    </div>
-  );
+  if (thumb && thumb !== "error") {
+    return (
+      <img
+        src={thumb}
+        alt=""
+        className="file-thumb-img"
+        onClick={(e) => { e.stopPropagation(); openFile(file.path); }}
+      />
+    );
+  }
+  if (thumb === "error") {
+    return <span className="file-thumb-error">{mode === "video" ? "🎬" : "🖼"}</span>;
+  }
+  return <span className="file-thumb-spinner" />;
 }
 
 export function GroupCard({
@@ -199,13 +180,11 @@ export function GroupCard({
         </span>
       </button>
 
-      {expanded && isImageGroup && <ThumbnailStrip files={group.files} mode="image" />}
-      {expanded && isVideoGroup && <ThumbnailStrip files={group.files} mode="video" />}
-
       {expanded && (
         <div className="group-files">
           <div className="file-row-header">
             <span className="file-col-cb" />
+            {(isImageGroup || isVideoGroup) && <span className="file-col-thumb" />}
             <span className="file-col-name">{t.colName}</span>
             <span className="file-col-date">{t.colModified}</span>
             {(isImageGroup || isVideoGroup) && <span className="file-col-size">{t.colSize}</span>}
@@ -216,7 +195,7 @@ export function GroupCard({
           {group.files.map((file, idx) => (
             <div
               key={file.path}
-              className={`file-row ${selected.has(file.path) ? "file-row--checked" : ""}`}
+              className={`file-row ${(isImageGroup || isVideoGroup) ? "file-row--media" : ""} ${selected.has(file.path) ? "file-row--checked" : ""}`}
               onClick={() => onToggle(file.path)}
             >
               <span className="file-col-cb">
@@ -227,6 +206,11 @@ export function GroupCard({
                   onClick={(e) => e.stopPropagation()}
                 />
               </span>
+              {(isImageGroup || isVideoGroup) && (
+                <span className="file-col-thumb">
+                  <FileThumbnail file={file} mode={isVideoGroup ? "video" : "image"} />
+                </span>
+              )}
               <span className="file-col-name file-name">{file.name}</span>
               <span className="file-col-date file-meta">{formatDate(file.modified, t.dateLocale)}</span>
               {(isImageGroup || isVideoGroup) && <span className="file-col-size file-meta">{formatSize(file.size)}</span>}

@@ -15,6 +15,7 @@ Parcourir chaque point dans l'ordre, même si la réponse est "rien à faire ici
 
 - [ ] `cargo test --manifest-path src-tauri/Cargo.toml` passe au vert
 - [ ] `PATH="/home/julien/.nvm/versions/node/v22.22.0/bin:$PATH" npm test -- --run` passe au vert
+- [ ] `PATH="/home/julien/.nvm/versions/node/v22.22.0/bin:$PATH" npx tsc --noEmit` passe sans erreur (obligatoire - le CI échoue silencieusement si oublié)
 - [ ] Tout comportement nouveau ou modifié dans `scanner.rs` a un test Rust correspondant
 - [ ] Tout composant React nouveau ou modifié a un test dans `src/App.test.tsx` si le comportement est testable sans l'app Tauri réelle
 

@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { ScanSummary } from "../types";
 
 export interface ScanInvokeArgs {
+  [key: string]: unknown;
   path: string;
   recursive: boolean;
   excluded: string[];
