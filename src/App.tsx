@@ -1,4 +1,4 @@
-import { useState, startTransition, useEffect } from "react";
+import { useState, startTransition, useEffect, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import "./App.css";
 import { formatSize, dirname } from "./utils";
@@ -149,6 +149,8 @@ function FileThumbnail({ file, mode }: { file: DuplicateFile; mode: "image" | "v
   return <span className="file-thumb-spinner" />;
 }
 
+type SortKey = "name" | "modified" | "size";
+
 export function GroupCard({
   group,
   selected,
@@ -160,11 +162,48 @@ export function GroupCard({
 }) {
   const { t } = useLang();
   const [expanded, setExpanded] = useState(true);
+  const [sortKey, setSortKey] = useState<SortKey | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+
   const isSimilar = group.similar === true;
   const isVideoSimilar = group.video_similar === true;
   const firstExt = group.files.length > 0 ? fileExt(group.files[0].path) : "";
   const isVideoGroup = isVideoSimilar || VIDEO_EXTS.has(firstExt);
   const isImageGroup = isSimilar || (!isVideoGroup && IMAGE_EXTS.has(firstExt));
+
+  function handleSortClick(key: SortKey) {
+    if (sortKey === key) {
+      if (sortDir === "asc") setSortDir("desc");
+      else { setSortKey(null); setSortDir("asc"); }
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  }
+
+  const sortedFiles = useMemo(() => {
+    if (!sortKey) return group.files;
+    return [...group.files].sort((a, b) => {
+      let diff = 0;
+      if (sortKey === "name") diff = a.name.localeCompare(b.name);
+      else if (sortKey === "modified") diff = a.modified - b.modified;
+      else if (sortKey === "size") diff = a.size - b.size;
+      return sortDir === "asc" ? diff : -diff;
+    });
+  }, [group.files, sortKey, sortDir]);
+
+  function SortableHeader({ col, label, className }: { col: SortKey; label: string; className: string }) {
+    const active = sortKey === col;
+    return (
+      <span
+        className={`${className} file-col-sortable`}
+        onClick={() => handleSortClick(col)}
+      >
+        {label}
+        {active && <span className="sort-indicator">{sortDir === "asc" ? "↑" : "↓"}</span>}
+      </span>
+    );
+  }
 
   return (
     <div className="group-card">
@@ -185,14 +224,16 @@ export function GroupCard({
           <div className="file-row-header">
             <span className="file-col-cb" />
             {(isImageGroup || isVideoGroup) && <span className="file-col-thumb" />}
-            <span className="file-col-name">{t.colName}</span>
-            <span className="file-col-date">{t.colModified}</span>
-            {(isImageGroup || isVideoGroup) && <span className="file-col-size">{t.colSize}</span>}
+            <SortableHeader col="name" label={t.colName} className="file-col-name" />
+            <SortableHeader col="modified" label={t.colModified} className="file-col-date" />
+            {(isImageGroup || isVideoGroup) && (
+              <SortableHeader col="size" label={t.colSize} className="file-col-size" />
+            )}
             {isVideoGroup && <span className="file-col-video-meta">{t.colDuration}</span>}
             <span className="file-col-dir">{t.colFolder}</span>
             <span className="file-col-badge" />
           </div>
-          {group.files.map((file, idx) => (
+          {sortedFiles.map((file, idx) => (
             <div
               key={file.path}
               className={`file-row ${(isImageGroup || isVideoGroup) ? "file-row--media" : ""} ${selected.has(file.path) ? "file-row--checked" : ""}`}
@@ -216,7 +257,7 @@ export function GroupCard({
               {(isImageGroup || isVideoGroup) && <span className="file-col-size file-meta">{formatSize(file.size)}</span>}
               {isVideoGroup && (
                 <span className="file-col-video-meta file-meta">
-                  {file.video_metadata ? formatDurationSecs(file.video_metadata.duration_secs) : "="}
+                  {file.video_metadata ? formatDurationSecs(file.video_metadata.duration_secs) : "-"}
                 </span>
               )}
               <span className="file-col-dir">
@@ -549,11 +590,71 @@ export default function App() {
   const [sessions, setSessions] = useState<ScanSummary[]>([]);
   const [summary, setSummary] = useState<ScanSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [theme, setTheme] = useState<"dark" | "light">(() =>
+    (localStorage.getItem("theme") as "dark" | "light") ?? "dark"
+  );
+  const [dragOver, setDragOver] = useState(false);
+  const [filterText, setFilterText] = useState("");
 
   const config = useScanConfig();
   const results = useResults(setError);
   const scanExec = useScanExecution(handleScanComplete, setError);
   const selection = useSelectionState(results.groups, handleDeleteComplete, setError);
+
+  // Theme persistence
+  useEffect(() => {
+    localStorage.setItem("theme", theme);
+  }, [theme]);
+
+  // Drag & drop
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    import("@tauri-apps/api/webview").then(({ getCurrentWebview }) => {
+      getCurrentWebview().onDragDropEvent(async (event) => {
+        const type = event.payload.type;
+        if (type === "over") {
+          if (!scanExec.scanning) setDragOver(true);
+        } else if (type === "drop") {
+          setDragOver(false);
+          if (!scanExec.scanning && "paths" in event.payload) {
+            const paths = event.payload.paths as string[];
+            if (paths.length > 0) {
+              const isDir = await invoke<boolean>("check_path_is_dir", { path: paths[0] });
+              if (isDir) config.setFolder(paths[0]);
+            }
+          }
+        } else {
+          setDragOver(false);
+        }
+      }).then((fn) => { unlisten = fn; });
+    });
+    return () => { unlisten?.(); };
+  }, [scanExec.scanning]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      const target = e.target as HTMLElement;
+      const inInput = target.tagName === "INPUT" || target.tagName === "TEXTAREA";
+
+      if (e.key === "Escape" && selection.confirmPending) {
+        selection.setConfirmPending(false);
+        return;
+      }
+      if (inInput) return;
+
+      const showResults = summary !== null && summary.total_groups > 0;
+      if (e.key === "Delete" && showResults && selection.selected.size > 0 && !selection.deleting && !selection.selecting) {
+        selection.setConfirmPending(true);
+      }
+      if ((e.key === "a" || e.key === "A") && (e.ctrlKey || e.metaKey) && showResults && !scanExec.scanning) {
+        e.preventDefault();
+        selection.selectAllDuplicates();
+      }
+    }
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [summary, selection, scanExec.scanning]);
 
   useEffect(() => {
     invoke<ScanSummary[]>("list_sessions")
@@ -565,10 +666,12 @@ export default function App() {
     setSummary(null);
     results.reset();
     selection.setSelected(new Set());
+    setFilterText("");
   }
 
   async function handleScanComplete(s: ScanSummary) {
     setSummary(s);
+    setFilterText("");
     startTransition(() => setSessions((prev) => [s, ...prev]));
     if (s.by_folder) {
       const summaries = await invoke<FolderSummary[]>("list_folder_keys");
@@ -634,12 +737,42 @@ export default function App() {
   const showSessionPicker = !summary && !scanExec.scanning && sessions.length > 0;
   const showResults = summary !== null && summary.total_groups > 0;
 
+  // Filtre sur les résultats
+  const filteredGroups = useMemo(() => {
+    if (!filterText.trim()) return results.groups;
+    const q = filterText.toLowerCase();
+    return results.groups.filter((g) =>
+      g.files.some((f) => f.name.toLowerCase().includes(q) || f.path.toLowerCase().includes(q))
+    );
+  }, [results.groups, filterText]);
+
+  const filteredFolderSummaries = useMemo(() => {
+    if (!filterText.trim()) return results.sortedFolderSummaries;
+    const q = filterText.toLowerCase();
+    return results.sortedFolderSummaries.filter((fs) =>
+      fs.folder_key.toLowerCase().includes(q)
+    );
+  }, [results.sortedFolderSummaries, filterText]);
+
   return (
-    <div className="app">
+    <div className="app" data-theme={theme}>
+      {dragOver && (
+        <div className="drag-overlay">
+          <span className="drag-overlay-label">📁 {t.dropHere}</span>
+        </div>
+      )}
+
       <header className="header">
         <div className="header-top">
           <h1 className="title">{t.appTitle}</h1>
           <div className="header-top-right">
+            <button
+              className="theme-btn"
+              onClick={() => setTheme((v) => v === "dark" ? "light" : "dark")}
+              title={theme === "dark" ? "Mode clair" : "Mode sombre"}
+            >
+              {theme === "dark" ? "☀" : "☽"}
+            </button>
             <div className="lang-toggle">
               <button className={`lang-btn${lang === "fr" ? " lang-btn--active" : ""}`} onClick={() => setLang("fr")}>FR</button>
               <button className={`lang-btn${lang === "en" ? " lang-btn--active" : ""}`} onClick={() => setLang("en")}>EN</button>
@@ -763,6 +896,15 @@ export default function App() {
             )}
           </div>
 
+          <div className="filter-bar">
+            <input
+              className="filter-input"
+              placeholder={t.filterPlaceholder}
+              value={filterText}
+              onChange={(e) => setFilterText(e.target.value)}
+            />
+          </div>
+
           {summary?.by_folder && (
             <div className="folder-sort-bar">
               <span className="folder-sort-label">{t.sortBy}</span>
@@ -775,25 +917,33 @@ export default function App() {
 
           <div className="groups-list">
             {summary?.by_folder ? (
-              results.sortedFolderSummaries.map((fs) => (
-                <FolderSection
-                  key={fs.folder_key}
-                  summary={fs}
-                  groups={results.groupsByFolder.get(fs.folder_key) ?? []}
-                  loading={results.folderState[fs.folder_key]?.loading ?? false}
-                  hasMore={results.folderState[fs.folder_key]?.hasMore ?? true}
-                  selected={selection.selected}
-                  onToggle={selection.toggleFile}
-                  onExpand={() => results.loadFolderPage(fs.folder_key)}
-                  onLoadMore={() => results.loadFolderPage(fs.folder_key)}
-                />
-              ))
+              filteredFolderSummaries.length === 0 && filterText.trim() ? (
+                <p className="filter-no-results">{t.filterNoResults}</p>
+              ) : (
+                filteredFolderSummaries.map((fs) => (
+                  <FolderSection
+                    key={fs.folder_key}
+                    summary={fs}
+                    groups={results.groupsByFolder.get(fs.folder_key) ?? []}
+                    loading={results.folderState[fs.folder_key]?.loading ?? false}
+                    hasMore={results.folderState[fs.folder_key]?.hasMore ?? true}
+                    selected={selection.selected}
+                    onToggle={selection.toggleFile}
+                    onExpand={() => results.loadFolderPage(fs.folder_key)}
+                    onLoadMore={() => results.loadFolderPage(fs.folder_key)}
+                  />
+                ))
+              )
             ) : (
               <>
-                {results.groups.map((group) => (
-                  <GroupCard key={group.id} group={group} selected={selection.selected} onToggle={selection.toggleFile} />
-                ))}
-                {results.hasMore && (
+                {filteredGroups.length === 0 && filterText.trim() ? (
+                  <p className="filter-no-results">{t.filterNoResults}</p>
+                ) : (
+                  filteredGroups.map((group) => (
+                    <GroupCard key={group.id} group={group} selected={selection.selected} onToggle={selection.toggleFile} />
+                  ))
+                )}
+                {!filterText.trim() && results.hasMore && (
                   <button className="btn-load-more" onClick={() => results.loadPage(results.groups.length, true)}
                     disabled={results.loadingMore}>
                     {results.loadingMore

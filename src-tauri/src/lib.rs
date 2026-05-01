@@ -538,6 +538,11 @@ async fn get_video_thumbnail(path: String, max_size: u32, duration: Option<f64>)
     .map_err(|e| e.to_string())?
 }
 
+#[tauri::command]
+fn check_path_is_dir(path: String) -> bool {
+    std::path::Path::new(&path).is_dir()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -575,6 +580,7 @@ pub fn run() {
             set_phash_config,
             get_video_config,
             set_video_config,
+            check_path_is_dir,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
