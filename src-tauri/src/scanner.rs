@@ -13,6 +13,7 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use xxhash_rust::xxh3::Xxh3;
 
+use crate::exact_cache::ExactCache;
 use crate::phash_cache::{CacheEntry, HashCache};
 use crate::phash_config::PHashConfig;
 use crate::phash_perf::{append_perf_log, PerfEntry};
@@ -82,6 +83,18 @@ pub struct ScanParams {
     pub video_cache_enabled: bool,
     /// Utiliser DTW pour la comparaison des sequences de frames.
     pub video_use_dtw: bool,
+    /// Activer le cache inter-scans des hashes exacts (exact_cache.json).
+    pub exact_cache_enabled: bool,
+    /// Extensions a exclure du scan (sans point, ex. "tmp").
+    /// Si vide, aucune extension n'est exclue.
+    pub exclude_extensions: Vec<String>,
+    /// Extensions a inclure exclusivement (sans point, ex. "jpg").
+    /// Si vide, toutes les extensions sont incluses.
+    pub include_extensions: Vec<String>,
+    /// Taille minimale des fichiers en Ko (0 = pas de minimum).
+    pub min_file_size_kb: u64,
+    /// Taille maximale des fichiers en Ko (0 = pas de maximum).
+    pub max_file_size_kb: u64,
 }
 
 impl ScanParams {
@@ -102,6 +115,11 @@ impl ScanParams {
             video_duration_tolerance: 0.20,
             video_cache_enabled: true,
             video_use_dtw: false,
+            exact_cache_enabled: true,
+            exclude_extensions: vec![],
+            include_extensions: vec![],
+            min_file_size_kb: 0,
+            max_file_size_kb: 0,
         }
     }
 }
@@ -259,7 +277,16 @@ where
     let start = Instant::now();
     let mut was_cancelled = false;
 
-    let files = collect_files(Path::new(&params.folder), params.recursive, &params.excluded, &cancelled)?;
+    let files = collect_files(
+        Path::new(&params.folder),
+        params.recursive,
+        &params.excluded,
+        &cancelled,
+        &params.exclude_extensions,
+        &params.include_extensions,
+        params.min_file_size_kb.saturating_mul(1024),
+        params.max_file_size_kb.saturating_mul(1024),
+    )?;
     let scanned_files = files.len();
 
     // Collect image candidates before partitioning (avoids a second collect_files in pHash phase).
@@ -312,6 +339,15 @@ where
     let hashed = Arc::new(AtomicUsize::new(0));
     let mut groups: Vec<DuplicateGroup> = Vec::new();
 
+    // Cache inter-scans des hashes exacts. Charge une seule fois avant la boucle.
+    let mut exact_cache = if params.exact_cache_enabled {
+        params.data_dir.as_deref()
+            .map(|d| ExactCache::load(Path::new(d)))
+            .unwrap_or_else(ExactCache::empty)
+    } else {
+        ExactCache::empty()
+    };
+
     // --- Phase 1 : doublons exacts ---
     for (folder_key, size_candidates) in partition_candidates {
         if cancelled.load(Ordering::Relaxed) {
@@ -319,19 +355,40 @@ where
             break;
         }
 
-        let partial_results: Vec<(String, DuplicateFile)> = size_candidates
-            .into_par_iter()
-            .flat_map(|group| group.into_par_iter())
-            .filter_map(|file| {
-                if cancelled.load(Ordering::Relaxed) {
-                    return None;
-                }
-                let h = hash_partial(&file.path).ok()?;
-                let n = hashed.fetch_add(1, Ordering::Relaxed) + 1;
-                on_progress(n, total_work, scanned_files, &file.name);
-                Some((h, file))
-            })
-            .collect();
+        // Chaque tuple : (hash_partiel, fichier, Option<(path, mtime, size, hash)> a inserer en cache)
+        let partial_raw: Vec<(String, DuplicateFile, Option<(String, u64, u64, String)>)> =
+            size_candidates
+                .into_par_iter()
+                .flat_map(|group| group.into_par_iter())
+                .filter_map(|file| {
+                    if cancelled.load(Ordering::Relaxed) {
+                        return None;
+                    }
+                    // Essayer le cache d'abord (lecture seule, pas de mutex necessaire).
+                    if let Some(entry) = exact_cache.get(&file.path, file.modified, file.size) {
+                        if let Some(ph) = &entry.partial_hash {
+                            let n = hashed.fetch_add(1, Ordering::Relaxed) + 1;
+                            on_progress(n, total_work, scanned_files, &file.name);
+                            return Some((ph.clone(), file, None));
+                        }
+                    }
+                    let h = hash_partial(&file.path).ok()?;
+                    let n = hashed.fetch_add(1, Ordering::Relaxed) + 1;
+                    on_progress(n, total_work, scanned_files, &file.name);
+                    let ins = (file.path.clone(), file.modified, file.size, h.clone());
+                    Some((h, file, Some(ins)))
+                })
+                .collect();
+
+        // Appliquer les nouvelles entrees de cache (apres la section parallele).
+        for (_, _, ins) in &partial_raw {
+            if let Some((p, m, s, ph)) = ins {
+                exact_cache.insert_partial(p.clone(), *m, *s, ph.clone());
+            }
+        }
+
+        let partial_results: Vec<(String, DuplicateFile)> =
+            partial_raw.into_iter().map(|(h, f, _)| (h, f)).collect();
 
         if cancelled.load(Ordering::Relaxed) {
             was_cancelled = true;
@@ -345,17 +402,33 @@ where
         let partial_candidates: Vec<Vec<DuplicateFile>> =
             by_partial.into_values().filter(|v| v.len() >= 2).collect();
 
-        let full_results: Vec<(String, DuplicateFile)> = partial_candidates
-            .into_par_iter()
-            .flat_map(|group| group.into_par_iter())
-            .filter_map(|file| {
-                if cancelled.load(Ordering::Relaxed) {
-                    return None;
-                }
-                let h = hash_full(&file.path).ok()?;
-                Some((h, file))
-            })
-            .collect();
+        let full_raw: Vec<(String, DuplicateFile, Option<(String, u64, u64, String)>)> =
+            partial_candidates
+                .into_par_iter()
+                .flat_map(|group| group.into_par_iter())
+                .filter_map(|file| {
+                    if cancelled.load(Ordering::Relaxed) {
+                        return None;
+                    }
+                    if let Some(entry) = exact_cache.get(&file.path, file.modified, file.size) {
+                        if let Some(fh) = &entry.full_hash {
+                            return Some((fh.clone(), file, None));
+                        }
+                    }
+                    let h = hash_full(&file.path).ok()?;
+                    let ins = (file.path.clone(), file.modified, file.size, h.clone());
+                    Some((h, file, Some(ins)))
+                })
+                .collect();
+
+        for (_, _, ins) in &full_raw {
+            if let Some((p, m, s, fh)) = ins {
+                exact_cache.insert_full(p.clone(), *m, *s, fh.clone());
+            }
+        }
+
+        let full_results: Vec<(String, DuplicateFile)> =
+            full_raw.into_iter().map(|(h, f, _)| (h, f)).collect();
 
         if cancelled.load(Ordering::Relaxed) {
             was_cancelled = true;
@@ -385,6 +458,13 @@ where
             .collect();
 
         groups.extend(partition_groups);
+    }
+
+    // Sauvegarder le cache exact apres la boucle (y compris en cas d'annulation partielle).
+    if params.exact_cache_enabled {
+        if let Some(data_dir) = params.data_dir.as_deref() {
+            let _ = exact_cache.save(Path::new(data_dir));
+        }
     }
 
     // --- Phase 2 : images similaires (pHash) ---
@@ -955,6 +1035,10 @@ fn collect_files(
     recursive: bool,
     excluded: &[String],
     cancelled: &Arc<AtomicBool>,
+    exclude_extensions: &[String],
+    include_extensions: &[String],
+    min_file_size_bytes: u64,
+    max_file_size_bytes: u64,
 ) -> Result<Vec<DuplicateFile>, String> {
     if !folder.exists() {
         return Err(format!("Dossier introuvable : {}", folder.display()));
@@ -998,6 +1082,9 @@ fn collect_files(
                 }
                 Err(_) => continue,
             };
+            if !passes_filters(path, size, exclude_extensions, include_extensions, min_file_size_bytes, max_file_size_bytes) {
+                continue;
+            }
             let name = path
                 .file_name()
                 .and_then(|n| n.to_str())
@@ -1030,6 +1117,9 @@ fn collect_files(
                 .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
                 .map(|d| d.as_secs())
                 .unwrap_or(0);
+            if !passes_filters(&path, size, exclude_extensions, include_extensions, min_file_size_bytes, max_file_size_bytes) {
+                continue;
+            }
             let name = path
                 .file_name()
                 .and_then(|n| n.to_str())
@@ -1046,6 +1136,38 @@ fn collect_files(
     }
 
     Ok(files)
+}
+
+fn passes_filters(
+    path: &Path,
+    size: u64,
+    exclude_extensions: &[String],
+    include_extensions: &[String],
+    min_file_size_bytes: u64,
+    max_file_size_bytes: u64,
+) -> bool {
+    if min_file_size_bytes > 0 && size < min_file_size_bytes {
+        return false;
+    }
+    if max_file_size_bytes > 0 && size > max_file_size_bytes {
+        return false;
+    }
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    if !exclude_extensions.is_empty()
+        && exclude_extensions.iter().any(|e| e.to_lowercase() == ext)
+    {
+        return false;
+    }
+    if !include_extensions.is_empty()
+        && !include_extensions.iter().any(|e| e.to_lowercase() == ext)
+    {
+        return false;
+    }
+    true
 }
 
 fn hash_partial(path: &str) -> Result<String, std::io::Error> {
@@ -1686,6 +1808,200 @@ mod tests {
         assert_eq!(
             similar.len(), 0,
             "avec tolerance stricte, portrait et paysage ne doivent pas etre groupes"
+        );
+    }
+
+    // --- Tests passes_filters ---
+
+    #[test]
+    fn passes_filters_sans_contrainte() {
+        let path = Path::new("/some/file.txt");
+        assert!(passes_filters(path, 1024, &[], &[], 0, 0));
+    }
+
+    #[test]
+    fn passes_filters_taille_min_exclut() {
+        let path = Path::new("/some/file.txt");
+        assert!(!passes_filters(path, 500, &[], &[], 1024, 0));
+    }
+
+    #[test]
+    fn passes_filters_taille_min_ok() {
+        let path = Path::new("/some/file.txt");
+        assert!(passes_filters(path, 1024, &[], &[], 1024, 0));
+    }
+
+    #[test]
+    fn passes_filters_taille_max_exclut() {
+        let path = Path::new("/some/file.txt");
+        assert!(!passes_filters(path, 2000, &[], &[], 0, 1024));
+    }
+
+    #[test]
+    fn passes_filters_taille_max_ok() {
+        let path = Path::new("/some/file.txt");
+        assert!(passes_filters(path, 1024, &[], &[], 0, 1024));
+    }
+
+    #[test]
+    fn passes_filters_extension_exclue() {
+        let path = Path::new("/some/file.tmp");
+        let excl = vec!["tmp".to_string()];
+        assert!(!passes_filters(path, 100, &excl, &[], 0, 0));
+    }
+
+    #[test]
+    fn passes_filters_extension_exclue_insensible_casse() {
+        let path = Path::new("/some/file.TMP");
+        let excl = vec!["tmp".to_string()];
+        assert!(!passes_filters(path, 100, &excl, &[], 0, 0));
+    }
+
+    #[test]
+    fn passes_filters_extension_non_exclue_passe() {
+        let path = Path::new("/some/file.txt");
+        let excl = vec!["tmp".to_string()];
+        assert!(passes_filters(path, 100, &excl, &[], 0, 0));
+    }
+
+    #[test]
+    fn passes_filters_extension_incluse_match() {
+        let path = Path::new("/some/file.jpg");
+        let incl = vec!["jpg".to_string(), "png".to_string()];
+        assert!(passes_filters(path, 100, &[], &incl, 0, 0));
+    }
+
+    #[test]
+    fn passes_filters_extension_incluse_pas_match() {
+        let path = Path::new("/some/file.txt");
+        let incl = vec!["jpg".to_string(), "png".to_string()];
+        assert!(!passes_filters(path, 100, &[], &incl, 0, 0));
+    }
+
+    // --- Tests filtres dans scan_folder ---
+
+    #[test]
+    fn filtre_extension_exclue_reduit_scan() {
+        let dir = TempDir::new().unwrap();
+        write_file(dir.path(), "a.txt", b"contenu duplique");
+        write_file(dir.path(), "b.txt", b"contenu duplique");
+        write_file(dir.path(), "c.tmp", b"contenu duplique");
+        write_file(dir.path(), "d.tmp", b"contenu duplique");
+        let path = dir.path().to_str().unwrap();
+        let r = scan_folder(
+            ScanParams {
+                exclude_extensions: vec!["tmp".to_string()],
+                ..ScanParams::new(path)
+            },
+            no_cancel(),
+            no_progress,
+        ).unwrap();
+        // Les .tmp sont exclus : seuls a.txt et b.txt sont scannés
+        assert_eq!(r.scanned_files, 2);
+        assert_eq!(r.groups.len(), 1);
+    }
+
+    #[test]
+    fn filtre_extension_incluse_restreint_scan() {
+        let dir = TempDir::new().unwrap();
+        write_file(dir.path(), "a.txt", b"contenu duplique");
+        write_file(dir.path(), "b.txt", b"contenu duplique");
+        write_file(dir.path(), "c.jpg", b"contenu duplique");
+        write_file(dir.path(), "d.jpg", b"contenu duplique");
+        let path = dir.path().to_str().unwrap();
+        let r = scan_folder(
+            ScanParams {
+                include_extensions: vec!["jpg".to_string()],
+                ..ScanParams::new(path)
+            },
+            no_cancel(),
+            no_progress,
+        ).unwrap();
+        // Seuls les .jpg sont inclus
+        assert_eq!(r.scanned_files, 2);
+        assert_eq!(r.groups.len(), 1);
+        assert!(r.groups[0].files.iter().all(|f| f.name.ends_with(".jpg")));
+    }
+
+    #[test]
+    fn filtre_taille_min_exclut_petits_fichiers() {
+        let dir = TempDir::new().unwrap();
+        write_file(dir.path(), "a.txt", b"x");
+        write_file(dir.path(), "b.txt", b"x");
+        // min = 1 Ko : les fichiers de 1 octet sont exclus
+        let path = dir.path().to_str().unwrap();
+        let r = scan_folder(
+            ScanParams { min_file_size_kb: 1, ..ScanParams::new(path) },
+            no_cancel(),
+            no_progress,
+        ).unwrap();
+        assert_eq!(r.scanned_files, 0);
+        assert_eq!(r.groups.len(), 0);
+    }
+
+    #[test]
+    fn filtre_taille_max_exclut_grands_fichiers() {
+        let dir = TempDir::new().unwrap();
+        // 2 Ko chacun
+        let content = vec![b'A'; 2048];
+        write_file(dir.path(), "a.bin", &content);
+        write_file(dir.path(), "b.bin", &content);
+        // max = 1 Ko : les fichiers de 2 Ko sont exclus
+        let path = dir.path().to_str().unwrap();
+        let r = scan_folder(
+            ScanParams { max_file_size_kb: 1, ..ScanParams::new(path) },
+            no_cancel(),
+            no_progress,
+        ).unwrap();
+        assert_eq!(r.scanned_files, 0);
+        assert_eq!(r.groups.len(), 0);
+    }
+
+    // --- Tests cache exact ---
+
+    #[test]
+    fn cache_exact_cree_apres_scan() {
+        let dir = TempDir::new().unwrap();
+        write_file(dir.path(), "a.txt", b"contenu duplique");
+        write_file(dir.path(), "b.txt", b"contenu duplique");
+        let path = dir.path().to_str().unwrap();
+        let r = scan_folder(
+            ScanParams {
+                exact_cache_enabled: true,
+                data_dir: Some(dir.path().to_str().unwrap().to_string()),
+                ..ScanParams::new(path)
+            },
+            no_cancel(),
+            no_progress,
+        ).unwrap();
+        assert_eq!(r.groups.len(), 1);
+        assert!(dir.path().join("exact_cache.json").exists(), "le cache doit etre cree apres le scan");
+    }
+
+    #[test]
+    fn cache_exact_rescan_retrouve_memes_doublons() {
+        let dir = TempDir::new().unwrap();
+        write_file(dir.path(), "a.txt", b"contenu duplique");
+        write_file(dir.path(), "b.txt", b"contenu duplique");
+        write_file(dir.path(), "c.txt", b"unique");
+        let path = dir.path().to_str().unwrap();
+        let data_dir = dir.path().to_str().unwrap().to_string();
+
+        let make_params = || ScanParams {
+            exact_cache_enabled: true,
+            data_dir: Some(data_dir.clone()),
+            ..ScanParams::new(path)
+        };
+
+        let r1 = scan_folder(make_params(), no_cancel(), no_progress).unwrap();
+        assert_eq!(r1.groups.len(), 1);
+
+        // Deuxieme scan : le cache est chaud, le resultat doit etre identique.
+        let r2 = scan_folder(make_params(), no_cancel(), no_progress).unwrap();
+        assert_eq!(r2.groups.len(), 1);
+        assert_eq!(
+            r2.groups[0].files.len(),
+            r1.groups[0].files.len()
         );
     }
 }

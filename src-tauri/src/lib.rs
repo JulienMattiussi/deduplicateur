@@ -1,3 +1,4 @@
+mod exact_cache;
 mod phash_cache;
 mod phash_config;
 mod phash_perf;
@@ -106,6 +107,11 @@ async fn scan_folder(
     sim_threshold: u32,
     find_similar_videos: bool,
     video_sim_threshold: u32,
+    exact_cache_enabled: bool,
+    exclude_extensions: Vec<String>,
+    include_extensions: Vec<String>,
+    min_file_size_kb: u64,
+    max_file_size_kb: u64,
 ) -> Result<ScanSummary, String> {
     let app = window.app_handle().clone();
     let cancelled = {
@@ -160,6 +166,11 @@ async fn scan_folder(
             video_duration_tolerance: video_cfg.duration_tolerance,
             video_cache_enabled: video_cfg.cache_enabled,
             video_use_dtw: video_cfg.use_dtw,
+            exact_cache_enabled,
+            exclude_extensions,
+            include_extensions,
+            min_file_size_kb,
+            max_file_size_kb,
         };
         do_scan(params, cancelled, move |current, total, total_files, file: &str| {
             *progress_for_scan.lock().unwrap() = Some((current, total, total_files, file.to_string()));

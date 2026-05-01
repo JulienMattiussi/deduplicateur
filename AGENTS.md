@@ -17,7 +17,11 @@ Parcourir chaque point dans l'ordre, même si la réponse est "rien à faire ici
 - [ ] `npm test -- --run` passe au vert
 - [ ] `npx tsc --noEmit` passe sans erreur (obligatoire - le CI échoue silencieusement si oublié)
 - [ ] Tout comportement nouveau ou modifié dans `scanner.rs` a un test Rust correspondant
-- [ ] Tout composant React nouveau ou modifié a un test dans `src/App.test.tsx` si le comportement est testable sans l'app Tauri réelle
+- [ ] Tout composant React nouveau ou modifié a un test TypeScript correspondant si le comportement est testable sans l'app Tauri réelle :
+  - Composants autonomes (ex. `ImageComparator`) : fichier `<Composant>.test.tsx` dédié
+  - Composants intégrés dans `App` (ex. `FiltersPanel`, `GroupCard`) : tests dans `src/App.test.tsx`
+  - Couvrir : rendu de base, interactions utilisateur (clics, clavier), callbacks appelés avec les bons arguments
+- [ ] Tout nouveau module Rust a un bloc `#[cfg(test)]` avec des tests unitaires (minimum : cas nominal, cas d'erreur, round-trip save/load si persistance)
 
 ### 2. PLAN.md
 

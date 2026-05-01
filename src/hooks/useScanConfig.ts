@@ -26,6 +26,8 @@ export const DEFAULT_VIDEO_CONFIG: VideoConfig = {
   use_dtw: false,
 };
 
+export const DEFAULT_EXCLUDE_EXTENSIONS = ["tmp", "DS_Store", "Thumbs.db", "desktop.ini", "lnk"];
+
 export function useScanConfig() {
   const [folder, setFolder] = useState("");
   const [recursive, setRecursive] = useState(false);
@@ -40,6 +42,11 @@ export function useScanConfig() {
   const [phashConfig, setPhashConfig] = useState<PHashConfig>(DEFAULT_PHASH_CONFIG);
   const [videoConfig, setVideoConfig] = useState<VideoConfig>(DEFAULT_VIDEO_CONFIG);
   const [picking, setPicking] = useState(false);
+  const [excludeExtensions, setExcludeExtensions] = useState<string[]>(DEFAULT_EXCLUDE_EXTENSIONS);
+  const [includeExtensions, setIncludeExtensions] = useState<string[]>([]);
+  const [minFileSizeKb, setMinFileSizeKb] = useState(0);
+  const [maxFileSizeKb, setMaxFileSizeKb] = useState(0);
+  const [exactCacheEnabled, setExactCacheEnabled] = useState(true);
 
   useEffect(() => {
     invoke<PHashConfig>("get_phash_config").then(setPhashConfig).catch(() => {});
@@ -78,5 +85,10 @@ export function useScanConfig() {
     phashConfig, videoConfig,
     updatePhashConfig, updateVideoConfig,
     picking, pickFolder,
+    excludeExtensions, setExcludeExtensions,
+    includeExtensions, setIncludeExtensions,
+    minFileSizeKb, setMinFileSizeKb,
+    maxFileSizeKb, setMaxFileSizeKb,
+    exactCacheEnabled, setExactCacheEnabled,
   };
 }

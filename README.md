@@ -38,6 +38,8 @@ Outil de détection et suppression de fichiers en double - rapide, local, sans c
 - **Filtre dans les résultats** - champ texte pour filtrer les groupes par nom de fichier ou chemin, en temps réel
 - **Tri des colonnes** - clic sur "Nom", "Modifié" ou "Taille" pour trier les fichiers dans chaque groupe (cycle ↑ ↓ sans tri)
 - **Comparateur d'images** - vue plein écran côte à côte pour les groupes d'images similaires : métadonnées complètes (dimensions, format, date EXIF), sélecteur L/R indépendant pour comparer n'importe quelle paire, slider de superposition, navigation entre groupes au clavier, bouton "Garder celui-ci"
+- **Scan incrémental** - cache inter-scans des hashes exacts (`exact_cache.json`) : les fichiers non modifiés (mtime + taille inchangés) ne sont pas rehachés, accélère fortement les rescans sur de grands dossiers
+- **Filtres** - panneau collapsible dans les options : extensions exclues (défaut : `tmp`, `DS_Store`, `Thumbs.db`...), extensions incluses exclusivement, taille minimale et maximale en Ko
 
 ---
 
@@ -75,7 +77,8 @@ src-tauri/src/
                            #   list_sessions, load_session, delete_session,
                            #   delete_files, get_image_thumbnail, get_image_meta
   scanner.rs               # Moteur Rust : collect_files, hash_partial, hash_full,
-                           #   filtrage en cascade, parallélisme Rayon
+                           #   filtrage en cascade, parallélisme Rayon, filtres extensions/taille
+  exact_cache.rs           # Cache inter-scans des hashes exacts (mtime + taille)
   video_hash.rs            # Hash de frames video (ffmpeg), DTW, mean hash 64 bits
   video_cache.rs           # Cache inter-scans des frame hashes
   video_config.rs          # Configuration du pipeline video (JSON persistant)
@@ -128,8 +131,8 @@ Chaque scan produit un fichier JSON dans `~/.local/share/deduplicateur/sessions/
 | Frontend | React 18 + TypeScript | UI réactive |
 | Bundler | Vite + Tauri CLI | Dev HMR + build natif |
 | CI/CD | GitHub Actions | Build Windows automatique sur push |
-| Tests Rust | cargo test + tempfile | 66 tests unitaires sur le moteur |
-| Tests TS | Vitest + jsdom + React Testing Library | 29 tests (utilitaires + i18n + composants App) |
+| Tests Rust | cargo test + tempfile | 91 tests unitaires sur le moteur |
+| Tests TS | Vitest + jsdom + React Testing Library | 51 tests (utilitaires + i18n + App + ImageComparator) |
 
 ---
 
@@ -193,10 +196,10 @@ npm run tauri build    # produit un binaire dans src-tauri/target/release/
 ### Tests
 
 ```bash
-# Moteur Rust (66 tests)
+# Moteur Rust (91 tests)
 cargo test --manifest-path src-tauri/Cargo.toml
 
-# TypeScript - utilitaires + i18n + composants React (29 tests)
+# TypeScript - utilitaires + i18n + composants React (51 tests)
 npm test
 ```
 
@@ -215,6 +218,9 @@ npm test
 | 6 | Similarité vidéos (ffmpeg, cache, parallèle, filtre durée) | ✅ |
 | 6b | DTW vidéo, affichage adapté par type, CI Windows | ✅ |
 | 7 | Refactoring hooks, i18n FR/EN, correctifs Windows (open/reveal/thumbnail) | ✅ |
+| 8 | UX : drag & drop, raccourcis clavier, filtre résultats, mode clair, tri colonnes | ✅ |
+| 9 | Comparateur d'images côte à côte, slider superposition, navigation groupes | ✅ |
+| 10 | Scan incrémental (cache hashes exacts), filtres extensions, filtres taille | ✅ |
 
 ---
 

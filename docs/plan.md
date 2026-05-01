@@ -187,16 +187,20 @@
 
 ---
 
-## Phase 10 - Scan incrémental + filtres
+## Phase 10 - Scan incrémental + filtres ✅
 
 **Objectif : rendre le rescan rapide et réduire le bruit dans les résultats**
 
-- [ ] Cache des hashes exacts : `exact_cache.json` (clé = chemin absolu, valeur = mtime + taille + hash), même modèle que `phash_cache.rs`
-- [ ] Rescan incrémental : au relancement d'un scan sur le même dossier, réutiliser les hashes des fichiers dont mtime et taille n'ont pas changé
-- [ ] Filtre d'extensions - mode exclusion : liste de globs à ignorer (ex. `*.tmp`, `*.DS_Store`, `Thumbs.db`), avec défauts raisonnables
-- [ ] Filtre d'extensions - mode inclusion : restreindre le scan à certaines extensions (ex. uniquement `*.jpg`, `*.png`)
-- [ ] Filtre taille globale : min et max en Ko/Mo configurables dans l'UI, appliqués avant toute phase de hash
-- [ ] UI : panneau "Filtres" dans les options de scan (extensions exclues, extensions incluses, taille min, taille max)
+- [x] Cache des hashes exacts : `exact_cache.json` (clé = chemin absolu, valeur = mtime + taille + partial_hash + full_hash), même modèle que `phash_cache.rs`
+- [x] Rescan incrémental : au relancement d'un scan sur le même dossier, réutiliser les hashes des fichiers dont mtime et taille n'ont pas changé
+- [x] Filtre d'extensions - mode exclusion : liste d'extensions à ignorer (ex. `tmp`, `DS_Store`, `Thumbs.db`), avec défauts raisonnables
+- [x] Filtre d'extensions - mode inclusion : restreindre le scan à certaines extensions (ex. uniquement `jpg`, `png`)
+- [x] Filtre taille globale : min et max en Ko configurables dans l'UI, appliqués avant toute phase de hash
+- [x] UI : panneau "Filtres" collapsible dans les options de scan (extensions exclues, extensions incluses, taille min, taille max, cache exact)
+- [x] `exact_cache.rs` : `ExactCache` (mtime + taille = invalidation, partial_hash + full_hash), 8 tests
+- [x] `passes_filters()` : logique de filtrage extraite, partagée entre le path recursif et non-recursif
+- [x] `ScanParams` : 5 nouveaux champs (exact_cache_enabled, exclude_extensions, include_extensions, min_file_size_kb, max_file_size_kb)
+- [x] 91 tests Rust (+25 : 8 exact_cache + 9 passes_filters + 4 filtres scan + 2 cache exact + 2 existants), 51 tests TypeScript (+5 FiltersPanel + 17 ImageComparator)
 
 **Critère de validation : rescan d'un dossier de 50 000 fichiers après ajout de 100 nouveaux fichiers en moins de 5 secondes**
 

@@ -217,6 +217,7 @@ export function ImageComparator({
               key={`l${i}`}
               className={`comparator-tab${effectiveLeftIdx === i ? " comparator-tab--active" : ""}`}
               onClick={() => pickLeft(i)}
+              title={f.name}
             >
               {f.name}
             </button>
@@ -229,6 +230,7 @@ export function ImageComparator({
               key={`r${i}`}
               className={`comparator-tab${effectiveRightIdx === i ? " comparator-tab--active" : ""}`}
               onClick={() => pickRight(i)}
+              title={f.name}
             >
               {f.name}
             </button>

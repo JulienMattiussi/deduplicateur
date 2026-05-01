@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import App, { GroupCard } from "./App";
+import App, { GroupCard, FiltersPanel } from "./App";
 import { LangProvider } from "./LangContext";
 
 // ----- Mocks globaux -----
@@ -266,8 +266,72 @@ describe("E - pagination", () => {
   });
 });
 
-// ---- F : bascule de langue ----
-describe("F - bascule de langue", () => {
+// ---- F : FiltersPanel ----
+describe("F - FiltersPanel", () => {
+  function makeProps(overrides: Partial<Parameters<typeof FiltersPanel>[0]> = {}) {
+    return {
+      excluded: ["node_modules"],
+      onChangeExcluded: vi.fn(),
+      excludeExtensions: ["tmp"],
+      onChangeExclude: vi.fn(),
+      includeExtensions: [],
+      onChangeInclude: vi.fn(),
+      minFileSizeKb: 0,
+      onChangeMin: vi.fn(),
+      maxFileSizeKb: 0,
+      onChangeMax: vi.fn(),
+      exactCacheEnabled: true,
+      onChangeCache: vi.fn(),
+      disabled: false,
+      ...overrides,
+    };
+  }
+
+  it("est fermé par défaut et affiche le count total de filtres actifs", () => {
+    // 1 dossier exclu + 2 extensions exclues = 3
+    renderWithLang(<FiltersPanel {...makeProps({ excludeExtensions: ["tmp", "log"] })} />);
+    expect(screen.queryByText("Extensions exclues")).not.toBeInTheDocument();
+    expect(screen.getByText("3")).toBeInTheDocument();
+  });
+
+  it("s'ouvre au clic sur le toggle", async () => {
+    const user = userEvent.setup();
+    renderWithLang(<FiltersPanel {...makeProps()} />);
+    await user.click(screen.getByText(/Filtres/));
+    expect(screen.getByText("Extensions exclues")).toBeInTheDocument();
+  });
+
+  it("affiche la chip du dossier exclu et de l'extension exclue", async () => {
+    const user = userEvent.setup();
+    renderWithLang(<FiltersPanel {...makeProps()} />);
+    await user.click(screen.getByText(/Filtres/));
+    expect(screen.getByText("node_modules")).toBeInTheDocument();
+    expect(screen.getByText(".tmp")).toBeInTheDocument();
+  });
+
+  it("appelle onChangeExcluded sans le dossier supprimé au clic sur son ×", async () => {
+    const user = userEvent.setup();
+    const onChangeExcluded = vi.fn();
+    renderWithLang(<FiltersPanel {...makeProps({ onChangeExcluded })} />);
+    await user.click(screen.getByText(/Filtres/));
+    // Le premier × correspond à la chip "node_modules"
+    await user.click(screen.getAllByText("×")[0]);
+    expect(onChangeExcluded).toHaveBeenCalledWith([]);
+  });
+
+  it("appelle onChangeExclude avec la nouvelle extension via Entrée", async () => {
+    const user = userEvent.setup();
+    const onChangeExclude = vi.fn();
+    renderWithLang(<FiltersPanel {...makeProps({ onChangeExclude })} />);
+    await user.click(screen.getByText(/Filtres/));
+    const inputs = screen.getAllByPlaceholderText(/ex\./i);
+    await user.type(inputs[0], "bak{Enter}");
+    expect(onChangeExclude).toHaveBeenCalledWith(["tmp", "bak"]);
+  });
+});
+
+// ---- G : bascule de langue ----
+describe("G - bascule de langue", () => {
   it("affiche 'Scan' en anglais après clic sur EN", async () => {
     const user = userEvent.setup();
     renderWithLang(<App />);
