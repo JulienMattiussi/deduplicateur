@@ -740,6 +740,7 @@ export default function App() {
   }
 
   function handleScan() {
+    resetResults();
     const effectiveRecursive = config.scanMode === "by_folder" ? true : config.recursive;
     return scanExec.scan({
       path: config.folder,

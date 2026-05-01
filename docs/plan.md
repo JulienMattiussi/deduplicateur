@@ -178,6 +178,10 @@
 - [x] Sélecteur de fichier pour les groupes avec 3+ images
 - [x] `get_image_meta` commande Rust : dimensions (header-only), format, date EXIF via `kamadak-exif`
 - [x] `ImageComparator.tsx` composant séparé ; 66 tests Rust, 29 tests TypeScript
+- [x] Sélecteurs L/R indépendants (deux groupes d'onglets, auto-swap si même fichier choisi)
+- [x] Deux `useEffect` séparés pour gauche/droite (changer un panneau ne recharge pas l'autre)
+- [x] Spinner sur le bouton "Reprendre" pendant le chargement d'une session
+- [x] Effacement des résultats précédents au lancement d'un nouveau scan
 
 **Critère de validation : comparer photo.jpg (1920x1080, 4 Mo) et photo_resized.jpg (800x600, 400 Ko) et choisir en un geste**
 

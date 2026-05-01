@@ -32,7 +32,12 @@ Outil de détection et suppression de fichiers en double - rapide, local, sans c
 - **Paramètres avancés vidéo** - panneau configurable dans l'UI (frames par vidéo, tolérance de durée, cache, DTW)
 - **Affichage adapté par type** - les groupes images et vidéos affichent miniatures, taille par fichier et durée ; label et icône adaptés (fichiers / images / vidéos)
 - **Résultats partiels** - si l'analyse est annulée, les groupes déjà trouvés sont affichés avec un bandeau orange "résultats partiels"
-- **Interface sombre** - UI réactive, barre de progression, statistiques en temps réel
+- **Interface sombre/claire** - bascule dark/light avec persistance ; UI réactive, barre de progression, statistiques en temps réel
+- **Glisser-déposer** - glisser un dossier sur la fenêtre le sélectionne directement (overlay visuel pendant le survol)
+- **Raccourcis clavier** - `Del` pour supprimer la sélection, `Ctrl+A` pour tout cocher, `Esc` pour fermer les modales
+- **Filtre dans les résultats** - champ texte pour filtrer les groupes par nom de fichier ou chemin, en temps réel
+- **Tri des colonnes** - clic sur "Nom", "Modifié" ou "Taille" pour trier les fichiers dans chaque groupe (cycle ↑ ↓ sans tri)
+- **Comparateur d'images** - vue plein écran côte à côte pour les groupes d'images similaires : métadonnées complètes (dimensions, format, date EXIF), sélecteur L/R indépendant pour comparer n'importe quelle paire, slider de superposition, navigation entre groupes au clavier, bouton "Garder celui-ci"
 
 ---
 
@@ -51,21 +56,31 @@ Outil de détection et suppression de fichiers en double - rapide, local, sans c
 ## Architecture
 
 ```
-src/                     # Frontend React + TypeScript
-  App.tsx                # Composant principal - UI, état, appels Tauri
-  App.css                # Dark theme
-  utils.ts               # formatSize, dirname
+src/                       # Frontend React + TypeScript
+  App.tsx                  # Composant principal - UI, état, appels Tauri
+  App.css                  # Thème sombre/clair (variables CSS + data-theme)
+  ImageComparator.tsx      # Comparateur d'images côte à côte / slider superposition
+  LangContext.tsx          # Contexte i18n FR/EN
+  i18n.ts                  # Traductions FR et EN
+  types.ts                 # Types TypeScript partagés
+  utils.ts                 # formatSize, dirname
+  hooks/
+    useScanConfig.ts       # Configuration du scan (dossier, mode, seuils)
+    useScanExecution.ts    # Lancement / annulation / progression
+    useResults.ts          # Chargement paginé des groupes et dossiers
+    useSelectionState.ts   # Sélection et suppression
 
 src-tauri/src/
-  lib.rs                 # Commandes Tauri : scan_folder, get_groups_page,
-                         #   list_sessions, load_session, delete_session, delete_files
-  scanner.rs             # Moteur Rust : collect_files, hash_partial, hash_full,
-                         #   filtrage en cascade, parallélisme Rayon
-  video_hash.rs          # Hash de frames video (ffmpeg), DTW, mean hash 64 bits
-  video_cache.rs         # Cache inter-scans des frame hashes
-  video_config.rs        # Configuration du pipeline video (JSON persistant)
-  phash_config.rs        # Configuration du pipeline pHash images
-  phash_cache.rs         # Cache inter-scans des pHash images
+  lib.rs                   # Commandes Tauri : scan_folder, get_groups_page,
+                           #   list_sessions, load_session, delete_session,
+                           #   delete_files, get_image_thumbnail, get_image_meta
+  scanner.rs               # Moteur Rust : collect_files, hash_partial, hash_full,
+                           #   filtrage en cascade, parallélisme Rayon
+  video_hash.rs            # Hash de frames video (ffmpeg), DTW, mean hash 64 bits
+  video_cache.rs           # Cache inter-scans des frame hashes
+  video_config.rs          # Configuration du pipeline video (JSON persistant)
+  phash_config.rs          # Configuration du pipeline pHash images
+  phash_cache.rs           # Cache inter-scans des pHash images
 ```
 
 ### Pipeline de déduplication
@@ -108,6 +123,7 @@ Chaque scan produit un fichier JSON dans `~/.local/share/deduplicateur/sessions/
 | Parcours | walkdir | Récursion avec filtrage de dossiers |
 | Corbeille | trash | Suppression récupérable cross-platform |
 | Similarité images | image_hasher + image | Gradient hash, résolution-agnostique |
+| Métadonnées EXIF | kamadak-exif | Lecture date EXIF pour le comparateur d'images |
 | Similarité vidéos | ffmpeg/ffprobe (subprocess) | Mean hash sur N frames, DTW, cache inter-scans |
 | Frontend | React 18 + TypeScript | UI réactive |
 | Bundler | Vite + Tauri CLI | Dev HMR + build natif |
