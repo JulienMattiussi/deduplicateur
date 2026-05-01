@@ -4,6 +4,8 @@ import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import "./App.css";
 import { formatSize, dirname } from "./utils";
+import { useLang } from "./LangContext";
+import { interp, Translations } from "./i18n";
 
 interface VideoMetadata {
   duration_secs: number;
@@ -115,7 +117,7 @@ async function revealInFolder(path: string) {
   try {
     await invoke("reveal_in_folder", { path });
   } catch {
-    // best-effort, pas d'erreur visible
+    // best-effort
   }
 }
 
@@ -128,43 +130,43 @@ function formatDurationSecs(secs: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-function formatDuration(ms: number): string {
-  if (ms < 1000) return `${ms} ms`;
+function formatDuration(ms: number, t: Translations): string {
+  if (ms < 1000) return `${ms} ${t.durationMs}`;
   const s = Math.round(ms / 1000);
-  if (s < 60) return `${s} s`;
+  if (s < 60) return `${s} ${t.durationS}`;
   const m = Math.floor(s / 60);
   const rem = s % 60;
-  if (m < 60) return rem > 0 ? `${m} min ${rem} s` : `${m} min`;
+  if (m < 60) return rem > 0 ? `${m} ${t.durationMin} ${rem} ${t.durationS}` : `${m} ${t.durationMin}`;
   const h = Math.floor(m / 60);
   const remMin = m % 60;
-  return remMin > 0 ? `${h} h ${remMin} min` : `${h} h`;
+  return remMin > 0 ? `${h} ${t.durationH} ${remMin} ${t.durationMin}` : `${h} ${t.durationH}`;
 }
 
-function sessionTags(session: ScanSummary): string[] {
+function sessionTags(session: ScanSummary, t: Translations): string[] {
   const tags: string[] = [];
-  if (session.by_folder) tags.push("par dossier");
-  else if (session.recursive) tags.push("récursif");
-  else tags.push("dossier plat");
-  if (session.find_similar) tags.push("similarité images");
-  if (session.find_similar_videos) tags.push("similarité vidéos");
-  if (!session.find_similar && !session.find_similar_videos) tags.push("doublons exacts");
+  if (session.by_folder) tags.push(t.tagByFolder);
+  else if (session.recursive) tags.push(t.tagRecursive);
+  else tags.push(t.tagFlat);
+  if (session.find_similar) tags.push(t.tagSimilarImages);
+  if (session.find_similar_videos) tags.push(t.tagSimilarVideos);
+  if (!session.find_similar && !session.find_similar_videos) tags.push(t.tagExact);
   return tags;
 }
 
-function relativeDate(id: string): string {
+function relativeDate(id: string, t: Translations): string {
   const diff = Date.now() - parseInt(id);
   const minutes = Math.floor(diff / 60_000);
   const hours = Math.floor(diff / 3_600_000);
   const days = Math.floor(diff / 86_400_000);
-  if (minutes < 1) return "à l'instant";
-  if (minutes < 60) return `il y a ${minutes} min`;
-  if (hours < 24) return `il y a ${hours} h`;
-  return `il y a ${days} j`;
+  if (minutes < 1) return t.justNow;
+  if (minutes < 60) return interp(t.minutesAgo, { n: minutes });
+  if (hours < 24) return interp(t.hoursAgo, { n: hours });
+  return interp(t.daysAgo, { n: days });
 }
 
-function formatDate(ts: number): string {
+function formatDate(ts: number, dateLocale: string): string {
   if (!ts) return "-";
-  return new Date(ts * 1000).toLocaleDateString("fr-FR", {
+  return new Date(ts * 1000).toLocaleDateString(dateLocale, {
     day: "2-digit",
     month: "short",
     year: "numeric",
@@ -182,26 +184,27 @@ function SessionCard({
   onResume: (id: string) => void;
   onDelete: (id: string) => void;
 }) {
+  const { t } = useLang();
   return (
     <div className={`session-card ${active ? "session-card--active" : ""}`}>
       <div className="session-meta">
         <span className="session-folder">📁 {session.folder}</span>
-        <span className="session-date">{relativeDate(session.id)}</span>
+        <span className="session-date">{relativeDate(session.id, t)}</span>
       </div>
       <div className="session-tags">
-        {sessionTags(session).map((t) => <span key={t} className="session-tag">{t}</span>)}
+        {sessionTags(session, t).map((tag) => <span key={tag} className="session-tag">{tag}</span>)}
       </div>
       <div className="session-stats">
-        <span>{session.total_groups} groupes</span>
-        <span className="session-waste">{formatSize(session.total_wasted_bytes)} récupérables</span>
-        <span>{session.scanned_files} fichiers analysés</span>
+        <span>{session.total_groups} {t.groups}</span>
+        <span className="session-waste">{formatSize(session.total_wasted_bytes)} {t.recoverable}</span>
+        <span>{session.scanned_files} {t.filesScanned}</span>
       </div>
       <div className="session-actions">
         <button className="btn-primary" onClick={() => onResume(session.id)} disabled={active}>
-          {active ? "En cours" : "Reprendre"}
+          {active ? t.sessionActive : t.sessionResume}
         </button>
         <button className="btn-session-delete" onClick={() => onDelete(session.id)}>
-          Supprimer
+          {t.sessionDelete}
         </button>
       </div>
     </div>
@@ -303,6 +306,7 @@ export function GroupCard({
   selected: Set<string>;
   onToggle: (path: string) => void;
 }) {
+  const { t } = useLang();
   const [expanded, setExpanded] = useState(true);
   const isSimilar = group.similar === true;
   const isVideoSimilar = group.video_similar === true;
@@ -316,11 +320,11 @@ export function GroupCard({
         <span className="group-chevron">{expanded ? "▾" : "▸"}</span>
         <span className="group-count">
           {isVideoGroup ? "🎬 " : isImageGroup ? "🖼 " : ""}
-          {group.files.length} {isVideoGroup ? "vidéos" : isImageGroup ? "images" : "fichiers"} {(isSimilar || isVideoSimilar) ? "similaires" : "identiques"}
+          {group.files.length} {isVideoGroup ? t.typeVideos : isImageGroup ? t.typeImages : t.typeFiles} {(isSimilar || isVideoSimilar) ? t.similar : t.identical}
         </span>
-        {!isImageGroup && !isVideoGroup && <span className="group-size">{formatSize(group.size)} chacun</span>}
+        {!isImageGroup && !isVideoGroup && <span className="group-size">{formatSize(group.size)} {t.each}</span>}
         <span className="group-waste">
-          {formatSize(group.size * (group.files.length - 1))} en double
+          {formatSize(group.size * (group.files.length - 1))} {t.duplicate}
         </span>
       </button>
 
@@ -331,11 +335,11 @@ export function GroupCard({
         <div className="group-files">
           <div className="file-row-header">
             <span className="file-col-cb" />
-            <span className="file-col-name">Nom</span>
-            <span className="file-col-date">Modifié</span>
-            {(isImageGroup || isVideoGroup) && <span className="file-col-size">Taille</span>}
-            {isVideoGroup && <span className="file-col-video-meta">Durée</span>}
-            <span className="file-col-dir">Dossier</span>
+            <span className="file-col-name">{t.colName}</span>
+            <span className="file-col-date">{t.colModified}</span>
+            {(isImageGroup || isVideoGroup) && <span className="file-col-size">{t.colSize}</span>}
+            {isVideoGroup && <span className="file-col-video-meta">{t.colDuration}</span>}
+            <span className="file-col-dir">{t.colFolder}</span>
             <span className="file-col-badge" />
           </div>
           {group.files.map((file, idx) => (
@@ -353,7 +357,7 @@ export function GroupCard({
                 />
               </span>
               <span className="file-col-name file-name">{file.name}</span>
-              <span className="file-col-date file-meta">{formatDate(file.modified)}</span>
+              <span className="file-col-date file-meta">{formatDate(file.modified, t.dateLocale)}</span>
               {(isImageGroup || isVideoGroup) && <span className="file-col-size file-meta">{formatSize(file.size)}</span>}
               {isVideoGroup && (
                 <span className="file-col-video-meta file-meta">
@@ -365,13 +369,13 @@ export function GroupCard({
                 <button
                   className="btn-reveal"
                   onClick={(e) => { e.stopPropagation(); revealInFolder(file.path); }}
-                  title="Ouvrir dans le gestionnaire de fichiers"
+                  title={t.openInExplorer}
                 >
                   ↗
                 </button>
               </span>
               <span className="file-col-badge">
-                {idx === 0 && <span className="badge-original">original</span>}
+                {idx === 0 && <span className="badge-original">{t.original}</span>}
               </span>
             </div>
           ))}
@@ -400,6 +404,7 @@ function FolderSection({
   onExpand: () => void;
   onLoadMore: () => void;
 }) {
+  const { t } = useLang();
   const [expanded, setExpanded] = useState(false);
 
   function toggle() {
@@ -415,10 +420,10 @@ function FolderSection({
       <button className="folder-section-header" onClick={toggle}>
         <span className="folder-section-chevron">{expanded ? "▾" : "▸"}</span>
         <span className="folder-section-name">
-          📁 {summary.folder_key === "" ? "Dossier racine" : summary.folder_key}
+          📁 {summary.folder_key === "" ? t.rootFolder : summary.folder_key}
         </span>
         <span className="folder-section-stats">
-          {summary.group_count} groupe{summary.group_count > 1 ? "s" : ""} · {formatSize(summary.total_wasted_bytes)} en double
+          {summary.group_count} {summary.group_count > 1 ? t.groups : t.groups} · {formatSize(summary.total_wasted_bytes)} {t.duplicate}
         </span>
       </button>
       {expanded && (
@@ -426,7 +431,7 @@ function FolderSection({
           {loading && groups.length === 0 && (
             <div className="folder-section-loading">
               <span className="toolbar-spinner" style={{ display: "inline-block" }} />
-              Chargement…
+              {t.loading}
             </div>
           )}
           {groups.map((group) => (
@@ -434,11 +439,11 @@ function FolderSection({
           ))}
           {hasMore && !loading && groups.length > 0 && (
             <button className="btn-load-more" onClick={onLoadMore}>
-              Afficher 50 de plus ({summary.group_count - groups.length} restants)
+              {interp(t.loadMore, { n: summary.group_count - groups.length })}
             </button>
           )}
           {loading && groups.length > 0 && (
-            <div className="folder-section-loading">Chargement…</div>
+            <div className="folder-section-loading">{t.loading}</div>
           )}
         </>
       )}
@@ -455,6 +460,7 @@ function ExclusionsPanel({
   onChange: (v: string[]) => void;
   disabled: boolean;
 }) {
+  const { t } = useLang();
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
 
@@ -472,7 +478,7 @@ function ExclusionsPanel({
     <div className="exclusions">
       <button className="exclusions-toggle" onClick={() => setOpen((v) => !v)} disabled={disabled}>
         <span>{open ? "▾" : "▸"}</span>
-        Dossiers exclus
+        {t.excludedFolders}
         <span className="exclusions-count">{excluded.length}</span>
       </button>
 
@@ -494,11 +500,11 @@ function ExclusionsPanel({
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && add()}
-              placeholder="Ajouter un dossier…"
+              placeholder={t.addFolderPlaceholder}
               disabled={disabled}
             />
             <button className="btn-ghost" onClick={add} disabled={disabled || !input.trim()}>
-              Ajouter
+              {t.add}
             </button>
           </div>
         </div>
@@ -516,6 +522,7 @@ function VideoAdvancedPanel({
   onChange: (cfg: VideoConfig) => void;
   disabled: boolean;
 }) {
+  const { t } = useLang();
   const [open, setOpen] = useState(false);
 
   function set<K extends keyof VideoConfig>(key: K, value: VideoConfig[K]) {
@@ -526,24 +533,24 @@ function VideoAdvancedPanel({
     <div className="advanced-panel">
       <button className="advanced-panel-toggle" onClick={() => setOpen((v) => !v)} disabled={disabled}>
         <span>{open ? "▾" : "▸"}</span>
-        Paramètres avancés de détection
+        {t.advancedSettings}
       </button>
       {open && (
         <button
           className="adv-reset"
           onClick={() => onChange(DEFAULT_VIDEO_CONFIG)}
           disabled={disabled}
-          title="Remettre tous les paramètres aux valeurs par défaut"
+          title={t.resetTitle}
         >
-          Réinitialiser
+          {t.reset}
         </button>
       )}
       {open && (
         <div key={JSON.stringify(config)} className="advanced-panel-body">
           <div className="adv-section">
-            <span className="adv-section-title">Extraction</span>
+            <span className="adv-section-title">{t.extractionLabel}</span>
             <label className="adv-row">
-              <span>Frames par vidéo</span>
+              <span>{t.framesPerVideo}</span>
               <input
                 type="number"
                 min={2}
@@ -556,9 +563,9 @@ function VideoAdvancedPanel({
             </label>
           </div>
           <div className="adv-section">
-            <span className="adv-section-title">Filtre de durée</span>
+            <span className="adv-section-title">{t.durationFilter}</span>
             <label className="adv-row">
-              <span>Tolérance (%)</span>
+              <span>{t.tolerance}</span>
               <input
                 type="number"
                 min={0}
@@ -571,9 +578,9 @@ function VideoAdvancedPanel({
             </label>
           </div>
           <div className="adv-section">
-            <span className="adv-section-title">Cache entre scans</span>
+            <span className="adv-section-title">{t.cacheLabel}</span>
             <label className="adv-row">
-              <span>Activer</span>
+              <span>{t.enable}</span>
               <input
                 type="checkbox"
                 checked={config.cache_enabled}
@@ -583,9 +590,9 @@ function VideoAdvancedPanel({
             </label>
           </div>
           <div className="adv-section">
-            <span className="adv-section-title">Alignement temporel</span>
+            <span className="adv-section-title">{t.temporalAlign}</span>
             <label className="adv-row">
-              <span>DTW <span className="adv-hint">(intro/génériques courts)</span></span>
+              <span>DTW <span className="adv-hint">{t.dtwHint}</span></span>
               <input
                 type="checkbox"
                 checked={config.use_dtw}
@@ -609,6 +616,7 @@ function AdvancedPanel({
   onChange: (cfg: PHashConfig) => void;
   disabled: boolean;
 }) {
+  const { t } = useLang();
   const [open, setOpen] = useState(false);
 
   function set<K extends keyof PHashConfig>(key: K, value: PHashConfig[K]) {
@@ -619,24 +627,24 @@ function AdvancedPanel({
     <div className="advanced-panel">
       <button className="advanced-panel-toggle" onClick={() => setOpen((v) => !v)} disabled={disabled}>
         <span>{open ? "▾" : "▸"}</span>
-        Paramètres avancés de détection
+        {t.advancedSettings}
       </button>
       {open && (
         <button
           className="adv-reset"
           onClick={() => onChange(DEFAULT_PHASH_CONFIG)}
           disabled={disabled}
-          title="Remettre tous les paramètres aux valeurs par défaut"
+          title={t.resetTitle}
         >
-          Réinitialiser
+          {t.reset}
         </button>
       )}
       {open && (
         <div className="advanced-panel-body">
           <div className="adv-section">
-            <span className="adv-section-title">Filtre de taille</span>
+            <span className="adv-section-title">{t.sizeFilter}</span>
             <label className="adv-row">
-              <span>Taille minimale (Ko)</span>
+              <span>{t.minSizeKb}</span>
               <input
                 type="number"
                 min={0}
@@ -647,7 +655,7 @@ function AdvancedPanel({
               />
             </label>
             <label className="adv-row">
-              <span>Activer si au moins N images</span>
+              <span>{t.enableIfN}</span>
               <input
                 type="number"
                 min={1}
@@ -659,9 +667,9 @@ function AdvancedPanel({
             </label>
           </div>
           <div className="adv-section">
-            <span className="adv-section-title">Filtre de ratio d'aspect</span>
+            <span className="adv-section-title">{t.aspectFilter}</span>
             <label className="adv-row">
-              <span>Tolérance (%)</span>
+              <span>{t.tolerance}</span>
               <input
                 type="number"
                 min={0}
@@ -673,7 +681,7 @@ function AdvancedPanel({
               />
             </label>
             <label className="adv-row">
-              <span>Activer si au moins N images</span>
+              <span>{t.enableIfN}</span>
               <input
                 type="number"
                 min={1}
@@ -685,9 +693,9 @@ function AdvancedPanel({
             </label>
           </div>
           <div className="adv-section">
-            <span className="adv-section-title">Hash en 2 passes</span>
+            <span className="adv-section-title">{t.twoPassHash}</span>
             <label className="adv-row">
-              <span>Activer</span>
+              <span>{t.enable}</span>
               <input
                 type="checkbox"
                 checked={config.two_pass_enabled}
@@ -696,7 +704,7 @@ function AdvancedPanel({
               />
             </label>
             <label className="adv-row">
-              <span>Activer si au moins N images</span>
+              <span>{t.enableIfN}</span>
               <input
                 type="number"
                 min={1}
@@ -707,7 +715,7 @@ function AdvancedPanel({
               />
             </label>
             <label className="adv-row">
-              <span>Multiplicateur de seuil grossier</span>
+              <span>{t.coarseMultiplier}</span>
               <input
                 type="number"
                 min={1}
@@ -720,9 +728,9 @@ function AdvancedPanel({
             </label>
           </div>
           <div className="adv-section">
-            <span className="adv-section-title">Cache entre scans</span>
+            <span className="adv-section-title">{t.cacheLabel}</span>
             <label className="adv-row">
-              <span>Activer</span>
+              <span>{t.enable}</span>
               <input
                 type="checkbox"
                 checked={config.cache_enabled}
@@ -732,9 +740,9 @@ function AdvancedPanel({
             </label>
           </div>
           <div className="adv-section">
-            <span className="adv-section-title">Comparaison parallèle</span>
+            <span className="adv-section-title">{t.parallelCompare}</span>
             <label className="adv-row">
-              <span>Activer</span>
+              <span>{t.enable}</span>
               <input
                 type="checkbox"
                 checked={config.parallel_compare_enabled}
@@ -743,7 +751,7 @@ function AdvancedPanel({
               />
             </label>
             <label className="adv-row">
-              <span>Activer si au moins N images</span>
+              <span>{t.enableIfN}</span>
               <input
                 type="number"
                 min={1}
@@ -755,9 +763,9 @@ function AdvancedPanel({
             </label>
           </div>
           <div className="adv-section">
-            <span className="adv-section-title">Mode développeur</span>
+            <span className="adv-section-title">{t.devMode}</span>
             <label className="adv-row">
-              <span>Enregistrer les métriques (phash_perf.jsonl)</span>
+              <span>{t.savePerfMetrics}</span>
               <input
                 type="checkbox"
                 checked={config.perf_log_enabled}
@@ -773,6 +781,7 @@ function AdvancedPanel({
 }
 
 export default function App() {
+  const { t, lang, setLang } = useLang();
   const [sessions, setSessions] = useState<ScanSummary[]>([]);
   const [summary, setSummary] = useState<ScanSummary | null>(null);
   const [groups, setGroups] = useState<DuplicateGroup[]>([]);
@@ -868,7 +877,7 @@ export default function App() {
         setHasMore(page.has_more);
       }
     } catch {
-      // session pas encore chargée
+      // session pas encore chargee
     } finally {
       setLoadingMore(false);
     }
@@ -1069,15 +1078,24 @@ export default function App() {
     <div className="app">
       <header className="header">
         <div className="header-top">
-          <h1 className="title">Déduplicateur</h1>
-          {summary && (
-            <button
-              className="btn-ghost"
-              onClick={resetResults}
-            >
-              ← Mes analyses
-            </button>
-          )}
+          <h1 className="title">{t.appTitle}</h1>
+          <div className="header-top-right">
+            <div className="lang-toggle">
+              <button
+                className={`lang-btn${lang === "fr" ? " lang-btn--active" : ""}`}
+                onClick={() => setLang("fr")}
+              >FR</button>
+              <button
+                className={`lang-btn${lang === "en" ? " lang-btn--active" : ""}`}
+                onClick={() => setLang("en")}
+              >EN</button>
+            </div>
+            {summary && (
+              <button className="btn-ghost" onClick={resetResults}>
+                {t.backToSessions}
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="folder-row">
@@ -1087,7 +1105,7 @@ export default function App() {
             style={{ opacity: picking ? 0.5 : 1, pointerEvents: picking ? "none" : "auto" }}
           >
             <span className="folder-icon">📁</span>
-            <span className="folder-path">{folder || "Cliquer pour choisir un dossier…"}</span>
+            <span className="folder-path">{folder || t.pickFolder}</span>
           </div>
           <select
             className="select-mode"
@@ -1095,8 +1113,8 @@ export default function App() {
             onChange={(e) => setScanMode(e.target.value as "all" | "by_folder")}
             disabled={scanning}
           >
-            <option value="all">Tout le dossier</option>
-            <option value="by_folder">Par sous-dossier</option>
+            <option value="all">{t.scanAll}</option>
+            <option value="by_folder">{t.scanByFolder}</option>
           </select>
           <label className="toggle-recursive" style={{ visibility: scanMode === "by_folder" ? "hidden" : "visible" }}>
             <input
@@ -1105,16 +1123,16 @@ export default function App() {
               onChange={(e) => setRecursive(e.target.checked)}
               disabled={scanning || scanMode === "by_folder"}
             />
-            Sous-dossiers
+            {t.recursive}
           </label>
           {scanning ? (
             <button className="btn-cancel" onClick={cancelScan} disabled={cancelling}>
               {cancelling
-                ? <><span className="btn-spinner" /> Annulation…</>
-                : "Annuler"}
+                ? <><span className="btn-spinner" /> {t.cancelling}</>
+                : t.cancel}
             </button>
           ) : (
-            <button className="btn-primary" onClick={scan} disabled={!folder}>Analyser</button>
+            <button className="btn-primary" onClick={scan} disabled={!folder}>{t.analyse}</button>
           )}
         </div>
 
@@ -1127,13 +1145,13 @@ export default function App() {
                 onClick={() => setDetectionMode(mode)}
                 disabled={scanning}
               >
-                {mode === "files" ? "Fichiers" : mode === "images" ? "🖼 Images" : "🎬 Vidéos"}
+                {mode === "files" ? t.modeFiles : mode === "images" ? t.modeImages : t.modeVideos}
               </button>
             ))}
           </div>
           {detectionMode === "images" && (
             <label className="slider-threshold">
-              Similarité min&nbsp;: <strong>{simSimilarity}&nbsp;%</strong>
+              {t.minSimilarity}&nbsp;: <strong>{simSimilarity}&nbsp;%</strong>
               <input
                 type="range"
                 min={60}
@@ -1148,7 +1166,7 @@ export default function App() {
           )}
           {detectionMode === "videos" && (
             <label className="slider-threshold">
-              Similarité min&nbsp;: <strong>{videoSimilarity}&nbsp;%</strong>
+              {t.minSimilarity}&nbsp;: <strong>{videoSimilarity}&nbsp;%</strong>
               <input
                 type="range"
                 min={60}
@@ -1173,13 +1191,13 @@ export default function App() {
 
         {summary && (
           <div className="stats-row">
-            <span className="stat"><strong>{summary.scanned_files}</strong> fichiers analysés</span>
+            <span className="stat"><strong>{summary.scanned_files}</strong> {t.filesScanned}</span>
             {summary.by_folder && (
-              <span className="stat"><strong>{summary.total_folders}</strong> dossier{summary.total_folders > 1 ? "s" : ""}</span>
+              <span className="stat"><strong>{summary.total_folders}</strong> {summary.total_folders > 1 ? t.folders : t.folder}</span>
             )}
-            <span className="stat"><strong>{summary.total_groups}</strong> groupes</span>
-            <span className="stat waste"><strong>{formatSize(summary.total_wasted_bytes)}</strong> récupérables</span>
-            <span className="stat duration">en {formatDuration(summary.duration_ms)}</span>
+            <span className="stat"><strong>{summary.total_groups}</strong> {t.groups}</span>
+            <span className="stat waste"><strong>{formatSize(summary.total_wasted_bytes)}</strong> {t.recoverable}</span>
+            <span className="stat duration">en {formatDuration(summary.duration_ms, t)}</span>
           </div>
         )}
       </header>
@@ -1187,13 +1205,13 @@ export default function App() {
       {error && <div className="error-banner">{error}</div>}
       {summary?.partial && (
         <div className="partial-banner">
-          Analyse annulée - résultats partiels affichés
+          {t.partialResults}
         </div>
       )}
 
       {showSessionPicker && (
         <div className="session-list">
-          <p className="session-list-title">Analyses précédentes</p>
+          <p className="session-list-title">{t.previousSessions}</p>
           {sessions.map((s) => (
             <SessionCard
               key={s.id}
@@ -1209,39 +1227,39 @@ export default function App() {
       {showResults && (
         <>
           <div className="toolbar">
-            <button className="btn-ghost" onClick={selectAllDuplicates} disabled={selecting}>Tout cocher</button>
-            <button className="btn-ghost" onClick={() => selectSmart("newest")} disabled={selecting}>Garder le plus récent</button>
-            <button className="btn-ghost" onClick={() => selectSmart("oldest")} disabled={selecting}>Garder le plus ancien</button>
-            <button className="btn-ghost" onClick={clearSelection} disabled={selecting}>Désélectionner</button>
+            <button className="btn-ghost" onClick={selectAllDuplicates} disabled={selecting}>{t.selectAll}</button>
+            <button className="btn-ghost" onClick={() => selectSmart("newest")} disabled={selecting}>{t.keepNewest}</button>
+            <button className="btn-ghost" onClick={() => selectSmart("oldest")} disabled={selecting}>{t.keepOldest}</button>
+            <button className="btn-ghost" onClick={clearSelection} disabled={selecting}>{t.deselect}</button>
             {selected.size > 0 && !selecting && (
               <button className="btn-danger" onClick={() => setConfirmPending(true)} disabled={deleting}>
                 {deleting
-                  ? "Suppression…"
-                  : `Supprimer ${selected.size} fichier${selected.size > 1 ? "s" : ""} (${formatSize(selectedSize)})`}
+                  ? t.deleting
+                  : interp(t.deleteN, { n: selected.size, s: selected.size > 1 ? "s" : "", size: formatSize(selectedSize) })}
               </button>
             )}
             {selecting && (
               <span className="toolbar-loader">
                 <span className="toolbar-spinner" />
-                Calcul de la sélection…
+                {t.calculating}
               </span>
             )}
           </div>
 
           {summary?.by_folder && (
             <div className="folder-sort-bar">
-              <span className="folder-sort-label">Trier par</span>
+              <span className="folder-sort-label">{t.sortBy}</span>
               <button
                 className={`btn-sort${folderSort === "waste" ? " btn-sort--active" : ""}`}
                 onClick={() => setFolderSort("waste")}
               >
-                Taille récupérable
+                {t.sortWaste}
               </button>
               <button
                 className={`btn-sort${folderSort === "name" ? " btn-sort--active" : ""}`}
                 onClick={() => setFolderSort("name")}
               >
-                Nom
+                {t.sortName}
               </button>
             </div>
           )}
@@ -1273,8 +1291,8 @@ export default function App() {
                     disabled={loadingMore}
                   >
                     {loadingMore
-                      ? "Chargement…"
-                      : `Afficher 50 de plus (${summary!.total_groups - groups.length} restants)`}
+                      ? t.loading
+                      : interp(t.loadMore, { n: summary!.total_groups - groups.length })}
                   </button>
                 )}
               </>
@@ -1286,14 +1304,14 @@ export default function App() {
       {summary && summary.total_groups === 0 && (
         <div className="empty-state">
           <span className="empty-icon">✓</span>
-          <p>Aucun doublon trouvé dans ce dossier.</p>
+          <p>{t.noDuplicates}</p>
         </div>
       )}
 
       {!summary && !scanning && sessions.length === 0 && (
         <div className="empty-state">
           <span className="empty-icon">🔍</span>
-          <p>Choisissez un dossier et lancez l'analyse.</p>
+          <p>{t.pickFolderHint}</p>
         </div>
       )}
 
@@ -1302,7 +1320,11 @@ export default function App() {
           {progress ? (
             <div className="progress-container">
               <p className="progress-label">
-                Analyse en cours… {progress.current} / {progress.total} {detectionMode === "images" ? "images" : detectionMode === "videos" ? "vidéos" : "fichiers"}
+                {interp(t.scanProgress, {
+                  n: progress.current,
+                  m: progress.total,
+                  type: detectionMode === "images" ? t.typeImages : detectionMode === "videos" ? t.typeVideos : t.typeFiles,
+                })}
               </p>
               <div className="progress-track">
                 <div
@@ -1318,29 +1340,26 @@ export default function App() {
                   const now = Date.now();
                   const elapsed = hist.length >= 2 ? now - hist[0].time : 0;
 
-                  // "presque fini" uses recent rate (last ~20 samples)
                   const recentRef = hist.length >= 2 ? hist[Math.max(0, hist.length - 20)] : null;
                   const recentRate = recentRef ? (progress.current - recentRef.current) / (now - recentRef.time) : 0;
                   if (pct >= 0.95 || (recentRate > 0 && (progress.total - progress.current) / recentRate < 15_000)) {
-                    return <span className="progress-eta"> - c'est presque fini</span>;
+                    return <span className="progress-eta">{t.almostDone}</span>;
                   }
 
-                  // warmup: before 2 min, show pessimistic estimate (x1.5) once we have 15s of data
                   if (elapsed < 120_000) {
                     if (elapsed < 15_000 || hist.length < 2) {
-                      return <span className="progress-eta"> - estimation en cours…</span>;
+                      return <span className="progress-eta">{t.estimating}</span>;
                     }
                     const earlyRate = (progress.current - hist[0].current) / elapsed;
-                    if (earlyRate <= 0) return <span className="progress-eta"> - estimation en cours…</span>;
+                    if (earlyRate <= 0) return <span className="progress-eta">{t.estimating}</span>;
                     const earlyRemainS = Math.round((progress.total - progress.current) / earlyRate / 1000 * 1.5);
                     if (earlyRemainS < 15) return null;
-                    const earlyLabel = earlyRemainS < 60
-                      ? `${earlyRemainS} s`
-                      : `${Math.round(earlyRemainS / 60)} min`;
-                    return <span className="progress-eta"> - environ {earlyLabel}</span>;
+                    const earlyEtaLabel = earlyRemainS < 60
+                      ? `${earlyRemainS} ${t.durationS}`
+                      : `${Math.round(earlyRemainS / 60)} ${t.durationMin}`;
+                    return <span className="progress-eta">{interp(t.aboutTime, { t: earlyEtaLabel })}</span>;
                   }
 
-                  // rate from ~3 min ago to skip initial burst phase
                   const target = now - 180_000;
                   const refIdx = hist.findIndex(s => s.time >= target);
                   const ref = refIdx > 0 ? hist[refIdx] : hist[0];
@@ -1349,10 +1368,10 @@ export default function App() {
                   const remainMs = (progress.total - progress.current) / rate;
                   const remainS = Math.round(remainMs / 1000);
                   if (remainS < 15) return null;
-                  const label = remainS < 60
-                    ? `${remainS} s`
-                    : `${Math.round(remainS / 60)} min`;
-                  return <span className="progress-eta"> - environ {label}</span>;
+                  const etaLabel = remainS < 60
+                    ? `${remainS} ${t.durationS}`
+                    : `${Math.round(remainS / 60)} ${t.durationMin}`;
+                  return <span className="progress-eta">{interp(t.aboutTime, { t: etaLabel })}</span>;
                 })()}
               </p>
               {progress.file && (
@@ -1362,7 +1381,7 @@ export default function App() {
           ) : (
             <>
               <div className="spinner" />
-              <p>Collecte des fichiers…</p>
+              <p>{t.collectingFiles}</p>
             </>
           )}
         </div>
@@ -1371,14 +1390,13 @@ export default function App() {
       {confirmPending && (
         <div className="modal-overlay" onClick={() => setConfirmPending(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h2 className="modal-title">Confirmer la suppression</h2>
+            <h2 className="modal-title">{t.confirmTitle}</h2>
             <p className="modal-body">
-              {selected.size} fichier{selected.size > 1 ? "s" : ""} ({formatSize(selectedSize)}) seront
-              envoyés dans la corbeille.
+              {interp(t.confirmBody, { n: selected.size, s: selected.size > 1 ? "s" : "", size: formatSize(selectedSize) })}
             </p>
             <div className="modal-actions">
-              <button className="btn-ghost" onClick={() => setConfirmPending(false)}>Annuler</button>
-              <button className="btn-danger" onClick={doDelete}>Supprimer</button>
+              <button className="btn-ghost" onClick={() => setConfirmPending(false)}>{t.confirmCancel}</button>
+              <button className="btn-danger" onClick={doDelete}>{t.confirmConfirm}</button>
             </div>
           </div>
         </div>

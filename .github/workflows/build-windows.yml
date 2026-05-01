@@ -33,7 +33,7 @@ jobs:
         run: npm ci
 
       - name: Build
-        run: npm run tauri build -- --bundles nsis,app
+        run: npm run tauri build -- --bundles nsis,msi
 
       - name: Upload portable .exe
         uses: actions/upload-artifact@v4
@@ -42,11 +42,18 @@ jobs:
           path: src-tauri/target/release/deduplicateur.exe
           if-no-files-found: error
 
-      - name: Upload installer
+      - name: Upload NSIS installer
         uses: actions/upload-artifact@v4
         with:
-          name: deduplicateur-windows-installer
+          name: deduplicateur-windows-nsis
           path: src-tauri/target/release/bundle/nsis/*.exe
+          if-no-files-found: warn
+
+      - name: Upload MSI installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: deduplicateur-windows-msi
+          path: src-tauri/target/release/bundle/msi/*.msi
           if-no-files-found: warn
 
       - name: Attach to release
@@ -56,3 +63,4 @@ jobs:
           files: |
             src-tauri/target/release/deduplicateur.exe
             src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/msi/*.msi
