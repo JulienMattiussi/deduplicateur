@@ -21,6 +21,12 @@ pub struct VideoConfig {
     /// Invalide si le chemin, la date de modification ou la taille du fichier change.
     /// Defaut : true.
     pub cache_enabled: bool,
+
+    /// Utiliser DTW (Dynamic Time Warping) pour comparer les sequences de frames.
+    /// Detecte les videos avec intro/credits courts (< ~15% de la duree).
+    /// Plus lent que la comparaison sequentielle simple (O(n*w) au lieu de O(n)).
+    /// Defaut : false.
+    pub use_dtw: bool,
 }
 
 impl Default for VideoConfig {
@@ -29,6 +35,7 @@ impl Default for VideoConfig {
             n_frames: 8,
             duration_tolerance: 0.20,
             cache_enabled: true,
+            use_dtw: false,
         }
     }
 }
@@ -68,6 +75,7 @@ mod tests {
             n_frames: 16,
             duration_tolerance: 0.10,
             cache_enabled: false,
+            use_dtw: true,
         };
         let json = serde_json::to_string(&cfg).unwrap();
         let loaded: VideoConfig = serde_json::from_str(&json).unwrap();
@@ -88,6 +96,7 @@ mod tests {
             n_frames: 12,
             duration_tolerance: 0.30,
             cache_enabled: false,
+            use_dtw: true,
         };
         save_config(dir.path(), &cfg).unwrap();
         let loaded = load_config(dir.path());

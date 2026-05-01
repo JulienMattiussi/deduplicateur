@@ -65,12 +65,14 @@ interface VideoConfig {
   n_frames: number;
   duration_tolerance: number;
   cache_enabled: boolean;
+  use_dtw: boolean;
 }
 
 const DEFAULT_VIDEO_CONFIG: VideoConfig = {
   n_frames: 8,
   duration_tolerance: 0.20,
   cache_enabled: true,
+  use_dtw: false,
 };
 
 const DEFAULT_PHASH_CONFIG: PHashConfig = {
@@ -576,6 +578,18 @@ function VideoAdvancedPanel({
                 type="checkbox"
                 checked={config.cache_enabled}
                 onChange={(e) => set("cache_enabled", e.target.checked)}
+                disabled={disabled}
+              />
+            </label>
+          </div>
+          <div className="adv-section">
+            <span className="adv-section-title">Alignement temporel</span>
+            <label className="adv-row">
+              <span>DTW <span className="adv-hint">(intro/génériques courts)</span></span>
+              <input
+                type="checkbox"
+                checked={config.use_dtw}
+                onChange={(e) => set("use_dtw", e.target.checked)}
                 disabled={disabled}
               />
             </label>

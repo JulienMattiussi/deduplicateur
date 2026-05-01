@@ -18,7 +18,7 @@ use crate::phash_config::PHashConfig;
 use crate::phash_perf::{append_perf_log, PerfEntry};
 use crate::video_cache::{VideoCache, VideoCacheEntry};
 use crate::video_hash::{
-    extract_frame_hashes, get_video_metadata, is_ffmpeg_available, sequence_distance,
+    dtw_distance, extract_frame_hashes, get_video_metadata, is_ffmpeg_available, sequence_distance,
     VideoMetadata,
 };
 
@@ -79,6 +79,8 @@ pub struct ScanParams {
     pub video_duration_tolerance: f64,
     /// Activer le cache inter-scans des frame hashes.
     pub video_cache_enabled: bool,
+    /// Utiliser DTW pour la comparaison des sequences de frames.
+    pub video_use_dtw: bool,
 }
 
 impl ScanParams {
@@ -98,6 +100,7 @@ impl ScanParams {
             video_frames: 8,
             video_duration_tolerance: 0.20,
             video_cache_enabled: true,
+            video_use_dtw: false,
         }
     }
 }
@@ -829,6 +832,7 @@ where
         let n = video_data.len();
         let threshold = params.video_sim_threshold as f64;
         let duration_tolerance = params.video_duration_tolerance;
+        let use_dtw = params.video_use_dtw;
 
         if cancelled.load(Ordering::Relaxed) {
             was_cancelled = true;
@@ -850,9 +854,12 @@ where
                     if max_dur > 0.0 && (dur_i - dur_j).abs() / max_dur > duration_tolerance {
                         continue;
                     }
-                    if sequence_distance(&video_data[i].hashes, &video_data[j].hashes)
-                        <= threshold
-                    {
+                    let dist = if use_dtw {
+                        dtw_distance(&video_data[i].hashes, &video_data[j].hashes)
+                    } else {
+                        sequence_distance(&video_data[i].hashes, &video_data[j].hashes)
+                    };
+                    if dist <= threshold {
                         local.push((i, j));
                     }
                 }

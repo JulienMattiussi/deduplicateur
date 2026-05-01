@@ -157,6 +157,7 @@ async fn scan_folder(
             video_frames: video_cfg.n_frames,
             video_duration_tolerance: video_cfg.duration_tolerance,
             video_cache_enabled: video_cfg.cache_enabled,
+            video_use_dtw: video_cfg.use_dtw,
         };
         do_scan(params, cancelled, move |current, total, file: &str| {
             *progress_for_scan.lock().unwrap() = Some((current, total, file.to_string()));
