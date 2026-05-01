@@ -1017,7 +1017,7 @@ export default function App() {
     });
   }
 
-  async function runSelection(cmd: string, params?: object) {
+  async function runSelection(cmd: string, params?: Record<string, unknown>) {
     if (selecting) return;
     setSelecting(true);
     try {
