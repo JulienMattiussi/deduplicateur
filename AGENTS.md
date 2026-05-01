@@ -50,38 +50,7 @@ Avant de déclarer la tâche terminée, répondre explicitement à :
 
 ## Plan d'action
 
-Voir [PLAN.md](PLAN.md) pour le plan complet et l'avancement des phases.
-
-## Stack
-
-- **Backend** : Rust via Tauri 2
-- **Frontend** : React + TypeScript + Vite
-- **Packaging** : `tauri build` → `.exe` autonome
-
-## Développement
-
-```bash
-. "$HOME/.cargo/env"     # charger Rust dans le shell courant (si pas dans ~/.bashrc)
-npm run tauri dev        # dev avec hot reload
-npm run tauri build      # build .exe release
-```
-
-## Architecture
-
-```
-src/                          # Frontend React
-  App.tsx                     # Composant principal (UI + appels Tauri)
-  App.css                     # Dark theme
-src-tauri/
-  src/
-    main.rs                   # Point d'entrée (ne pas modifier)
-    lib.rs                    # Commandes Tauri (scan_folder, delete_files)
-    scanner.rs                # Moteur de déduplication
-  capabilities/
-    default.json              # Permissions Tauri 2 (OBLIGATOIRE)
-  tauri.conf.json             # Configuration Tauri
-  icons/                      # Icônes PNG RGBA obligatoires
-```
+Voir [docs/plan.md](docs/plan.md) pour le plan complet et l'avancement des phases.
 
 ## Principes
 
@@ -127,10 +96,7 @@ img.save('src-tauri/icons/32x32.png')
 ```
 
 ### Dépendances système Linux
-```bash
-sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev patchelf
-# NE PAS installer libappindicator3-dev (conflit avec libayatana-appindicator3-1)
-```
+Ne pas installer `libappindicator3-dev` - conflit avec `libayatana-appindicator3-1`, casse la build silencieusement. La liste complète des paquets requis est dans README.
 
 ### Commandes longues → utiliser spawn_blocking pour ne pas geler l'UI
 Une commande Tauri synchrone bloque le thread de la WebView pendant son exécution.

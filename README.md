@@ -119,6 +119,8 @@ Le binaire Windows est produit automatiquement par le CI à chaque push sur `mai
 2. Cliquer sur le dernier run **Build Windows**
 3. Télécharger l'artifact **deduplicateur-windows-portable** (`.exe` autonome, aucune installation)
 
+> Lors du premier lancement, Windows peut afficher un avertissement SmartScreen - cliquer sur « Plus d'informations » puis « Exécuter quand même ».
+
 > **Similarité vidéos sur Windows** : nécessite [ffmpeg](https://www.gyan.dev/ffmpeg/builds/) installé et présent dans le `PATH` système. Sans ffmpeg, les modes fichiers et images fonctionnent normalement.
 
 ### Prérequis (compilation depuis les sources)
