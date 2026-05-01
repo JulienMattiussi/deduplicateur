@@ -44,6 +44,8 @@ struct ScanSummary {
     find_similar: bool,
     #[serde(default)]
     find_similar_videos: bool,
+    #[serde(default)]
+    ffmpeg_missing: bool,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -122,7 +124,7 @@ async fn scan_folder(
 
     // Shared progress state written by rayon threads, read by the async emitter task.
     // Never call window.emit() from rayon threads directly - it deadlocks the GTK main loop.
-    let progress_state: Arc<Mutex<Option<(usize, usize, String)>>> = Arc::new(Mutex::new(None));
+    let progress_state: Arc<Mutex<Option<(usize, usize, usize, String)>>> = Arc::new(Mutex::new(None));
     let progress_for_scan = Arc::clone(&progress_state);
     let progress_for_emit = Arc::clone(&progress_state);
 
@@ -132,10 +134,10 @@ async fn scan_folder(
         loop {
             interval.tick().await;
             let snapshot = progress_for_emit.lock().unwrap().clone();
-            if let Some((current, total, file)) = snapshot {
+            if let Some((current, total, total_files, file)) = snapshot {
                 let _ = window_emit.emit(
                     "scan:progress",
-                    serde_json::json!({ "current": current, "total": total, "file": file }),
+                    serde_json::json!({ "current": current, "total": total, "total_files": total_files, "file": file }),
                 );
             }
         }
@@ -159,8 +161,8 @@ async fn scan_folder(
             video_cache_enabled: video_cfg.cache_enabled,
             video_use_dtw: video_cfg.use_dtw,
         };
-        do_scan(params, cancelled, move |current, total, file: &str| {
-            *progress_for_scan.lock().unwrap() = Some((current, total, file.to_string()));
+        do_scan(params, cancelled, move |current, total, total_files, file: &str| {
+            *progress_for_scan.lock().unwrap() = Some((current, total, total_files, file.to_string()));
         })
     })
     .await
@@ -196,6 +198,7 @@ async fn scan_folder(
         recursive,
         find_similar,
         find_similar_videos,
+        ffmpeg_missing: result.ffmpeg_missing,
     };
 
     save_session(&app, &summary, &result.groups);
@@ -400,8 +403,11 @@ fn get_folder_groups_page(
 
 #[cfg(target_os = "windows")]
 fn open_in_file_manager(path: &str) -> std::io::Result<()> {
-    std::process::Command::new("explorer")
-        .arg(format!("/select,{}", path))
+    use std::os::windows::process::CommandExt;
+    let win_path = path.replace('/', "\\");
+    std::process::Command::new("explorer.exe")
+        .raw_arg(format!("/select,\"{}\"", win_path))
+        .creation_flags(0x08000000)
         .spawn()
         .map(|_| ())
 }
@@ -432,8 +438,8 @@ fn reveal_in_folder(path: String) -> Result<(), String> {
 
 #[cfg(target_os = "windows")]
 fn open_file_default(path: &str) -> std::io::Result<()> {
-    std::process::Command::new("cmd")
-        .args(["/C", &format!("start \"\" \"{}\"", path)])
+    std::process::Command::new("explorer.exe")
+        .arg(path)
         .spawn()
         .map(|_| ())
 }

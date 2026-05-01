@@ -1074,6 +1074,12 @@
   justify-content: center;
 }
 
+.similar-thumb-placeholder--error {
+  font-size: 28px;
+  opacity: 0.4;
+  cursor: default;
+}
+
 .similar-thumb-spinner {
   width: 22px;
   height: 22px;

@@ -105,7 +105,7 @@ Chaque scan produit un fichier JSON dans `~/.local/share/deduplicateur/sessions/
 | Bundler | Vite + Tauri CLI | Dev HMR + build natif |
 | CI/CD | GitHub Actions | Build Windows automatique sur push |
 | Tests Rust | cargo test + tempfile | 66 tests unitaires sur le moteur |
-| Tests TS | Vitest + jsdom + React Testing Library | 13 tests (utilitaires + composants App) |
+| Tests TS | Vitest + jsdom + React Testing Library | 29 tests (utilitaires + i18n + composants App) |
 
 ---
 
@@ -163,7 +163,7 @@ npm run tauri build    # produit un binaire dans src-tauri/target/release/
 # Moteur Rust (66 tests)
 cargo test --manifest-path src-tauri/Cargo.toml
 
-# TypeScript - utilitaires + composants React (13 tests)
+# TypeScript - utilitaires + i18n + composants React (29 tests)
 npm test
 ```
 
@@ -181,6 +181,7 @@ npm test
 | 5b | Optimisations pHash (5 filtres, cache, config UI, log perf) | ✅ |
 | 6 | Similarité vidéos (ffmpeg, cache, parallèle, filtre durée) | ✅ |
 | 6b | DTW vidéo, affichage adapté par type, CI Windows | ✅ |
+| 7 | Refactoring hooks, i18n FR/EN, correctifs Windows (open/reveal/thumbnail) | ✅ |
 
 ---
 

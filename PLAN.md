@@ -133,3 +133,16 @@
 - [x] 62 tests Rust (+4 video_config)
 
 **Critère de validation : détecter film.avi (480p) et film.mp4 (1080p) comme doublons**
+
+---
+
+## Phase 7 - Qualité + correctifs Windows ✅
+
+- [x] Refactoring App.tsx : 26 useState → 3 useState + 4 hooks (useScanConfig, useScanExecution, useResults, useSelectionState)
+- [x] Fusion ThumbnailStrip : composant unique avec prop `mode="image"|"video"`
+- [x] i18n FR/EN : LangContext, toggles, persistance localStorage, 3 tests TypeScript
+- [x] 29 tests TypeScript (11 i18n + 10 App + 8 utils) ; 66 tests Rust
+- [x] Barre de progression : affiche le vrai total de fichiers scannés (`total_files`) au lieu des seuls candidats au hachage
+- [x] Ouverture de fichier sur Windows : remplace `cmd /C start` par `explorer.exe path` (plus robuste)
+- [x] Révéler dans l'explorateur sur Windows : `raw_arg("/select,\"path\"")` + `CREATE_NO_WINDOW` (gère les espaces dans les chemins)
+- [x] Thumbnail vidéo : remplace le spinner infini par un placeholder statique en cas d'erreur (ex. ffmpeg absent)

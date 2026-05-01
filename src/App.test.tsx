@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import App, { GroupCard } from "./App";
+import { LangProvider } from "./LangContext";
 
 // ----- Mocks globaux -----
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -18,7 +19,6 @@ import { open as dialogOpen } from "@tauri-apps/plugin-dialog";
 const mockInvoke = invoke as ReturnType<typeof vi.fn>;
 const mockDialogOpen = dialogOpen as ReturnType<typeof vi.fn>;
 
-// Resume de scan minimal reutilisable dans plusieurs tests
 const baseSummary = {
   id: "1000",
   folder: "/home/test",
@@ -57,6 +57,13 @@ const defaultPhashConfig = {
   perf_log_enabled: false,
 };
 
+const defaultVideoConfig = {
+  n_frames: 8,
+  duration_tolerance: 0.2,
+  cache_enabled: true,
+  use_dtw: false,
+};
+
 function makeDefaultMock(overrides: Record<string, unknown> = {}) {
   return (cmd: string, ...args: unknown[]) => {
     if (cmd in overrides) {
@@ -66,18 +73,25 @@ function makeDefaultMock(overrides: Record<string, unknown> = {}) {
     }
     if (cmd === "list_sessions") return Promise.resolve([]);
     if (cmd === "get_phash_config") return Promise.resolve(defaultPhashConfig);
+    if (cmd === "get_video_config") return Promise.resolve(defaultVideoConfig);
     return Promise.resolve(null);
   };
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
+  localStorage.clear();
   mockInvoke.mockImplementation(makeDefaultMock());
 });
 
-// ---- A : resetResults est appele quand on clique "Mes analyses" ----
+// Helper pour rendre avec LangProvider (test de langue)
+function renderWithLang(ui: React.ReactElement) {
+  return render(<LangProvider>{ui}</LangProvider>);
+}
+
+// ---- A : resetResults est appelé quand on clique "Mes analyses" ----
 describe("A - bouton retour Mes analyses", () => {
-  it("fait disparaitre le summary de l'UI apres clic", async () => {
+  it("fait disparaitre le summary de l'UI après clic", async () => {
     const user = userEvent.setup();
 
     mockInvoke.mockImplementation(
@@ -90,64 +104,45 @@ describe("A - bouton retour Mes analyses", () => {
 
     render(<App />);
 
-    // Attend que la session apparaisse et clique Reprendre
     const resumeBtn = await screen.findByText("Reprendre");
     await user.click(resumeBtn);
 
-    // Attend que le bouton retour apparaisse (summary charge)
     const backBtn = await screen.findByText(/Mes analyses/, {}, { timeout: 3000 });
     expect(backBtn).toBeInTheDocument();
 
-    // Verifie que le stats-row avec les stats du scan est visible
     await waitFor(() => {
-      // Le stats-row affiche "N groupes" avec la classe "stat"
       const statElems = document.querySelectorAll(".stat");
       expect(statElems.length).toBeGreaterThan(0);
     });
 
-    // Clique sur le bouton retour
     await user.click(backBtn);
 
-    // Le stats-row doit avoir disparu (summary = null supprime .stats-row)
     await waitFor(() => {
       expect(document.querySelector(".stats-row")).not.toBeInTheDocument();
     }, { timeout: 3000 });
   });
 });
 
-// ---- B : selection toggle d'un fichier ----
-describe("B - toggle de selection d'un fichier", () => {
+// ---- B : sélection toggle d'un fichier ----
+describe("B - toggle de sélection d'un fichier", () => {
   it("appelle onToggle avec le bon path quand on clique sur la checkbox", () => {
     const onToggle = vi.fn();
-    const selected = new Set<string>();
-
-    render(
-      <GroupCard group={baseGroup} selected={selected} onToggle={onToggle} />
-    );
-
-    const checkboxes = screen.getAllByRole("checkbox");
-    // La premiere checkbox correspond au premier fichier
-    fireEvent.click(checkboxes[0]);
+    render(<GroupCard group={baseGroup} selected={new Set()} onToggle={onToggle} />);
+    fireEvent.click(screen.getAllByRole("checkbox")[0]);
     expect(onToggle).toHaveBeenCalledWith("/a/file1.txt");
   });
 
-  it("appelle onToggle avec le second path quand on clique sur la deuxieme checkbox", () => {
+  it("appelle onToggle avec le second path quand on clique sur la deuxième checkbox", () => {
     const onToggle = vi.fn();
-    const selected = new Set<string>();
-
-    render(
-      <GroupCard group={baseGroup} selected={selected} onToggle={onToggle} />
-    );
-
-    const checkboxes = screen.getAllByRole("checkbox");
-    fireEvent.click(checkboxes[1]);
+    render(<GroupCard group={baseGroup} selected={new Set()} onToggle={onToggle} />);
+    fireEvent.click(screen.getAllByRole("checkbox")[1]);
     expect(onToggle).toHaveBeenCalledWith("/b/file2.txt");
   });
 });
 
 // ---- C : suppression appelle delete_files avec les bons paths ----
 describe("C - suppression de fichiers", () => {
-  it("appelle invoke('delete_files') avec les paths selectionnes", async () => {
+  it("appelle invoke('delete_files') avec les paths sélectionnés", async () => {
     const user = userEvent.setup();
 
     mockInvoke.mockImplementation(
@@ -161,35 +156,19 @@ describe("C - suppression de fichiers", () => {
 
     render(<App />);
 
-    // Selectionne un dossier
-    const folderInput = screen.getByText(/Cliquer pour choisir un dossier/);
-    await user.click(folderInput);
+    await user.click(screen.getByText(/Cliquer pour choisir un dossier/));
+    await waitFor(() => expect(screen.getByText("/home/test")).toBeInTheDocument());
 
-    // Attend que le chemin s'affiche
-    await waitFor(() => {
-      expect(screen.getByText("/home/test")).toBeInTheDocument();
-    });
+    await user.click(screen.getByText("Analyser"));
+    await waitFor(() => expect(screen.getByText(/fichiers identiques/)).toBeInTheDocument());
 
-    // Lance le scan
-    const analyseBtn = screen.getByText("Analyser");
-    await user.click(analyseBtn);
-
-    // Attend que les groupes apparaissent
-    await waitFor(() => {
-      expect(screen.getByText(/fichiers identiques/)).toBeInTheDocument();
-    });
-
-    // Coche le premier fichier via la checkbox (en cherchant dans le group-card)
     const groupCard = document.querySelector(".group-card");
-    expect(groupCard).not.toBeNull();
     const fileCheckboxes = groupCard!.querySelectorAll('input[type="checkbox"]');
     await user.click(fileCheckboxes[0] as HTMLElement);
 
-    // Clique sur le bouton Supprimer dans la toolbar
     const deleteBtn = await screen.findByText(/Supprimer \d+ fichier/);
     await user.click(deleteBtn);
 
-    // Confirme dans la modal de confirmation
     const confirmBtn = await screen.findByRole("button", { name: "Supprimer" });
     await user.click(confirmBtn);
 
@@ -201,9 +180,9 @@ describe("C - suppression de fichiers", () => {
   });
 });
 
-// ---- D : erreur affichee dans la banniere ----
-describe("D - banniere d'erreur", () => {
-  it("affiche le message d'erreur quand scan_folder echoue", async () => {
+// ---- D : erreur affichée dans la bannière ----
+describe("D - bannière d'erreur", () => {
+  it("affiche le message d'erreur quand scan_folder échoue", async () => {
     const user = userEvent.setup();
 
     mockInvoke.mockImplementation(
@@ -215,21 +194,103 @@ describe("D - banniere d'erreur", () => {
 
     render(<App />);
 
-    // Selectionne un dossier
-    const folderInput = screen.getByText(/Cliquer pour choisir un dossier/);
-    await user.click(folderInput);
+    await user.click(screen.getByText(/Cliquer pour choisir un dossier/));
+    await waitFor(() => expect(screen.getByText("/home/inexistant")).toBeInTheDocument());
 
-    await waitFor(() => {
-      expect(screen.getByText("/home/inexistant")).toBeInTheDocument();
-    });
+    await user.click(screen.getByText("Analyser"));
 
-    // Lance le scan
-    const analyseBtn = screen.getByText("Analyser");
-    await user.click(analyseBtn);
-
-    // La banniere doit afficher le message d'erreur
     await waitFor(() => {
       expect(screen.getByText(/dossier introuvable/)).toBeInTheDocument();
+    });
+  });
+});
+
+// ---- E : pagination ----
+describe("E - pagination", () => {
+  it("affiche le bouton 'Afficher plus' quand has_more est true", async () => {
+    const user = userEvent.setup();
+    const summaryWithMore = { ...baseSummary, total_groups: 60 };
+
+    mockInvoke.mockImplementation(
+      makeDefaultMock({
+        scan_folder: summaryWithMore,
+        get_groups_page: { groups: [baseGroup], offset: 0, total: 60, has_more: true },
+      })
+    );
+    mockDialogOpen.mockResolvedValue("/home/test");
+
+    render(<App />);
+    await user.click(screen.getByText(/Cliquer pour choisir un dossier/));
+    await waitFor(() => screen.getByText("/home/test"));
+    await user.click(screen.getByText("Analyser"));
+
+    const loadMoreBtn = await screen.findByText(/Afficher 50 de plus/);
+    expect(loadMoreBtn).toBeInTheDocument();
+  });
+
+  it("charge la page suivante en passant le bon offset", async () => {
+    const user = userEvent.setup();
+    const summaryWithMore = { ...baseSummary, total_groups: 60 };
+    let callCount = 0;
+
+    mockInvoke.mockImplementation(
+      makeDefaultMock({
+        scan_folder: summaryWithMore,
+        get_groups_page: () => {
+          callCount++;
+          if (callCount === 1) {
+            return Promise.resolve({ groups: [baseGroup], offset: 0, total: 60, has_more: true });
+          }
+          return Promise.resolve({ groups: [], offset: 1, total: 60, has_more: false });
+        },
+      })
+    );
+    mockDialogOpen.mockResolvedValue("/home/test");
+
+    render(<App />);
+    await user.click(screen.getByText(/Cliquer pour choisir un dossier/));
+    await waitFor(() => screen.getByText("/home/test"));
+    await user.click(screen.getByText("Analyser"));
+
+    const loadMoreBtn = await screen.findByText(/Afficher 50 de plus/);
+    await user.click(loadMoreBtn);
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("get_groups_page", { offset: 1, limit: 50 });
+    });
+  });
+});
+
+// ---- F : bascule de langue ----
+describe("F - bascule de langue", () => {
+  it("affiche 'Scan' en anglais après clic sur EN", async () => {
+    const user = userEvent.setup();
+    renderWithLang(<App />);
+
+    expect(screen.getByText("Analyser")).toBeInTheDocument();
+
+    await user.click(screen.getByText("EN"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Scan")).toBeInTheDocument();
+    });
+  });
+
+  it("persiste la langue dans localStorage", async () => {
+    const user = userEvent.setup();
+    renderWithLang(<App />);
+
+    await user.click(screen.getByText("EN"));
+
+    expect(localStorage.getItem("lang")).toBe("en");
+  });
+
+  it("démarre en anglais si localStorage contient 'en'", async () => {
+    localStorage.setItem("lang", "en");
+    renderWithLang(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Scan")).toBeInTheDocument();
     });
   });
 });

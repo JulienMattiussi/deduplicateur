@@ -54,6 +54,7 @@ pub struct ScanResult {
     pub duration_ms: u128,
     #[serde(default)]
     pub partial: bool,
+    pub ffmpeg_missing: bool,
 }
 
 /// Parametres d'un scan. Utiliser `ScanParams::new(folder)` pour les valeurs par defaut.
@@ -253,7 +254,7 @@ pub fn scan_folder<F>(
     on_progress: F,
 ) -> Result<ScanResult, String>
 where
-    F: Fn(usize, usize, &str) + Send + Sync,
+    F: Fn(usize, usize, usize, &str) + Send + Sync,
 {
     let start = Instant::now();
     let mut was_cancelled = false;
@@ -327,7 +328,7 @@ where
                 }
                 let h = hash_partial(&file.path).ok()?;
                 let n = hashed.fetch_add(1, Ordering::Relaxed) + 1;
-                on_progress(n, total_work, &file.name);
+                on_progress(n, total_work, scanned_files, &file.name);
                 Some((h, file))
             })
             .collect();
@@ -464,7 +465,7 @@ where
                     });
                 if result.is_some() {
                     let n = phash_done.fetch_add(1, Ordering::Relaxed) + 1;
-                    on_progress(total_to_hash + n, total_work, &f.name);
+                    on_progress(total_to_hash + n, total_work, scanned_files, &f.name);
                 }
                 result
             })
@@ -492,7 +493,7 @@ where
                     cfg.fine_hash_size,
                 );
                 let n = phash_done_for_decode.fetch_add(1, Ordering::Relaxed) + 1;
-                on_progress(total_to_hash + n, total_work, &candidates[i].name);
+                on_progress(total_to_hash + n, total_work, scanned_files, &candidates[i].name);
                 (i, hash)
             })
             .collect();
@@ -707,8 +708,9 @@ where
     }
 
     // --- Phase 3 : videos similaires ---
+    let ffmpeg_missing = params.find_similar_videos && !is_ffmpeg_available();
     if params.find_similar_videos && !was_cancelled && !cancelled.load(Ordering::Relaxed)
-        && is_ffmpeg_available()
+        && !ffmpeg_missing
     {
         'video: {
         let exact_paths: HashSet<String> = groups
@@ -754,14 +756,14 @@ where
             .map(|(f, meta_opt)| {
                 if meta_opt.is_none() {
                     let n = video_done.fetch_add(1, Ordering::Relaxed) + 1;
-                    on_progress(offset + n, total_work, &f.name);
+                    on_progress(offset + n, total_work, scanned_files, &f.name);
                     return None;
                 }
                 let cached = vcache.get(&f.path, f.modified, f.size, params.video_frames)
                     .map(|h| h.to_vec());
                 if cached.is_some() {
                     let n = video_done.fetch_add(1, Ordering::Relaxed) + 1;
-                    on_progress(offset + n, total_work, &f.name);
+                    on_progress(offset + n, total_work, scanned_files, &f.name);
                 }
                 cached
             })
@@ -787,7 +789,7 @@ where
                     meta.duration_secs,
                 );
                 let n = video_done_for_extract.fetch_add(1, Ordering::Relaxed) + 1;
-                on_progress(offset + n, total_work, &candidates[i].name);
+                on_progress(offset + n, total_work, scanned_files, &candidates[i].name);
                 (i, hashes)
             })
             .collect();
@@ -926,6 +928,7 @@ where
         scanned_files,
         duration_ms: start.elapsed().as_millis(),
         partial: was_cancelled,
+        ffmpeg_missing,
     })
 }
 
@@ -1076,7 +1079,7 @@ mod tests {
     use std::sync::Arc;
     use tempfile::TempDir;
 
-    fn no_progress(_: usize, _: usize, _: &str) {}
+    fn no_progress(_: usize, _: usize, _: usize, _: &str) {}
     fn no_cancel() -> Arc<AtomicBool> {
         Arc::new(AtomicBool::new(false))
     }
@@ -1248,7 +1251,7 @@ mod tests {
         scan_folder(
             ScanParams::new(dir.path().to_str().unwrap()),
             no_cancel(),
-            move |_, _, _: &str| { c.fetch_add(1, Ordering::Relaxed); },
+            move |_, _, _, _: &str| { c.fetch_add(1, Ordering::Relaxed); },
         ).unwrap();
         assert!(count.load(Ordering::Relaxed) > 0);
     }
