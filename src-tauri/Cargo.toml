@@ -2,7 +2,7 @@
 name = "deduplicateur"
 version = "0.1.0"
 description = "Détecteur et suppresseur de fichiers en double"
-authors = ["Marmelab"]
+authors = ["YavaDeus"]
 edition = "2021"
 
 [lib]

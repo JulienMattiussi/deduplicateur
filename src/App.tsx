@@ -807,7 +807,7 @@ export default function App() {
         </>
       )}
 
-      {summary && summary.total_groups === 0 && (
+      {summary && summary.total_groups === 0 && !scanExec.scanning && (
         <div className="empty-state">
           <span className="empty-icon">✓</span>
           <p>{t.noDuplicates}</p>

@@ -61,14 +61,14 @@ A faire une seule fois apres avoir clone le repo :
 # 1. Installer l'icone dans le theme
 mkdir -p ~/.local/share/icons/hicolor/128x128/apps
 cp src-tauri/icons/128x128.png \
-   ~/.local/share/icons/hicolor/128x128/apps/com.marmelab.deduplicateur.png
+   ~/.local/share/icons/hicolor/128x128/apps/com.yavadeus.deduplicateur.png
 
 # 2. Creer le fichier .desktop pointant vers le binaire de dev
 cat > ~/.local/share/applications/deduplicateur-dev.desktop << 'EOF'
 [Desktop Entry]
 Name=Deduplicateur (dev)
-Exec=/home/julien/Documents/MyRepos/deduplicateur/src-tauri/target/debug/deduplicateur
-Icon=com.marmelab.deduplicateur
+Exec=/chemin/vers/deduplicateur/src-tauri/target/debug/deduplicateur
+Icon=com.yavadeus.deduplicateur
 Type=Application
 StartupWMClass=deduplicateur
 EOF

@@ -21,3 +21,7 @@ npm-debug.log*
 # OS
 .DS_Store
 Thumbs.db
+
+# Claude Code (settings locaux et worktrees - settings.json est versionne)
+.claude/settings.local.json
+.claude/worktrees/
