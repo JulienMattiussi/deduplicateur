@@ -24,6 +24,9 @@ Outil de détection et suppression de fichiers en double - rapide, local, sans c
 - **Pipeline pHash optimisé** - 5 optimisations configurables (filtre taille, filtre ratio d'aspect, hash 2 passes, cache inter-scans, comparaison parallèle) avec seuils intelligents par nombre d'images
 - **Paramètres avancés** - panneau configurable dans l'UI (taille minimale, tolérance ratio, cache, mode développeur avec log de perf)
 - **Thumbnails cliquables** - aperçu côte à côte des images similaires ; cliquer sur une image l'ouvre dans le visualisateur par défaut du système
+- **Similarité vidéos** - détecte les mêmes vidéos en formats/résolutions différents via ffmpeg (N frames échantillonnées → mean hash 64 bits, seuil configurable)
+- **Pipeline vidéo optimisé** - métadonnées en parallèle, cache inter-scans (`video_cache.json`), extraction rayon, filtre de durée configurable, comparaison O(n²) parallèle
+- **Paramètres avancés vidéo** - panneau configurable dans l'UI (frames par vidéo, tolérance de durée, cache)
 - **Résultats partiels** - si l'analyse est annulée, les groupes déjà trouvés sont affichés avec un bandeau orange "résultats partiels"
 - **Interface sombre** - UI réactive, barre de progression, statistiques en temps réel
 
@@ -84,9 +87,10 @@ Chaque scan produit un fichier JSON dans `~/.local/share/deduplicateur/sessions/
 | Parcours | walkdir | Récursion avec filtrage de dossiers |
 | Corbeille | trash | Suppression récupérable cross-platform |
 | Similarité images | image_hasher + image | Gradient hash, résolution-agnostique |
+| Similarité vidéos | ffmpeg/ffprobe (subprocess) | Mean hash sur N frames, cache inter-scans |
 | Frontend | React 18 + TypeScript | UI réactive |
 | Bundler | Vite + Tauri CLI | Dev HMR + build `.exe` |
-| Tests Rust | cargo test + tempfile | 46 tests unitaires sur le moteur |
+| Tests Rust | cargo test + tempfile | 62 tests unitaires sur le moteur |
 | Tests TS | Vitest + jsdom + React Testing Library | 13 tests (utilitaires + composants App) |
 
 ---
@@ -127,7 +131,7 @@ Sur Windows, génère un `.exe` autonome.
 ### Tests
 
 ```bash
-# Moteur Rust (46 tests)
+# Moteur Rust (62 tests)
 cargo test --manifest-path src-tauri/Cargo.toml
 
 # TypeScript - utilitaires + composants React (13 tests)
@@ -146,7 +150,7 @@ npm test
 | 4 | Analyse par sous-dossier indépendante | ✅ |
 | 5 | Similarité images (gradient hash, résolution-agnostique) | ✅ |
 | 5b | Optimisations pHash (5 filtres, cache, config UI, log perf) | ✅ |
-| 6 | Similarité vidéos (échantillonnage de frames) | 🔜 |
+| 6 | Similarité vidéos (ffmpeg, cache, parallèle, filtre durée) | ✅ |
 
 ---
 

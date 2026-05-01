@@ -2,9 +2,12 @@ mod phash_cache;
 mod phash_config;
 mod phash_perf;
 mod scanner;
+mod video_cache;
+mod video_config;
 mod video_hash;
 
 use phash_config::{load_config, save_config, PHashConfig};
+use video_config::VideoConfig;
 use scanner::{scan_folder as do_scan, DuplicateGroup, ScanParams};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -113,6 +116,9 @@ async fn scan_folder(
     let phash_cfg = data_dir_str.as_deref()
         .map(|d| load_config(std::path::Path::new(d)))
         .unwrap_or_default();
+    let video_cfg = data_dir_str.as_deref()
+        .map(|d| video_config::load_config(std::path::Path::new(d)))
+        .unwrap_or_default();
 
     // Shared progress state written by rayon threads, read by the async emitter task.
     // Never call window.emit() from rayon threads directly - it deadlocks the GTK main loop.
@@ -148,7 +154,9 @@ async fn scan_folder(
             data_dir: data_dir_str,
             find_similar_videos,
             video_sim_threshold,
-            video_frames: 8,
+            video_frames: video_cfg.n_frames,
+            video_duration_tolerance: video_cfg.duration_tolerance,
+            video_cache_enabled: video_cfg.cache_enabled,
         };
         do_scan(params, cancelled, move |current, total, file: &str| {
             *progress_for_scan.lock().unwrap() = Some((current, total, file.to_string()));
@@ -477,6 +485,20 @@ fn set_phash_config(app: tauri::AppHandle, config: PHashConfig) -> Result<(), St
 }
 
 #[tauri::command]
+fn get_video_config(app: tauri::AppHandle) -> VideoConfig {
+    app_data_dir(&app)
+        .as_deref()
+        .map(video_config::load_config)
+        .unwrap_or_default()
+}
+
+#[tauri::command]
+fn set_video_config(app: tauri::AppHandle, config: VideoConfig) -> Result<(), String> {
+    let dir = app_data_dir(&app).ok_or("Impossible d'acceder au dossier de donnees")?;
+    video_config::save_config(&dir, &config)
+}
+
+#[tauri::command]
 async fn get_image_thumbnail(path: String, max_size: u32) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let img = image::open(&path).map_err(|e| e.to_string())?;
@@ -544,6 +566,8 @@ pub fn run() {
             get_video_thumbnail,
             get_phash_config,
             set_phash_config,
+            get_video_config,
+            set_video_config,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

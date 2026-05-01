@@ -112,13 +112,24 @@
 
 ---
 
-## Phase 6 - Similarité vidéos
+## Phase 6 - Similarité vidéos ✅
 **Objectif : détecter les mêmes vidéos en formats/résolutions différents**
 
-- [ ] Intégrer `ffmpeg-next` pour l'extraction de frames
-- [ ] Échantillonnage de N frames à intervalles réguliers
-- [ ] Comparaison de séquences de pHash (alignement temporel approximatif)
-- [ ] Seuil de similarité configurable
-- [ ] Affichage des métadonnées vidéo (durée, résolution, codec, poids)
+- [x] Subprocess ffmpeg/ffprobe (pas de crate ffmpeg-next, plus portable)
+- [x] `video_hash.rs` : `get_video_metadata` (ffprobe JSON), `extract_frame_hashes` (N frames 8x8 gray → mean hash 64 bits), `extract_thumbnail` (base64 data URL), `sequence_distance`
+- [x] `video_cache.rs` : cache inter-scans (clé mtime + size + n_frames), 8 tests
+- [x] Phase 3 scanner.rs optimisée :
+  - Métadonnées en parallèle (rayon, ffprobe)
+  - Cache inter-scans (video_cache.json, invalide si mtime/size/n_frames change)
+  - Extraction parallèle des frames manquantes (rayon, ffmpeg)
+  - Filtre de durée (20% de tolérance, O(1) par paire, réduit le O(n²))
+  - Comparaison parallèle rayon (`flat_map_iter`)
+- [x] Seuil de similarité configurable dans l'UI (slider 60-100%, défaut 100%)
+- [x] Vignettes vidéo : `get_video_thumbnail` (async + spawn_blocking), durée passée depuis le scan pour éviter le ffprobe redondant
+- [x] Affichage des métadonnées (durée, résolution, codec) dans les groupes similaires vidéo
+- [x] Sélecteur exclusif Fichiers / Images / Vidéos (remplace deux checkboxes)
+- [x] `video_config.rs` : `VideoConfig` (n_frames, duration_tolerance, cache_enabled), JSON, get/set commands, 4 tests
+- [x] Panneau avancé vidéo dans l'UI : frames par vidéo, tolérance de durée, cache entre scans
+- [x] 62 tests Rust (+4 video_config)
 
 **Critère de validation : détecter film.avi (480p) et film.mp4 (1080p) comme doublons**

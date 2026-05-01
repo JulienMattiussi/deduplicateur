@@ -61,6 +61,18 @@ interface PHashConfig {
   perf_log_enabled: boolean;
 }
 
+interface VideoConfig {
+  n_frames: number;
+  duration_tolerance: number;
+  cache_enabled: boolean;
+}
+
+const DEFAULT_VIDEO_CONFIG: VideoConfig = {
+  n_frames: 8,
+  duration_tolerance: 0.20,
+  cache_enabled: true,
+};
+
 const DEFAULT_PHASH_CONFIG: PHashConfig = {
   min_file_size_bytes: 10240,
   min_images_size_filter: 50,
@@ -90,12 +102,28 @@ interface GroupsPage {
   has_more: boolean;
 }
 
+const VIDEO_EXTS = new Set(["mp4","avi","mkv","mov","wmv","webm","flv","m4v","mpg","mpeg","3gp","ts","mts","m2ts"]);
+const IMAGE_EXTS = new Set(["jpg","jpeg","png","webp","bmp","gif","tiff","tif","avif"]);
+
+function fileExt(path: string): string {
+  return path.split(".").pop()?.toLowerCase() ?? "";
+}
+
 async function revealInFolder(path: string) {
   try {
     await invoke("reveal_in_folder", { path });
   } catch {
     // best-effort, pas d'erreur visible
   }
+}
+
+function formatDurationSecs(secs: number): string {
+  const total = Math.round(secs);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  return `${m}:${String(s).padStart(2, "0")}`;
 }
 
 function formatDuration(ms: number): string {
@@ -215,9 +243,10 @@ function VideoThumbnailStrip({ files }: { files: DuplicateFile[] }) {
           )}
           {file.video_metadata && (
             <span className="video-thumb-meta">
-              {Math.round(file.video_metadata.duration_secs)}s · {file.video_metadata.width}x{file.video_metadata.height}
+              {file.video_metadata.width}x{file.video_metadata.height} · {file.video_metadata.codec}
             </span>
           )}
+          <span className="video-thumb-meta">{formatSize(file.size)}</span>
           <span className="similar-thumb-name">{file.name}</span>
         </div>
       ))}
@@ -275,23 +304,26 @@ export function GroupCard({
   const [expanded, setExpanded] = useState(true);
   const isSimilar = group.similar === true;
   const isVideoSimilar = group.video_similar === true;
+  const firstExt = group.files.length > 0 ? fileExt(group.files[0].path) : "";
+  const isVideoGroup = isVideoSimilar || VIDEO_EXTS.has(firstExt);
+  const isImageGroup = isSimilar || (!isVideoGroup && IMAGE_EXTS.has(firstExt));
 
   return (
     <div className="group-card">
       <button className="group-header" onClick={() => setExpanded((v) => !v)}>
         <span className="group-chevron">{expanded ? "▾" : "▸"}</span>
         <span className="group-count">
-          {isVideoSimilar ? "🎬 " : isSimilar ? "🖼 " : ""}
-          {group.files.length} fichiers {(isSimilar || isVideoSimilar) ? "similaires" : "identiques"}
+          {isVideoGroup ? "🎬 " : isImageGroup ? "🖼 " : ""}
+          {group.files.length} {isVideoGroup ? "vidéos" : isImageGroup ? "images" : "fichiers"} {(isSimilar || isVideoSimilar) ? "similaires" : "identiques"}
         </span>
-        {!isSimilar && !isVideoSimilar && <span className="group-size">{formatSize(group.size)} chacun</span>}
+        {!isImageGroup && !isVideoGroup && <span className="group-size">{formatSize(group.size)} chacun</span>}
         <span className="group-waste">
           {formatSize(group.size * (group.files.length - 1))} en double
         </span>
       </button>
 
-      {expanded && isSimilar && <ThumbnailStrip files={group.files} />}
-      {expanded && isVideoSimilar && <VideoThumbnailStrip files={group.files} />}
+      {expanded && isImageGroup && <ThumbnailStrip files={group.files} />}
+      {expanded && isVideoGroup && <VideoThumbnailStrip files={group.files} />}
 
       {expanded && (
         <div className="group-files">
@@ -299,8 +331,8 @@ export function GroupCard({
             <span className="file-col-cb" />
             <span className="file-col-name">Nom</span>
             <span className="file-col-date">Modifié</span>
-            {(isSimilar || isVideoSimilar) && <span className="file-col-size">Taille</span>}
-            {isVideoSimilar && <span className="file-col-video-meta">Durée · Résolution</span>}
+            {(isImageGroup || isVideoGroup) && <span className="file-col-size">Taille</span>}
+            {isVideoGroup && <span className="file-col-video-meta">Durée</span>}
             <span className="file-col-dir">Dossier</span>
             <span className="file-col-badge" />
           </div>
@@ -320,12 +352,10 @@ export function GroupCard({
               </span>
               <span className="file-col-name file-name">{file.name}</span>
               <span className="file-col-date file-meta">{formatDate(file.modified)}</span>
-              {(isSimilar || isVideoSimilar) && <span className="file-col-size file-meta">{formatSize(file.size)}</span>}
-              {isVideoSimilar && (
+              {(isImageGroup || isVideoGroup) && <span className="file-col-size file-meta">{formatSize(file.size)}</span>}
+              {isVideoGroup && (
                 <span className="file-col-video-meta file-meta">
-                  {file.video_metadata
-                    ? `${Math.round(file.video_metadata.duration_secs)}s · ${file.video_metadata.width}x${file.video_metadata.height} · ${file.video_metadata.codec}`
-                    : "-"}
+                  {file.video_metadata ? formatDurationSecs(file.video_metadata.duration_secs) : "="}
                 </span>
               )}
               <span className="file-col-dir">
@@ -468,6 +498,87 @@ function ExclusionsPanel({
             <button className="btn-ghost" onClick={add} disabled={disabled || !input.trim()}>
               Ajouter
             </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function VideoAdvancedPanel({
+  config,
+  onChange,
+  disabled,
+}: {
+  config: VideoConfig;
+  onChange: (cfg: VideoConfig) => void;
+  disabled: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+
+  function set<K extends keyof VideoConfig>(key: K, value: VideoConfig[K]) {
+    onChange({ ...config, [key]: value });
+  }
+
+  return (
+    <div className="advanced-panel">
+      <button className="advanced-panel-toggle" onClick={() => setOpen((v) => !v)} disabled={disabled}>
+        <span>{open ? "▾" : "▸"}</span>
+        Paramètres avancés de détection
+      </button>
+      {open && (
+        <button
+          className="adv-reset"
+          onClick={() => onChange(DEFAULT_VIDEO_CONFIG)}
+          disabled={disabled}
+          title="Remettre tous les paramètres aux valeurs par défaut"
+        >
+          Réinitialiser
+        </button>
+      )}
+      {open && (
+        <div key={JSON.stringify(config)} className="advanced-panel-body">
+          <div className="adv-section">
+            <span className="adv-section-title">Extraction</span>
+            <label className="adv-row">
+              <span>Frames par vidéo</span>
+              <input
+                type="number"
+                min={2}
+                max={30}
+                className="adv-input"
+                defaultValue={config.n_frames}
+                onBlur={(e) => set("n_frames", Math.max(2, Math.min(30, Number(e.target.value))))}
+                disabled={disabled}
+              />
+            </label>
+          </div>
+          <div className="adv-section">
+            <span className="adv-section-title">Filtre de durée</span>
+            <label className="adv-row">
+              <span>Tolérance (%)</span>
+              <input
+                type="number"
+                min={0}
+                max={100}
+                className="adv-input"
+                defaultValue={Math.round(config.duration_tolerance * 100)}
+                onBlur={(e) => set("duration_tolerance", Number(e.target.value) / 100)}
+                disabled={disabled}
+              />
+            </label>
+          </div>
+          <div className="adv-section">
+            <span className="adv-section-title">Cache entre scans</span>
+            <label className="adv-row">
+              <span>Activer</span>
+              <input
+                type="checkbox"
+                checked={config.cache_enabled}
+                onChange={(e) => set("cache_enabled", e.target.checked)}
+                disabled={disabled}
+              />
+            </label>
           </div>
         </div>
       )}
@@ -674,6 +785,7 @@ export default function App() {
   const [simSimilarity, setSimSimilarity] = useState(100);
   const [videoSimilarity, setVideoSimilarity] = useState(100);
   const [phashConfig, setPhashConfig] = useState<PHashConfig>(DEFAULT_PHASH_CONFIG);
+  const [videoConfig, setVideoConfig] = useState<VideoConfig>(DEFAULT_VIDEO_CONFIG);
   const [folderSummaries, setFolderSummaries] = useState<FolderSummary[]>([]);
   const [folderState, setFolderState] = useState<Record<string, { loading: boolean; hasMore: boolean; offset: number }>>({});
   const [folderSort, setFolderSort] = useState<"name" | "waste">("waste");
@@ -705,12 +817,24 @@ export default function App() {
     invoke<PHashConfig>("get_phash_config")
       .then((cfg) => setPhashConfig(cfg))
       .catch(() => {});
+    invoke<VideoConfig>("get_video_config")
+      .then((cfg) => setVideoConfig(cfg))
+      .catch(() => {});
   }, []);
 
   async function updatePhashConfig(cfg: PHashConfig) {
     setPhashConfig(cfg);
     try {
       await invoke("set_phash_config", { config: cfg });
+    } catch {
+      // best-effort
+    }
+  }
+
+  async function updateVideoConfig(cfg: VideoConfig) {
+    setVideoConfig(cfg);
+    try {
+      await invoke("set_video_config", { config: cfg });
     } catch {
       // best-effort
     }
@@ -1028,6 +1152,9 @@ export default function App() {
         {detectionMode === "images" && (
           <AdvancedPanel config={phashConfig} onChange={updatePhashConfig} disabled={scanning} />
         )}
+        {detectionMode === "videos" && (
+          <VideoAdvancedPanel config={videoConfig} onChange={updateVideoConfig} disabled={scanning} />
+        )}
         <ExclusionsPanel excluded={excluded} onChange={setExcluded} disabled={scanning} />
 
         {summary && (
@@ -1161,7 +1288,7 @@ export default function App() {
           {progress ? (
             <div className="progress-container">
               <p className="progress-label">
-                Analyse en cours… {progress.current} / {progress.total} fichiers
+                Analyse en cours… {progress.current} / {progress.total} {detectionMode === "images" ? "images" : detectionMode === "videos" ? "vidéos" : "fichiers"}
               </p>
               <div className="progress-track">
                 <div

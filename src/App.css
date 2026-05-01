@@ -1101,12 +1101,12 @@
   color: #888;
 }
 
-/* Colonne metadonnees video (duree, resolution, codec) */
+/* Colonne duree video */
 .file-col-video-meta {
-  width: 160px;
+  width: 80px;
   flex-shrink: 0;
-  font-size: 11px;
-  color: #777;
+  font-size: 12px;
+  color: #888;
 }
 
 /* Meta sous les thumbnails video */

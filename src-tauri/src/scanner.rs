@@ -16,6 +16,7 @@ use xxhash_rust::xxh3::Xxh3;
 use crate::phash_cache::{CacheEntry, HashCache};
 use crate::phash_config::PHashConfig;
 use crate::phash_perf::{append_perf_log, PerfEntry};
+use crate::video_cache::{VideoCache, VideoCacheEntry};
 use crate::video_hash::{
     extract_frame_hashes, get_video_metadata, is_ffmpeg_available, sequence_distance,
     VideoMetadata,
@@ -74,6 +75,10 @@ pub struct ScanParams {
     pub video_sim_threshold: u32,
     /// Nombre de frames a extraire par video pour le hash.
     pub video_frames: usize,
+    /// Tolerance de duree pour le filtre de paires (0.0-1.0). Defaut : 0.20.
+    pub video_duration_tolerance: f64,
+    /// Activer le cache inter-scans des frame hashes.
+    pub video_cache_enabled: bool,
 }
 
 impl ScanParams {
@@ -91,6 +96,8 @@ impl ScanParams {
             find_similar_videos: false,
             video_sim_threshold: 10,
             video_frames: 8,
+            video_duration_tolerance: 0.20,
+            video_cache_enabled: true,
         }
     }
 }
@@ -700,6 +707,7 @@ where
     if params.find_similar_videos && !was_cancelled && !cancelled.load(Ordering::Relaxed)
         && is_ffmpeg_available()
     {
+        'video: {
         let exact_paths: HashSet<String> = groups
             .iter()
             .flat_map(|g| g.files.iter().map(|f| f.path.clone()))
@@ -711,65 +719,177 @@ where
             .collect();
 
         let offset = total_to_hash + phash_estimate;
-        let mut video_data: Vec<VideoData> = Vec::new();
 
-        for (n, file) in candidates.iter().enumerate() {
-            if cancelled.load(Ordering::Relaxed) {
-                was_cancelled = true;
-                break;
-            }
-            on_progress(offset + n + 1, total_work, &file.name);
+        // Charger le cache video
+        let mut vcache = if params.video_cache_enabled {
+            params.data_dir.as_deref()
+                .map_or_else(VideoCache::empty, |d| VideoCache::load(Path::new(d)))
+        } else {
+            VideoCache::empty()
+        };
 
-            if let Some(meta) = get_video_metadata(&file.path) {
-                if let Some(hashes) =
-                    extract_frame_hashes(&file.path, params.video_frames, meta.duration_secs)
-                {
-                    let mut file_with_meta = file.clone();
-                    file_with_meta.video_metadata = Some(meta.clone());
-                    video_data.push(VideoData { file: file_with_meta, hashes, metadata: meta });
+        // Etape 1 : metadonnees en parallele (ffprobe - rapide)
+        let meta_results: Vec<Option<VideoMetadata>> = candidates
+            .par_iter()
+            .map(|f| {
+                if cancelled.load(Ordering::Relaxed) { return None; }
+                get_video_metadata(&f.path)
+            })
+            .collect();
+
+        if cancelled.load(Ordering::Relaxed) {
+            was_cancelled = true;
+            break 'video;
+        }
+
+        // Etape 2 : verifier le cache, compter les hits immediatement
+        let video_done = Arc::new(AtomicUsize::new(0));
+        let video_done_for_extract = Arc::clone(&video_done);
+
+        let cache_results: Vec<Option<Vec<u64>>> = candidates.iter()
+            .zip(meta_results.iter())
+            .map(|(f, meta_opt)| {
+                if meta_opt.is_none() {
+                    let n = video_done.fetch_add(1, Ordering::Relaxed) + 1;
+                    on_progress(offset + n, total_work, &f.name);
+                    return None;
                 }
+                let cached = vcache.get(&f.path, f.modified, f.size, params.video_frames)
+                    .map(|h| h.to_vec());
+                if cached.is_some() {
+                    let n = video_done.fetch_add(1, Ordering::Relaxed) + 1;
+                    on_progress(offset + n, total_work, &f.name);
+                }
+                cached
+            })
+            .collect();
+
+        // Etape 3 : extraction parallele des frames manquantes (ffmpeg via rayon)
+        let miss_indices: Vec<usize> = cache_results.iter().enumerate()
+            .filter_map(|(i, r)| {
+                if r.is_none() && meta_results[i].is_some() { Some(i) } else { None }
+            })
+            .collect();
+
+        let miss_hashes: Vec<(usize, Option<Vec<u64>>)> = miss_indices
+            .into_par_iter()
+            .map(|i| {
+                if cancelled.load(Ordering::Relaxed) {
+                    return (i, None);
+                }
+                let meta = meta_results[i].as_ref().unwrap();
+                let hashes = extract_frame_hashes(
+                    &candidates[i].path,
+                    params.video_frames,
+                    meta.duration_secs,
+                );
+                let n = video_done_for_extract.fetch_add(1, Ordering::Relaxed) + 1;
+                on_progress(offset + n, total_work, &candidates[i].name);
+                (i, hashes)
+            })
+            .collect();
+
+        if cancelled.load(Ordering::Relaxed) {
+            was_cancelled = true;
+            break 'video;
+        }
+
+        // Fusionner cache + extractions, mettre a jour le cache
+        let mut all_hashes: Vec<Option<Vec<u64>>> = cache_results;
+        for (i, hashes) in miss_hashes {
+            if let Some(ref h) = hashes {
+                vcache.insert(candidates[i].path.clone(), VideoCacheEntry {
+                    mtime: candidates[i].modified,
+                    size: candidates[i].size,
+                    n_frames: params.video_frames,
+                    hashes: h.clone(),
+                });
+            }
+            all_hashes[i] = hashes;
+        }
+        if params.video_cache_enabled {
+            if let Some(dir) = params.data_dir.as_deref() {
+                let _ = vcache.save(Path::new(dir));
             }
         }
 
-        if !cancelled.load(Ordering::Relaxed) {
-            let n = video_data.len();
-            let threshold = params.video_sim_threshold as f64;
+        // Construire video_data avec metadonnees
+        let video_data: Vec<VideoData> = candidates.iter()
+            .zip(all_hashes.iter())
+            .zip(meta_results.iter())
+            .filter_map(|((file, hash_opt), meta_opt)| {
+                let hashes = hash_opt.as_ref()?.clone();
+                let metadata = meta_opt.as_ref()?.clone();
+                let mut file_with_meta = file.clone();
+                file_with_meta.video_metadata = Some(metadata.clone());
+                Some(VideoData { file: file_with_meta, hashes, metadata })
+            })
+            .collect();
 
-            let mut uf = UnionFind::new(n);
-            for i in 0..n {
+        let n = video_data.len();
+        let threshold = params.video_sim_threshold as f64;
+        let duration_tolerance = params.video_duration_tolerance;
+
+        if cancelled.load(Ordering::Relaxed) {
+            was_cancelled = true;
+            break 'video;
+        }
+
+        // Etape 4 : comparaison O(n^2) en parallele avec filtre de duree
+        let similar_pairs: Vec<(usize, usize)> = (0..n)
+            .into_par_iter()
+            .flat_map_iter(|i| {
+                if cancelled.load(Ordering::Relaxed) {
+                    return vec![].into_iter();
+                }
+                let mut local = Vec::new();
                 for j in (i + 1)..n {
+                    let dur_i = video_data[i].metadata.duration_secs;
+                    let dur_j = video_data[j].metadata.duration_secs;
+                    let max_dur = dur_i.max(dur_j);
+                    if max_dur > 0.0 && (dur_i - dur_j).abs() / max_dur > duration_tolerance {
+                        continue;
+                    }
                     if sequence_distance(&video_data[i].hashes, &video_data[j].hashes)
                         <= threshold
                     {
-                        uf.union(i, j);
+                        local.push((i, j));
                     }
                 }
-            }
+                local.into_iter()
+            })
+            .collect();
 
-            let mut group_map: HashMap<usize, Vec<usize>> = HashMap::new();
-            for i in 0..n {
-                let root = uf.find(i);
-                group_map.entry(root).or_default().push(i);
-            }
-
-            for (_, indices) in group_map {
-                if indices.len() < 2 {
-                    continue;
-                }
-                let files: Vec<DuplicateFile> =
-                    indices.iter().map(|&i| video_data[i].file.clone()).collect();
-                let size = files[0].size;
-                groups.push(DuplicateGroup {
-                    id: uuid::Uuid::new_v4().to_string(),
-                    hash: "video".to_string(),
-                    size,
-                    folder_key: None,
-                    similar: false,
-                    video_similar: true,
-                    files,
-                });
-            }
+        // Union-Find pour la detection transitive
+        let mut uf = UnionFind::new(n);
+        for &(i, j) in &similar_pairs {
+            uf.union(i, j);
         }
+
+        let mut group_map: HashMap<usize, Vec<usize>> = HashMap::new();
+        for i in 0..n {
+            let root = uf.find(i);
+            group_map.entry(root).or_default().push(i);
+        }
+
+        for (_, indices) in group_map {
+            if indices.len() < 2 {
+                continue;
+            }
+            let files: Vec<DuplicateFile> =
+                indices.iter().map(|&i| video_data[i].file.clone()).collect();
+            let size = files[0].size;
+            groups.push(DuplicateGroup {
+                id: uuid::Uuid::new_v4().to_string(),
+                hash: "video".to_string(),
+                size,
+                folder_key: None,
+                similar: false,
+                video_similar: true,
+                files,
+            });
+        }
+        } // end 'video
     }
 
     if params.by_folder {

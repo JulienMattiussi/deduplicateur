@@ -36,8 +36,8 @@ const baseGroup = {
   hash: "abc",
   size: 1024,
   files: [
-    { path: "/a/file1.jpg", size: 1024, name: "file1.jpg", modified: 1700000000 },
-    { path: "/b/file2.jpg", size: 1024, name: "file2.jpg", modified: 1700001000 },
+    { path: "/a/file1.txt", size: 1024, name: "file1.txt", modified: 1700000000 },
+    { path: "/b/file2.txt", size: 1024, name: "file2.txt", modified: 1700001000 },
   ],
 };
 
@@ -128,7 +128,7 @@ describe("B - toggle de selection d'un fichier", () => {
     const checkboxes = screen.getAllByRole("checkbox");
     // La premiere checkbox correspond au premier fichier
     fireEvent.click(checkboxes[0]);
-    expect(onToggle).toHaveBeenCalledWith("/a/file1.jpg");
+    expect(onToggle).toHaveBeenCalledWith("/a/file1.txt");
   });
 
   it("appelle onToggle avec le second path quand on clique sur la deuxieme checkbox", () => {
@@ -141,7 +141,7 @@ describe("B - toggle de selection d'un fichier", () => {
 
     const checkboxes = screen.getAllByRole("checkbox");
     fireEvent.click(checkboxes[1]);
-    expect(onToggle).toHaveBeenCalledWith("/b/file2.jpg");
+    expect(onToggle).toHaveBeenCalledWith("/b/file2.txt");
   });
 });
 
@@ -195,7 +195,7 @@ describe("C - suppression de fichiers", () => {
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith("delete_files", {
-        paths: expect.arrayContaining(["/a/file1.jpg"]),
+        paths: expect.arrayContaining(["/a/file1.txt"]),
       });
     });
   });
