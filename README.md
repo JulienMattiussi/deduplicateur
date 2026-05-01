@@ -38,7 +38,13 @@ Outil de détection et suppression de fichiers en double - rapide, local, sans c
 
 ## Captures d'écran
 
-> À venir - interface desktop Tauri avec liste de groupes de doublons et session picker.
+**Analyse en cours** - barre de progression temps réel avec estimation :
+
+![Scan en cours](docs/screenshots/scan-en-cours.png)
+
+**Résultats images similaires** - groupes avec miniatures, taille récupérable, sélection en un clic :
+
+![Résultats images](docs/screenshots/resultats-images.png)
 
 ---
 
