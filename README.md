@@ -1,5 +1,7 @@
 # Déduplicateur
 
+<img src="src-tauri/icons/128x128.png" alt="Déduplicateur" width="96" />
+
 Outil de détection et suppression de fichiers en double - rapide, local, sans cloud.
 
 ![Rust](https://img.shields.io/badge/Rust-1.80+-orange?logo=rust)
@@ -128,7 +130,7 @@ Les binaires sont produits automatiquement par le CI à chaque push sur `main`.
 
 > **Windows** : lors du premier lancement, Windows peut afficher un avertissement SmartScreen - cliquer sur « Plus d'informations » puis « Exécuter quand même ».
 
-> **Similarité vidéos** : nécessite ffmpeg installé et présent dans le `PATH` système. Sans ffmpeg, les modes fichiers et images fonctionnent normalement. Voir [docs/ffmpeg.md](docs/ffmpeg.md).
+> **ffmpeg** : nécessite ffmpeg installé et présent dans le `PATH` système pour la détection de vidéos similaires et l'affichage des thumbnails vidéo. Sans ffmpeg, les modes fichiers et images fonctionnent normalement. Voir [docs/ffmpeg.md](docs/ffmpeg.md).
 
 ### Prérequis (compilation depuis les sources)
 
@@ -137,7 +139,7 @@ Les binaires sont produits automatiquement par le CI à chaque push sur `main`.
 - Visual Studio Build Tools avec le composant "Développement Desktop en C++"
 - Node.js 22+ et npm
 - WebView2 (pré-installé sur Windows 10/11)
-- [ffmpeg](https://www.gyan.dev/ffmpeg/builds/) dans le PATH (optionnel, pour la similarité vidéos)
+- [ffmpeg](https://www.gyan.dev/ffmpeg/builds/) dans le PATH (optionnel, pour la similarité vidéos et les thumbnails vidéo)
 
 **Linux (Ubuntu/Debian) :**
 ```bash

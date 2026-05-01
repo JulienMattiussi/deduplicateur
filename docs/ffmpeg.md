@@ -2,12 +2,19 @@
 
 ## Rôle dans Déduplicateur
 
-ffmpeg (et son compagnon ffprobe) est utilisé exclusivement pour le mode **similarité vidéos** :
+ffmpeg (et son compagnon ffprobe) intervient dans deux situations distinctes :
 
+**Analyse similarité vidéos** (mode "Vidéos")
 - **ffprobe** - lit les métadonnées de chaque fichier vidéo (durée, résolution, codec) sans décoder les frames
 - **ffmpeg** - extrait N frames échantillonnées sur la durée de la vidéo, redimensionnées en 8×8 niveaux de gris, pour calculer un mean hash 64 bits
 
-Sans ffmpeg, les modes **fichiers exacts** et **images similaires** fonctionnent normalement. Seule l'analyse vidéo est ignorée, avec un bandeau d'avertissement dans l'UI.
+**Thumbnails vidéo dans l'UI** (tous modes)
+- **ffmpeg** - extrait une frame représentative pour afficher un aperçu visuel dans les groupes de doublons vidéo, y compris les doublons exacts trouvés en mode fichiers
+
+Sans ffmpeg :
+- L'analyse de similarité vidéo est ignorée, avec un bandeau d'avertissement
+- Les thumbnails vidéo affichent une icône statique 🎬 à la place de l'aperçu
+- Les modes **fichiers exacts** et **images similaires** fonctionnent normalement
 
 ## Installation
 
