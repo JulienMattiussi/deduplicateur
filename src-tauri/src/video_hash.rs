@@ -1,4 +1,5 @@
 use std::process::Command;
+use crate::tool_finder;
 
 trait NoWindowExt {
     fn no_window(&mut self) -> &mut Self;
@@ -23,9 +24,12 @@ pub struct VideoMetadata {
     pub codec: String,
 }
 
-/// Verifie que ffprobe et ffmpeg sont disponibles sur le PATH.
+/// Verifie que ffprobe et ffmpeg sont disponibles (binaire bundte ou PATH).
 pub fn is_ffmpeg_available() -> bool {
-    Command::new("ffprobe")
+    let ffprobe = tool_finder::find_tool("ffprobe")
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "ffprobe".to_string());
+    Command::new(&ffprobe)
         .arg("-version")
         .no_window()
         .output()
@@ -35,7 +39,10 @@ pub fn is_ffmpeg_available() -> bool {
 
 /// Extrait les metadonnees video via ffprobe (duration, resolution, codec).
 pub fn get_video_metadata(path: &str) -> Option<VideoMetadata> {
-    let output = Command::new("ffprobe")
+    let ffprobe = tool_finder::find_tool("ffprobe")
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "ffprobe".to_string());
+    let output = Command::new(&ffprobe)
         .args([
             "-v",
             "quiet",
@@ -83,11 +90,14 @@ pub fn extract_frame_hashes(path: &str, n_frames: usize, duration: f64) -> Optio
     }
 
     let mut hashes = Vec::with_capacity(n_frames);
+    let ffmpeg = tool_finder::find_tool("ffmpeg")
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "ffmpeg".to_string());
 
     for i in 0..n_frames {
         let t = duration * (0.1 + 0.8 * (i as f64 + 0.5) / n_frames as f64);
 
-        let output = Command::new("ffmpeg")
+        let output = Command::new(&ffmpeg)
             .args([
                 "-ss",
                 &format!("{:.3}", t),
@@ -126,8 +136,11 @@ pub fn extract_frame_hashes(path: &str, n_frames: usize, duration: f64) -> Optio
 pub fn extract_thumbnail(path: &str, duration: f64, max_size: u32) -> Option<String> {
     let t = duration * 0.5;
     let scale = format!("scale={}:{}:force_original_aspect_ratio=decrease", max_size, max_size);
+    let ffmpeg = tool_finder::find_tool("ffmpeg")
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "ffmpeg".to_string());
 
-    let output = Command::new("ffmpeg")
+    let output = Command::new(&ffmpeg)
         .args([
             "-ss",
             &format!("{:.3}", t),

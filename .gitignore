@@ -22,6 +22,9 @@ npm-debug.log*
 .DS_Store
 Thumbs.db
 
+# Binaires bundlés (téléchargés par scripts/download-fpcalc.sh)
+src-tauri/binaries/fpcalc*
+
 # Claude Code (settings locaux et worktrees - settings.json est versionne)
 .claude/settings.local.json
 .claude/worktrees/

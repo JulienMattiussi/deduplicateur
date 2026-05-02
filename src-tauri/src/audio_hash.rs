@@ -1,5 +1,6 @@
 use std::process::Command;
 use serde::{Deserialize, Serialize};
+use crate::tool_finder;
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct AudioMetadata {
@@ -29,7 +30,12 @@ pub fn compute_fingerprint(path: &str) -> Option<(Vec<i32>, f64)> {
 }
 
 fn run_fpcalc(args: &[&str]) -> Option<String> {
-    let mut cmd = Command::new("fpcalc");
+    // Essayer le binaire bundte en premier, puis fallback sur le PATH
+    let fpcalc_path = tool_finder::find_tool("fpcalc")
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "fpcalc".to_string());
+
+    let mut cmd = Command::new(&fpcalc_path);
     cmd.args(args);
     #[cfg(target_os = "windows")]
     {

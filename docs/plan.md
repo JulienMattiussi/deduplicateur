@@ -239,3 +239,26 @@
 - [x] 115 tests Rust (+3 scanner audio phase), 75 tests TypeScript (+3 section J : params scan, bannière fpcalcMissing, tag SessionCard)
 
 **Critère de validation : détecter chanson.mp3 (320kbps) et chanson.flac comme doublons audio**
+
+---
+
+## Phase 13 - Plug and play audio/video ✅
+
+**Objectif : rendre ffmpeg et fpcalc disponibles sans configuration manuelle**
+
+- [x] `tool_finder.rs` : `find_tool(name)` cherche dans l'ordre : binaire bundte (a cote de l'exe), chemins systeme OS-specifiques (Chocolatey, Scoop, Homebrew, apt...), puis fallback PATH ; 2 tests unitaires
+- [x] `audio_hash.rs` : `run_fpcalc` utilise `tool_finder::find_tool("fpcalc")` en premier
+- [x] `video_hash.rs` : `is_ffmpeg_available`, `get_video_metadata`, `extract_frame_hashes`, `extract_thumbnail` utilisent `tool_finder::find_tool("ffmpeg"/"ffprobe")`
+- [x] `externalBin: ["binaries/fpcalc"]` dans `src-tauri/tauri.conf.json` - Tauri bundle fpcalc a cote de l'exe
+- [x] `src-tauri/build.rs` : cree un placeholder vide si le binaire n'existe pas encore (evite l'echec du build en dev local)
+- [x] `scripts/download-fpcalc.sh` : telecharge fpcalc v1.5.1 depuis GitHub, detecte le triple Rust, place dans `src-tauri/binaries/fpcalc-{triple}`
+- [x] `.github/workflows/build.yml` : step "Download fpcalc" avant le build CI (cross-platform)
+- [x] `.gitignore` : `src-tauri/binaries/fpcalc*` ignore les binaires telecharges
+- [x] `lib.rs` : commande Tauri `check_tools()` retourne `{ffmpeg_available, fpcalc_available}`
+- [x] `MissingToolBanner.tsx` : composant riche remplace les simples `div.partial-banner` pour ffmpeg/fpcalc - instructions OS-specifiques, bouton Telecharger (shell open), bouton Verifier a nouveau (invoke check_tools)
+- [x] `i18n.ts` : 5 nouvelles cles (toolMissingTitle, toolMissingDesc, toolInstallWindows/Mac/Linux, toolDownload, toolCheckAgain, toolFound)
+- [x] `App.tsx` : remplace les deux banners texte par `<MissingToolBanner>` avec callback `onAvailable`
+- [x] `MissingToolBanner.test.tsx` : 8 tests (rendu, boutons, shell open, check_tools, onAvailable, message trouvé)
+- [x] 117 tests Rust (+2 tool_finder), 83 tests TypeScript (+8 MissingToolBanner)
+
+**Critère de validation : lancer l'app sans fpcalc ni ffmpeg, voir la banniere avec instructions, cliquer Telecharger**

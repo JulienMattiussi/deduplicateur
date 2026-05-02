@@ -43,6 +43,9 @@ Outil de détection et suppression de fichiers en double - rapide, local, sans c
 - **Export** - après un scan, boutons "Export CSV" et "Rapport HTML" dans la barre de statistiques ; le CSV liste chaque fichier avec son statut (kept/duplicate) ; le HTML est une page autonome avec stats, groupes cliquables et liens système (`file://`)
 - **Profils de scan** - panneau collapsible pour sauvegarder une configuration complète (dossier, mode, type de détection, seuils, filtres) sous un nom ; lancement rapide en un clic (▶) charge et exécute immédiatement le scan
 - **Similarité audio** - détecte les mêmes fichiers audio en formats ou qualités différents via fpcalc (chromaprint) : empreinte acoustique sur vecteur d'entiers 32 bits, distance de Hamming normalisée, filtre de durée configurable, cache inter-scans
+- **fpcalc bundlé** - fpcalc est téléchargé et inclus dans le bundle de l'application (`scripts/download-fpcalc.sh`) ; l'app le détecte automatiquement sans que l'utilisateur ait à l'installer
+- **Recherche élargie des outils** - ffmpeg et fpcalc sont recherchés à côté de l'exécutable (binaire bundlé), dans les chemins système courants (Chocolatey, Scoop, Homebrew, paquets système), puis dans le PATH
+- **Bannière d'installation guidée** - si ffmpeg ou fpcalc est absent, l'app affiche un bandeau avec instructions d'installation OS-spécifiques, lien de téléchargement officiel, et bouton "Vérifier à nouveau" pour détecter l'installation sans relancer l'app
 
 ---
 
@@ -90,6 +93,7 @@ src-tauri/src/
   audio_hash.rs            # Empreinte acoustique via fpcalc, distance Hamming
   audio_cache.rs           # Cache inter-scans des empreintes audio
   audio_config.rs          # Configuration du pipeline audio (JSON persistant)
+  tool_finder.rs           # Recherche d'outils (fpcalc, ffmpeg) : binaire bundte, chemins systeme, PATH
 ```
 
 ### Pipeline de déduplication
@@ -141,8 +145,8 @@ Chaque scan produit un fichier JSON dans `~/.local/share/deduplicateur/sessions/
 | Bundler | Vite + Tauri CLI | Dev HMR + build natif |
 | CI/CD | GitHub Actions | Build Windows automatique sur push |
 | Similarité audio | fpcalc/chromaprint (subprocess) | Empreinte acoustique, distance de Hamming sur vecteurs i32, cache inter-scans |
-| Tests Rust | cargo test + tempfile | 115 tests unitaires sur le moteur |
-| Tests TS | Vitest + jsdom + React Testing Library | 75 tests (utilitaires + i18n + App + ImageComparator) |
+| Tests Rust | cargo test + tempfile | 117 tests unitaires sur le moteur |
+| Tests TS | Vitest + jsdom + React Testing Library | 83 tests (utilitaires + i18n + App + ImageComparator + MissingToolBanner) |
 
 ---
 
@@ -206,10 +210,10 @@ npm run tauri build    # produit un binaire dans src-tauri/target/release/
 ### Tests
 
 ```bash
-# Moteur Rust (115 tests)
+# Moteur Rust (117 tests)
 cargo test --manifest-path src-tauri/Cargo.toml
 
-# TypeScript - utilitaires + i18n + composants React (75 tests)
+# TypeScript - utilitaires + i18n + composants React (83 tests)
 npm test
 ```
 
@@ -233,6 +237,7 @@ npm test
 | 10 | Scan incrémental (cache hashes exacts), filtres extensions, filtres taille | ✅ |
 | 11 | Export CSV/HTML, profils de scan avec lancement rapide | ✅ |
 | 12 | Similarité audio (fpcalc, empreinte acoustique, cache) | ✅ |
+| 13 | Bundle fpcalc, recherche élargie des outils, bannière d'installation guidée | ✅ |
 
 ---
 

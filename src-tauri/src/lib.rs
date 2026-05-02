@@ -9,6 +9,7 @@ mod phash_config;
 mod phash_perf;
 mod profiles;
 mod scanner;
+mod tool_finder;
 mod video_cache;
 mod video_config;
 mod video_hash;
@@ -778,6 +779,20 @@ async fn get_image_meta(path: String) -> Result<ImageMeta, String> {
     .map_err(|e| e.to_string())?
 }
 
+#[tauri::command]
+async fn check_tools() -> serde_json::Value {
+    let ffmpeg_available = tauri::async_runtime::spawn_blocking(video_hash::is_ffmpeg_available)
+        .await
+        .unwrap_or(false);
+    let fpcalc_available = tauri::async_runtime::spawn_blocking(audio_hash::fpcalc_available)
+        .await
+        .unwrap_or(false);
+    serde_json::json!({
+        "ffmpeg_available": ffmpeg_available,
+        "fpcalc_available": fpcalc_available,
+    })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -823,6 +838,7 @@ pub fn run() {
             list_profiles,
             save_profile,
             delete_profile,
+            check_tools,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

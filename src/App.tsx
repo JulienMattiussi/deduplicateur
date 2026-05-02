@@ -21,6 +21,7 @@ import { VideoAdvancedPanel } from "./components/VideoAdvancedPanel";
 import { AudioAdvancedPanel } from "./components/AudioAdvancedPanel";
 import { ProgressETA } from "./components/ProgressETA";
 import { ProfilesPanel } from "./components/ProfilesPanel";
+import { MissingToolBanner } from "./components/MissingToolBanner";
 
 // Nombre de bits dans le hash Hamming (grille 8x8)
 const HAMMING_BITS = 64;
@@ -457,8 +458,18 @@ export default function App() {
 
       {error && <div className="error-banner">{error}</div>}
       {summary?.partial && <div className="partial-banner">{t.partialResults}</div>}
-      {summary?.ffmpeg_missing && <div className="partial-banner">{t.ffmpegMissing}</div>}
-      {summary?.fpcalc_missing && <div className="partial-banner">{t.fpcalcMissing}</div>}
+      {summary?.ffmpeg_missing && (
+        <MissingToolBanner
+          tool="ffmpeg"
+          onAvailable={() => setSummary((s) => s ? { ...s, ffmpeg_missing: false } : s)}
+        />
+      )}
+      {summary?.fpcalc_missing && (
+        <MissingToolBanner
+          tool="fpcalc"
+          onAvailable={() => setSummary((s) => s ? { ...s, fpcalc_missing: false } : s)}
+        />
+      )}
 
       {showSessionPicker && (
         <div className="session-list">

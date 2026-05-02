@@ -58,6 +58,38 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
+      - name: Download fpcalc
+        shell: bash
+        run: |
+          VERSION="1.5.1"
+          TARGET_TRIPLE="$(rustc -Vv | grep '^host:' | awk '{print $2}')"
+          BINARIES_DIR="src-tauri/binaries"
+          mkdir -p "$BINARIES_DIR"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            ARCHIVE="chromaprint-fpcalc-${VERSION}-windows-x86_64.zip"
+            FPCALC_IN_ARCHIVE="chromaprint-fpcalc-${VERSION}-windows-x86_64/fpcalc.exe"
+            EXT=".exe"
+          elif [ "$RUNNER_OS" = "macOS" ]; then
+            ARCHIVE="chromaprint-fpcalc-${VERSION}-macos-x86_64.tar.gz"
+            FPCALC_IN_ARCHIVE="chromaprint-fpcalc-${VERSION}-macos-x86_64/fpcalc"
+            EXT=""
+          else
+            ARCHIVE="chromaprint-fpcalc-${VERSION}-linux-x86_64.tar.gz"
+            FPCALC_IN_ARCHIVE="chromaprint-fpcalc-${VERSION}-linux-x86_64/fpcalc"
+            EXT=""
+          fi
+          DEST="${BINARIES_DIR}/fpcalc-${TARGET_TRIPLE}${EXT}"
+          URL="https://github.com/acoustid/chromaprint/releases/download/v${VERSION}/${ARCHIVE}"
+          curl -fsSL "$URL" -o "$ARCHIVE"
+          if [[ "$ARCHIVE" == *.zip ]]; then
+            unzip -q "$ARCHIVE" "$FPCALC_IN_ARCHIVE"
+          else
+            tar -xzf "$ARCHIVE" "$FPCALC_IN_ARCHIVE"
+          fi
+          cp "$FPCALC_IN_ARCHIVE" "$DEST"
+          chmod +x "$DEST"
+          echo "fpcalc installé dans : $DEST"
+
       - name: Build
         run: npm run tauri build -- --bundles ${{ matrix.bundles }}
 

@@ -557,6 +557,51 @@
   flex-shrink: 0;
 }
 
+/* ===== MissingToolBanner ===== */
+.missing-tool-banner {
+  background: var(--bg-warning);
+  border-left: 3px solid var(--border-warning);
+  color: var(--text-warning);
+  padding: 10px 16px;
+  font-size: 13px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.missing-tool-banner--found {
+  background: var(--bg-success, #1a3a2a);
+  border-left-color: var(--border-success, #4caf50);
+  color: var(--text-success, #81c784);
+}
+
+.missing-tool-banner__header {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+
+.missing-tool-banner__title {
+  font-weight: 600;
+}
+
+.missing-tool-banner__desc {
+  opacity: 0.85;
+}
+
+.missing-tool-banner__instructions {
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.missing-tool-banner__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+}
+
 /* ===== Toolbar ===== */
 .toolbar {
   display: flex;
