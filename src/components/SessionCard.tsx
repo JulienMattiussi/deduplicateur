@@ -21,7 +21,8 @@ function sessionTags(session: ScanSummary, t: Translations): string[] {
   else tags.push(t.tagFlat);
   if (session.find_similar) tags.push(t.tagSimilarImages);
   if (session.find_similar_videos) tags.push(t.tagSimilarVideos);
-  if (!session.find_similar && !session.find_similar_videos) tags.push(t.tagExact);
+  if (session.find_similar_audio) tags.push(t.tagSimilarAudio);
+  if (!session.find_similar && !session.find_similar_videos && !session.find_similar_audio) tags.push(t.tagExact);
   return tags;
 }
 

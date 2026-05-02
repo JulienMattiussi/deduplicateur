@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import type { DuplicateFile, DuplicateGroup } from "../types";
 import { useLang } from "../LangContext";
-import { formatSize, dirname, formatDate, formatDurationSecs, VIDEO_EXTS, IMAGE_EXTS, fileExt } from "../utils";
+import { formatSize, dirname, formatDate, formatDurationSecs, VIDEO_EXTS, IMAGE_EXTS, AUDIO_EXTS, fileExt } from "../utils";
 import { revealInFolder } from "../fileActions";
 import { FileThumbnail } from "./FileThumbnail";
 
@@ -25,9 +25,11 @@ export function GroupCard({
 
   const isSimilar = group.similar === true;
   const isVideoSimilar = group.video_similar === true;
+  const isAudioSimilar = group.audio_similar === true;
   const firstExt = group.files.length > 0 ? fileExt(group.files[0].path) : "";
   const isVideoGroup = isVideoSimilar || VIDEO_EXTS.has(firstExt);
   const isImageGroup = isSimilar || (!isVideoGroup && IMAGE_EXTS.has(firstExt));
+  const isAudioGroup = isAudioSimilar || (!isVideoGroup && !isImageGroup && AUDIO_EXTS.has(firstExt));
 
   function handleSortClick(key: SortKey) {
     if (sortKey === key) {
@@ -68,8 +70,8 @@ export function GroupCard({
       <button className="group-header" onClick={() => setExpanded((v) => !v)}>
         <span className="group-chevron">{expanded ? "▾" : "▸"}</span>
         <span className="group-count">
-          {isVideoGroup ? "🎬 " : isImageGroup ? "🖼 " : ""}
-          {group.files.length} {isVideoGroup ? t.typeVideos : isImageGroup ? t.typeImages : t.typeFiles} {(isSimilar || isVideoSimilar) ? t.similar : t.identical}
+          {isVideoGroup ? "🎬 " : isImageGroup ? "🖼 " : isAudioGroup ? "🎵 " : ""}
+          {group.files.length} {isVideoGroup ? t.typeVideos : isImageGroup ? t.typeImages : isAudioGroup ? t.typeAudio : t.typeFiles} {(isSimilar || isVideoSimilar || isAudioSimilar) ? t.similar : t.identical}
         </span>
         {!isImageGroup && !isVideoGroup && <span className="group-size">{formatSize(group.size)} {t.each}</span>}
         {isImageGroup && onCompare && (
@@ -89,20 +91,21 @@ export function GroupCard({
         <div className="group-files">
           <div className="file-row-header">
             <span className="file-col-cb" />
-            {(isImageGroup || isVideoGroup) && <span className="file-col-thumb" />}
+            {(isImageGroup || isVideoGroup || isAudioGroup) && <span className="file-col-thumb" />}
             <SortableHeader col="name" label={t.colName} className="file-col-name" />
             <SortableHeader col="modified" label={t.colModified} className="file-col-date" />
-            {(isImageGroup || isVideoGroup) && (
+            {(isImageGroup || isVideoGroup || isAudioGroup) && (
               <SortableHeader col="size" label={t.colSize} className="file-col-size" />
             )}
             {isVideoGroup && <span className="file-col-video-meta">{t.colDuration}</span>}
+            {isAudioGroup && <span className="file-col-video-meta">{t.colDuration}</span>}
             <span className="file-col-dir">{t.colFolder}</span>
             <span className="file-col-badge" />
           </div>
           {sortedFiles.map((file: DuplicateFile, idx: number) => (
             <div
               key={file.path}
-              className={`file-row ${(isImageGroup || isVideoGroup) ? "file-row--media" : ""} ${selected.has(file.path) ? "file-row--checked" : ""}`}
+              className={`file-row ${(isImageGroup || isVideoGroup || isAudioGroup) ? "file-row--media" : ""} ${selected.has(file.path) ? "file-row--checked" : ""}`}
               onClick={() => onToggle(file.path)}
             >
               <span className="file-col-cb">
@@ -113,17 +116,22 @@ export function GroupCard({
                   onClick={(e) => e.stopPropagation()}
                 />
               </span>
-              {(isImageGroup || isVideoGroup) && (
+              {(isImageGroup || isVideoGroup || isAudioGroup) && (
                 <span className="file-col-thumb">
-                  <FileThumbnail file={file} mode={isVideoGroup ? "video" : "image"} />
+                  <FileThumbnail file={file} mode={isVideoGroup ? "video" : isAudioGroup ? "audio" : "image"} />
                 </span>
               )}
               <span className="file-col-name file-name">{file.name}</span>
               <span className="file-col-date file-meta">{formatDate(file.modified, t.dateLocale)}</span>
-              {(isImageGroup || isVideoGroup) && <span className="file-col-size file-meta">{formatSize(file.size)}</span>}
+              {(isImageGroup || isVideoGroup || isAudioGroup) && <span className="file-col-size file-meta">{formatSize(file.size)}</span>}
               {isVideoGroup && (
                 <span className="file-col-video-meta file-meta">
                   {file.video_metadata ? formatDurationSecs(file.video_metadata.duration_secs) : "-"}
+                </span>
+              )}
+              {isAudioGroup && (
+                <span className="file-col-video-meta file-meta">
+                  {file.audio_metadata ? formatDurationSecs(file.audio_metadata.duration_secs) : "-"}
                 </span>
               )}
               <span className="file-col-dir">

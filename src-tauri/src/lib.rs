@@ -1,3 +1,6 @@
+mod audio_cache;
+mod audio_config;
+mod audio_hash;
 mod cache_io;
 mod exact_cache;
 mod filters;
@@ -10,6 +13,7 @@ mod video_cache;
 mod video_config;
 mod video_hash;
 
+use audio_config::AudioConfig;
 use phash_config::{load_config, save_config, PHashConfig};
 use video_config::VideoConfig;
 use scanner::{scan_folder as do_scan, DuplicateGroup, ScanParams};
@@ -50,6 +54,10 @@ struct ScanSummary {
     find_similar_videos: bool,
     #[serde(default)]
     ffmpeg_missing: bool,
+    #[serde(default)]
+    find_similar_audio: bool,
+    #[serde(default)]
+    fpcalc_missing: bool,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -115,6 +123,10 @@ async fn scan_folder(
     include_extensions: Vec<String>,
     min_file_size_kb: u64,
     max_file_size_kb: u64,
+    find_similar_audio: bool,
+    audio_sim_threshold: u32,
+    audio_cache_enabled: bool,
+    audio_duration_tolerance: f64,
 ) -> Result<ScanSummary, String> {
     let app = window.app_handle().clone();
     let cancelled = {
@@ -129,6 +141,9 @@ async fn scan_folder(
         .unwrap_or_default();
     let video_cfg = data_dir_str.as_deref()
         .map(|d| video_config::load_config(std::path::Path::new(d)))
+        .unwrap_or_default();
+    let audio_cfg = data_dir_str.as_deref()
+        .map(|d| audio_config::load_config(std::path::Path::new(d)))
         .unwrap_or_default();
 
     // Shared progress state written by rayon threads, read by the async emitter task.
@@ -174,6 +189,10 @@ async fn scan_folder(
             include_extensions,
             min_file_size_kb,
             max_file_size_kb,
+            find_similar_audio,
+            audio_sim_threshold,
+            audio_cache_enabled: audio_cache_enabled && audio_cfg.cache_enabled,
+            audio_duration_tolerance,
         };
         do_scan(params, cancelled, move |current, total, total_files, file: &str| {
             *progress_for_scan.lock().unwrap() = Some((current, total, total_files, file.to_string()));
@@ -213,6 +232,8 @@ async fn scan_folder(
         find_similar,
         find_similar_videos,
         ffmpeg_missing: result.ffmpeg_missing,
+        find_similar_audio,
+        fpcalc_missing: result.fpcalc_missing,
     };
 
     save_session(&app, &summary, &result.groups);
@@ -520,6 +541,17 @@ fn set_video_config(app: tauri::AppHandle, config: VideoConfig) -> Result<(), St
 }
 
 #[tauri::command]
+fn get_audio_config(app: tauri::AppHandle) -> AudioConfig {
+    app_data_dir(&app).as_deref().map(audio_config::load_config).unwrap_or_default()
+}
+
+#[tauri::command]
+fn set_audio_config(app: tauri::AppHandle, config: AudioConfig) -> Result<(), String> {
+    let dir = app_data_dir(&app).ok_or("Impossible d'acceder au dossier de donnees")?;
+    audio_config::save_config(&dir, &config)
+}
+
+#[tauri::command]
 async fn get_image_thumbnail(path: String, max_size: u32) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let img = image::open(&path).map_err(|e| e.to_string())?;
@@ -783,6 +815,8 @@ pub fn run() {
             set_phash_config,
             get_video_config,
             set_video_config,
+            get_audio_config,
+            set_audio_config,
             check_path_is_dir,
             get_image_meta,
             export_results,

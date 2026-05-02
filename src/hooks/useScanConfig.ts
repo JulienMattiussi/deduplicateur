@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import { PHashConfig, VideoConfig } from "../types";
+import { AudioConfig, PHashConfig, VideoConfig } from "../types";
 
 export const DEFAULT_PHASH_CONFIG: PHashConfig = {
   min_file_size_bytes: 10240,
@@ -26,6 +26,11 @@ export const DEFAULT_VIDEO_CONFIG: VideoConfig = {
   use_dtw: false,
 };
 
+export const DEFAULT_AUDIO_CONFIG: AudioConfig = {
+  duration_tolerance: 0.20,
+  cache_enabled: true,
+};
+
 export const DEFAULT_EXCLUDE_EXTENSIONS = ["tmp", "DS_Store", "Thumbs.db", "desktop.ini", "lnk"];
 
 export function useScanConfig() {
@@ -36,11 +41,13 @@ export function useScanConfig() {
     "__pycache__", ".cache", "vendor", "build", ".npm",
   ]);
   const [scanMode, setScanMode] = useState<"all" | "by_folder">("all");
-  const [detectionMode, setDetectionMode] = useState<"files" | "images" | "videos">("files");
+  const [detectionMode, setDetectionMode] = useState<"files" | "images" | "videos" | "audio">("files");
   const [simSimilarity, setSimSimilarity] = useState(100);
   const [videoSimilarity, setVideoSimilarity] = useState(100);
   const [phashConfig, setPhashConfig] = useState<PHashConfig>(DEFAULT_PHASH_CONFIG);
   const [videoConfig, setVideoConfig] = useState<VideoConfig>(DEFAULT_VIDEO_CONFIG);
+  const [audioConfig, setAudioConfig] = useState<AudioConfig>(DEFAULT_AUDIO_CONFIG);
+  const [audioSimilarity, setAudioSimilarity] = useState(100);
   const [picking, setPicking] = useState(false);
   const [excludeExtensions, setExcludeExtensions] = useState<string[]>(DEFAULT_EXCLUDE_EXTENSIONS);
   const [includeExtensions, setIncludeExtensions] = useState<string[]>([]);
@@ -51,6 +58,7 @@ export function useScanConfig() {
   useEffect(() => {
     invoke<PHashConfig>("get_phash_config").then(setPhashConfig).catch(() => {});
     invoke<VideoConfig>("get_video_config").then(setVideoConfig).catch(() => {});
+    invoke<AudioConfig>("get_audio_config").then(setAudioConfig).catch(() => {});
   }, []);
 
   async function pickFolder() {
@@ -74,6 +82,11 @@ export function useScanConfig() {
     try { await invoke("set_video_config", { config: cfg }); } catch { /* best-effort */ }
   }
 
+  async function updateAudioConfig(cfg: AudioConfig) {
+    setAudioConfig(cfg);
+    try { await invoke("set_audio_config", { config: cfg }); } catch { /* best-effort */ }
+  }
+
   return {
     folder, setFolder,
     recursive, setRecursive,
@@ -82,8 +95,9 @@ export function useScanConfig() {
     detectionMode, setDetectionMode,
     simSimilarity, setSimSimilarity,
     videoSimilarity, setVideoSimilarity,
-    phashConfig, videoConfig,
-    updatePhashConfig, updateVideoConfig,
+    phashConfig, videoConfig, audioConfig,
+    updatePhashConfig, updateVideoConfig, updateAudioConfig,
+    audioSimilarity, setAudioSimilarity,
     picking, pickFolder,
     excludeExtensions, setExcludeExtensions,
     includeExtensions, setIncludeExtensions,

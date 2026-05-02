@@ -217,23 +217,25 @@
 - [x] `ProfilesPanel` : panneau collapsible (même pattern que FiltersPanel), saisie de nom, liste avec bouton lancement (▶) et suppression (×)
 - [x] Lancement rapide : cliquer sur ▶ charge la config du profil ET lance immédiatement le scan
 - [x] `dialog:allow-save` ajouté dans `capabilities/default.json`
-- [x] 96 tests Rust (+5 profiles.rs), 69 tests TypeScript (+6 ProfilesPanel + 3 export)
+- [x] 96 tests Rust (+5 profiles.rs), 69 tests TypeScript (+6 ProfilesPanel + 3 export) - 112/72 après Phase 12
 
 ---
 
-## Phase 12 - Audio similaire
+## Phase 12 - Audio similaire ✅
 
 **Objectif : détecter les mêmes fichiers audio en formats ou qualités différents**
 
-- [ ] Intégration `rusty-chromaprint` ou appel subprocess `fpcalc` (AcoustID) pour empreinte acoustique
-- [ ] `audio_hash.rs` : extraction de l'empreinte (fingerprint 32 bits x N), distance de Hamming sur vecteurs
-- [ ] `audio_cache.rs` : cache inter-scans (clé mtime + taille), même modèle que `phash_cache.rs`
-- [ ] Extensions audio supportées : mp3, flac, ogg, m4a, aac, wav, wma, opus, aiff
-- [ ] Filtre de durée audio (tolérance %) avant comparaison O(n²), comme pour les vidéos
-- [ ] Pipeline intégré au scanner : phase 4 optionnelle après hash exact, images et vidéos
-- [ ] Seuil de similarité audio configurable dans l'UI (slider)
-- [ ] Panneau avancé audio : tolérance durée, cache, outil d'empreinte (fpcalc/rusty-chromaprint)
-- [ ] Affichage métadonnées dans les groupes : durée, bitrate, codec (via `ffprobe` déjà disponible)
-- [ ] Détection automatique absence de fpcalc si choix subprocess - bandeau d'avertissement
+- [x] Appel subprocess `fpcalc` (AcoustID/chromaprint) pour empreinte acoustique
+- [x] `audio_hash.rs` : extraction de l'empreinte (fingerprint 32 bits x N), distance de Hamming sur vecteurs, 8 tests
+- [x] `audio_cache.rs` : cache inter-scans (clé mtime + taille), même modèle que `phash_cache.rs`, 4 tests
+- [x] `audio_config.rs` : `AudioConfig` (tolérance durée + cache), JSON persistant, 4 tests
+- [x] Extensions audio supportées : mp3, flac, ogg, m4a, aac, wav, wma, opus, aiff, ape
+- [x] Filtre de durée audio (tolérance %) avant comparaison O(n²), comme pour les vidéos
+- [x] Pipeline intégré au scanner : phase 4 optionnelle après hash exact, images et vidéos
+- [x] Seuil de similarité audio configurable dans l'UI (slider, défaut 80%)
+- [x] `AudioAdvancedPanel` : tolérance durée + cache
+- [x] Affichage durée dans les groupes audio (colonne Durée), icône 🎵, label "fichiers audio"
+- [x] Détection automatique absence de fpcalc - bandeau d'avertissement
+- [x] 115 tests Rust (+3 scanner audio phase), 75 tests TypeScript (+3 section J : params scan, bannière fpcalcMissing, tag SessionCard)
 
 **Critère de validation : détecter chanson.mp3 (320kbps) et chanson.flac comme doublons audio**

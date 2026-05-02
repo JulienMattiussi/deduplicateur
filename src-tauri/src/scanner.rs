@@ -13,6 +13,8 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use xxhash_rust::xxh3::Xxh3;
 
+use crate::audio_cache::AudioCache;
+use crate::audio_hash::{self, compute_fingerprint, fingerprint_distance, is_audio, AudioMetadata};
 use crate::exact_cache::ExactCache;
 use crate::filters::passes_filters;
 use crate::phash_cache::{CacheEntry, HashCache};
@@ -32,6 +34,8 @@ pub struct DuplicateFile {
     pub modified: u64,
     #[serde(default)]
     pub video_metadata: Option<VideoMetadata>,
+    #[serde(default)]
+    pub audio_metadata: Option<AudioMetadata>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -46,6 +50,8 @@ pub struct DuplicateGroup {
     pub similar: bool,
     #[serde(default)]
     pub video_similar: bool,
+    #[serde(default)]
+    pub audio_similar: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -57,6 +63,7 @@ pub struct ScanResult {
     #[serde(default)]
     pub partial: bool,
     pub ffmpeg_missing: bool,
+    pub fpcalc_missing: bool,
 }
 
 /// Parametres d'un scan. Utiliser `ScanParams::new(folder)` pour les valeurs par defaut.
@@ -96,6 +103,12 @@ pub struct ScanParams {
     pub min_file_size_kb: u64,
     /// Taille maximale des fichiers en Ko (0 = pas de maximum).
     pub max_file_size_kb: u64,
+    pub find_similar_audio: bool,
+    /// Seuil de distance de fingerprint audio (0.0-1.0). Defaut : 0.20 (80% similarite).
+    pub audio_sim_threshold: u32,
+    pub audio_cache_enabled: bool,
+    /// Tolerance de duree pour le filtre de paires (0.0-1.0). Defaut : 0.20.
+    pub audio_duration_tolerance: f64,
 }
 
 impl ScanParams {
@@ -121,6 +134,10 @@ impl ScanParams {
             include_extensions: vec![],
             min_file_size_kb: 0,
             max_file_size_kb: 0,
+            find_similar_audio: false,
+            audio_sim_threshold: 20,
+            audio_cache_enabled: true,
+            audio_duration_tolerance: 0.20,
         }
     }
 }
@@ -278,7 +295,7 @@ where
     let start = Instant::now();
     let mut was_cancelled = false;
 
-    let files = collect_files(
+    let all_files = collect_files(
         Path::new(&params.folder),
         params.recursive,
         &params.excluded,
@@ -288,7 +305,19 @@ where
         params.min_file_size_kb.saturating_mul(1024),
         params.max_file_size_kb.saturating_mul(1024),
     )?;
-    let scanned_files = files.len();
+    let scanned_files = all_files.len();
+
+    // In media-specific modes (images/videos/audio), restrict all phases to files of that type.
+    // This prevents e.g. PDF exact duplicates from appearing in an audio-only scan.
+    let files: Vec<DuplicateFile> = if params.find_similar_audio && !params.find_similar && !params.find_similar_videos {
+        all_files.into_iter().filter(|f| is_audio(&f.path)).collect()
+    } else if params.find_similar && !params.find_similar_videos && !params.find_similar_audio {
+        all_files.into_iter().filter(|f| is_image(&f.path)).collect()
+    } else if params.find_similar_videos && !params.find_similar && !params.find_similar_audio {
+        all_files.into_iter().filter(|f| is_video(&f.path)).collect()
+    } else {
+        all_files
+    };
 
     // Collect image candidates before partitioning (avoids a second collect_files in pHash phase).
     let phash_candidates_all: Vec<DuplicateFile> = if params.find_similar {
@@ -304,6 +333,13 @@ where
         vec![]
     };
     let video_estimate = video_candidates_all.len();
+
+    let audio_candidates_all: Vec<DuplicateFile> = if params.find_similar_audio {
+        files.iter().filter(|f| is_audio(&f.path)).cloned().collect()
+    } else {
+        vec![]
+    };
+    let audio_estimate = audio_candidates_all.len();
 
     let partitions: Vec<(Option<String>, Vec<DuplicateFile>)> = if params.by_folder {
         let root = Path::new(&params.folder);
@@ -335,7 +371,7 @@ where
         .map(|(_, cands)| cands.iter().map(|v| v.len()).sum::<usize>())
         .sum();
 
-    let total_work = total_to_hash + phash_estimate + video_estimate;
+    let total_work = total_to_hash + phash_estimate + video_estimate + audio_estimate;
 
     let hashed = Arc::new(AtomicUsize::new(0));
     let mut groups: Vec<DuplicateGroup> = Vec::new();
@@ -453,6 +489,7 @@ where
                     folder_key: folder_key.clone(),
                     similar: false,
                     video_similar: false,
+                    audio_similar: false,
                     files,
                 }
             })
@@ -743,6 +780,7 @@ where
                 folder_key: None,
                 similar: true,
                 video_similar: false,
+                audio_similar: false,
                 files,
             });
         }
@@ -790,6 +828,7 @@ where
 
     // --- Phase 3 : videos similaires ---
     let ffmpeg_missing = params.find_similar_videos && !is_ffmpeg_available();
+    let fpcalc_missing = params.find_similar_audio && !audio_hash::fpcalc_available();
     if params.find_similar_videos && !was_cancelled && !cancelled.load(Ordering::Relaxed)
         && !ffmpeg_missing
     {
@@ -976,10 +1015,157 @@ where
                 folder_key: None,
                 similar: false,
                 video_similar: true,
+                audio_similar: false,
                 files,
             });
         }
         } // end 'video
+    }
+
+    // --- Phase 4 : audio similaire ---
+    if params.find_similar_audio && !was_cancelled && !cancelled.load(Ordering::Relaxed)
+        && !fpcalc_missing
+    {
+        'audio: {
+        let exact_paths: HashSet<String> = groups
+            .iter()
+            .flat_map(|g| g.files.iter().map(|f| f.path.clone()))
+            .collect();
+
+        let candidates: Vec<DuplicateFile> = audio_candidates_all
+            .into_iter()
+            .filter(|f| !exact_paths.contains(&f.path))
+            .collect();
+
+        let offset = total_to_hash + phash_estimate + video_estimate;
+
+        let mut acache = if params.audio_cache_enabled {
+            params.data_dir.as_deref()
+                .map_or_else(AudioCache::empty, |d| AudioCache::load(Path::new(d)))
+        } else {
+            AudioCache::empty()
+        };
+
+        let audio_done = Arc::new(AtomicUsize::new(0));
+        let audio_done_for_extract = Arc::clone(&audio_done);
+
+        let cache_results: Vec<Option<(Vec<i32>, f64)>> = candidates.iter()
+            .map(|f| {
+                let cached = acache.get(&f.path, f.modified, f.size);
+                if cached.is_some() {
+                    let n = audio_done.fetch_add(1, Ordering::Relaxed) + 1;
+                    on_progress(offset + n, total_work, scanned_files, &f.name);
+                }
+                cached
+            })
+            .collect();
+
+        let miss_indices: Vec<usize> = cache_results.iter().enumerate()
+            .filter_map(|(i, r)| if r.is_none() { Some(i) } else { None })
+            .collect();
+
+        let miss_results: Vec<(usize, Option<(Vec<i32>, f64)>)> = miss_indices
+            .into_par_iter()
+            .map(|i| {
+                if cancelled.load(Ordering::Relaxed) { return (i, None); }
+                let result = compute_fingerprint(&candidates[i].path);
+                let n = audio_done_for_extract.fetch_add(1, Ordering::Relaxed) + 1;
+                on_progress(offset + n, total_work, scanned_files, &candidates[i].name);
+                (i, result)
+            })
+            .collect();
+
+        if cancelled.load(Ordering::Relaxed) {
+            was_cancelled = true;
+            break 'audio;
+        }
+
+        let mut all_fingerprints: Vec<Option<(Vec<i32>, f64)>> = cache_results;
+        for (i, result) in miss_results {
+            if let Some((ref fp, dur)) = result {
+                acache.insert(candidates[i].path.clone(), candidates[i].modified, candidates[i].size, fp.clone(), dur);
+            }
+            all_fingerprints[i] = result;
+        }
+        if params.audio_cache_enabled {
+            if let Some(dir) = params.data_dir.as_deref() {
+                let _ = acache.save(Path::new(dir));
+            }
+        }
+
+        struct AudioData {
+            file: DuplicateFile,
+            fingerprint: Vec<i32>,
+            duration_secs: f64,
+        }
+
+        let audio_data: Vec<AudioData> = candidates.iter()
+            .zip(all_fingerprints.iter())
+            .filter_map(|(file, fp_opt)| {
+                let (fp, dur) = fp_opt.as_ref()?;
+                let mut f = file.clone();
+                f.audio_metadata = Some(AudioMetadata { duration_secs: *dur });
+                Some(AudioData { file: f, fingerprint: fp.clone(), duration_secs: *dur })
+            })
+            .collect();
+
+        let n = audio_data.len();
+        let threshold = params.audio_sim_threshold as f64 / 100.0;
+        let duration_tolerance = params.audio_duration_tolerance;
+
+        if cancelled.load(Ordering::Relaxed) {
+            was_cancelled = true;
+            break 'audio;
+        }
+
+        let similar_pairs: Vec<(usize, usize)> = (0..n)
+            .into_par_iter()
+            .flat_map_iter(|i| {
+                if cancelled.load(Ordering::Relaxed) { return vec![].into_iter(); }
+                let mut local = Vec::new();
+                for j in (i + 1)..n {
+                    let dur_i = audio_data[i].duration_secs;
+                    let dur_j = audio_data[j].duration_secs;
+                    let max_dur = dur_i.max(dur_j);
+                    if max_dur > 0.0 && (dur_i - dur_j).abs() / max_dur > duration_tolerance {
+                        continue;
+                    }
+                    let dist = fingerprint_distance(&audio_data[i].fingerprint, &audio_data[j].fingerprint);
+                    if dist <= threshold {
+                        local.push((i, j));
+                    }
+                }
+                local.into_iter()
+            })
+            .collect();
+
+        let mut uf = UnionFind::new(n);
+        for &(i, j) in &similar_pairs {
+            uf.union(i, j);
+        }
+
+        let mut group_map: HashMap<usize, Vec<usize>> = HashMap::new();
+        for i in 0..n {
+            let root = uf.find(i);
+            group_map.entry(root).or_default().push(i);
+        }
+
+        for (_, indices) in group_map {
+            if indices.len() < 2 { continue; }
+            let files: Vec<DuplicateFile> = indices.iter().map(|&i| audio_data[i].file.clone()).collect();
+            let size = files[0].size;
+            groups.push(DuplicateGroup {
+                id: uuid::Uuid::new_v4().to_string(),
+                hash: "audio".to_string(),
+                size,
+                folder_key: None,
+                similar: false,
+                video_similar: false,
+                audio_similar: true,
+                files,
+            });
+        }
+        } // end 'audio
     }
 
     if params.by_folder {
@@ -1010,6 +1196,7 @@ where
         duration_ms: start.elapsed().as_millis(),
         partial: was_cancelled,
         ffmpeg_missing,
+        fpcalc_missing,
     })
 }
 
@@ -1097,6 +1284,7 @@ fn collect_files(
                 size,
                 modified,
                 video_metadata: None,
+                audio_metadata: None,
             });
         }
     } else {
@@ -1132,6 +1320,7 @@ fn collect_files(
                 size,
                 modified,
                 video_metadata: None,
+                audio_metadata: None,
             });
         }
     }
@@ -1905,5 +2094,45 @@ mod tests {
             r2.groups[0].files.len(),
             r1.groups[0].files.len()
         );
+    }
+
+    #[test]
+    fn audio_phase_desactivee_par_defaut() {
+        let dir = TempDir::new().unwrap();
+        write_file(dir.path(), "a.mp3", b"audio content");
+        let result = scan_folder(ScanParams::new(dir.path().to_str().unwrap()), no_cancel(), no_progress).unwrap();
+        assert!(!result.fpcalc_missing, "fpcalc_missing doit etre false quand find_similar_audio=false");
+    }
+
+    #[test]
+    fn audio_fpcalc_missing_quand_active_et_absent() {
+        let dir = TempDir::new().unwrap();
+        write_file(dir.path(), "a.mp3", b"audio1");
+        write_file(dir.path(), "b.mp3", b"audio2");
+        // Ce test ne verifie fpcalc_missing que si fpcalc est absent du systeme.
+        if audio_hash::fpcalc_available() {
+            return;
+        }
+        let result = scan_folder(
+            ScanParams { find_similar_audio: true, ..ScanParams::new(dir.path().to_str().unwrap()) },
+            no_cancel(),
+            no_progress,
+        ).unwrap();
+        assert!(result.fpcalc_missing, "fpcalc_missing doit etre true quand fpcalc est absent");
+        assert!(!result.groups.iter().any(|g| g.audio_similar));
+    }
+
+    #[test]
+    fn audio_phase_ignore_non_audio() {
+        let dir = TempDir::new().unwrap();
+        write_file(dir.path(), "doc.txt", b"texte");
+        write_file(dir.path(), "image.jpg", b"image");
+        let result = scan_folder(
+            ScanParams { find_similar_audio: true, ..ScanParams::new(dir.path().to_str().unwrap()) },
+            no_cancel(),
+            no_progress,
+        ).unwrap();
+        // pas de fichiers audio : aucun groupe audio_similar
+        assert!(!result.groups.iter().any(|g| g.audio_similar));
     }
 }

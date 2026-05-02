@@ -33,11 +33,14 @@ pub struct ScanProfile {
     pub max_file_size_kb: u64,
     #[serde(default = "default_true")]
     pub exact_cache_enabled: bool,
+    #[serde(default = "default_audio_similarity")]
+    pub audio_similarity: u32,
 }
 
 fn default_scan_mode() -> String { "all".to_string() }
 fn default_detection_mode() -> String { "files".to_string() }
 fn default_similarity() -> u32 { 100 }
+fn default_audio_similarity() -> u32 { 100 }
 fn default_true() -> bool { true }
 
 fn profiles_dir(data_dir: &Path) -> PathBuf {
@@ -106,6 +109,7 @@ mod tests {
             min_file_size_kb: 0,
             max_file_size_kb: 0,
             exact_cache_enabled: true,
+            audio_similarity: 100,
         }
     }
 

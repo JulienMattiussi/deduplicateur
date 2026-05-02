@@ -13,6 +13,10 @@ export interface ScanInvokeArgs {
   simThreshold: number;
   findSimilarVideos: boolean;
   videoSimThreshold: number;
+  findSimilarAudio: boolean;
+  audioSimThreshold: number;
+  audioCacheEnabled: boolean;
+  audioDurationTolerance: number;
 }
 
 export function useScanExecution(

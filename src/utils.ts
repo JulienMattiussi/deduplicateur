@@ -19,6 +19,7 @@ export function fileExt(path: string): string {
 
 export const VIDEO_EXTS = new Set(["mp4","avi","mkv","mov","wmv","webm","flv","m4v","mpg","mpeg","3gp","ts","mts","m2ts"]);
 export const IMAGE_EXTS = new Set(["jpg","jpeg","png","webp","bmp","gif","tiff","tif","avif"]);
+export const AUDIO_EXTS = new Set(["mp3","flac","ogg","m4a","aac","wav","wma","opus","aiff","aif","ape"]);
 
 export function formatDate(ts: number, dateLocale: string): string {
   if (!ts) return "-";

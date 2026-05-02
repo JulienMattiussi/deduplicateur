@@ -18,6 +18,7 @@ import { FolderSection } from "./components/FolderSection";
 import { FiltersPanel } from "./components/FiltersPanel";
 import { AdvancedPanel } from "./components/AdvancedPanel";
 import { VideoAdvancedPanel } from "./components/VideoAdvancedPanel";
+import { AudioAdvancedPanel } from "./components/AudioAdvancedPanel";
 import { ProgressETA } from "./components/ProgressETA";
 import { ProfilesPanel } from "./components/ProfilesPanel";
 
@@ -189,6 +190,10 @@ export default function App() {
       simThreshold: Math.round((1 - config.simSimilarity / 100) * HAMMING_BITS),
       findSimilarVideos: config.detectionMode === "videos",
       videoSimThreshold: Math.round((1 - config.videoSimilarity / 100) * HAMMING_BITS),
+      findSimilarAudio: config.detectionMode === "audio",
+      audioSimThreshold: 100 - config.audioSimilarity,
+      audioCacheEnabled: config.audioConfig.cache_enabled,
+      audioDurationTolerance: config.audioConfig.duration_tolerance,
       exactCacheEnabled: config.exactCacheEnabled,
       excludeExtensions: config.excludeExtensions,
       includeExtensions: config.includeExtensions,
@@ -221,6 +226,7 @@ export default function App() {
       detection_mode: config.detectionMode,
       sim_similarity: config.simSimilarity,
       video_similarity: config.videoSimilarity,
+      audio_similarity: config.audioSimilarity,
       excluded: config.excluded,
       exclude_extensions: config.excludeExtensions,
       include_extensions: config.includeExtensions,
@@ -234,9 +240,10 @@ export default function App() {
     config.setFolder(profile.folder);
     config.setRecursive(profile.recursive);
     config.setScanMode(profile.scan_mode as "all" | "by_folder");
-    config.setDetectionMode(profile.detection_mode as "files" | "images" | "videos");
+    config.setDetectionMode(profile.detection_mode as "files" | "images" | "videos" | "audio");
     config.setSimSimilarity(profile.sim_similarity);
     config.setVideoSimilarity(profile.video_similarity);
+    config.setAudioSimilarity(profile.audio_similarity ?? 80);
     config.setExcluded(profile.excluded);
     config.setExcludeExtensions(profile.exclude_extensions);
     config.setIncludeExtensions(profile.include_extensions);
@@ -258,6 +265,10 @@ export default function App() {
       simThreshold: Math.round((1 - profile.sim_similarity / 100) * HAMMING_BITS),
       findSimilarVideos: profile.detection_mode === "videos",
       videoSimThreshold: Math.round((1 - profile.video_similarity / 100) * HAMMING_BITS),
+      findSimilarAudio: profile.detection_mode === "audio",
+      audioSimThreshold: 100 - (profile.audio_similarity ?? 80),
+      audioCacheEnabled: config.audioConfig.cache_enabled,
+      audioDurationTolerance: config.audioConfig.duration_tolerance,
       exactCacheEnabled: profile.exact_cache_enabled,
       excludeExtensions: profile.exclude_extensions,
       includeExtensions: profile.include_extensions,
@@ -369,11 +380,11 @@ export default function App() {
 
         <div className="similar-options-row">
           <div className="detection-mode-selector">
-            {(["files", "images", "videos"] as const).map((mode) => (
+            {(["files", "images", "videos", "audio"] as const).map((mode) => (
               <button key={mode}
                 className={`detection-mode-btn${config.detectionMode === mode ? " detection-mode-btn--active" : ""}`}
                 onClick={() => config.setDetectionMode(mode)} disabled={scanExec.scanning}>
-                {mode === "files" ? t.modeFiles : mode === "images" ? t.modeImages : t.modeVideos}
+                {mode === "files" ? t.modeFiles : mode === "images" ? t.modeImages : mode === "videos" ? t.modeVideos : t.modeAudio}
               </button>
             ))}
           </div>
@@ -393,6 +404,14 @@ export default function App() {
                 disabled={scanExec.scanning} className="threshold-slider" />
             </label>
           )}
+          {config.detectionMode === "audio" && (
+            <label className="slider-threshold">
+              {t.minSimilarity}&nbsp;: <strong>{config.audioSimilarity}&nbsp;%</strong>
+              <input type="range" min={60} max={100} step={1} value={config.audioSimilarity}
+                onChange={(e) => config.setAudioSimilarity(Number(e.target.value))}
+                disabled={scanExec.scanning} className="threshold-slider" />
+            </label>
+          )}
         </div>
 
         {config.detectionMode === "images" && (
@@ -400,6 +419,9 @@ export default function App() {
         )}
         {config.detectionMode === "videos" && (
           <VideoAdvancedPanel config={config.videoConfig} onChange={config.updateVideoConfig} disabled={scanExec.scanning} />
+        )}
+        {config.detectionMode === "audio" && (
+          <AudioAdvancedPanel config={config.audioConfig} onChange={config.updateAudioConfig} disabled={scanExec.scanning} />
         )}
         <FiltersPanel
           excluded={config.excluded}
@@ -436,6 +458,7 @@ export default function App() {
       {error && <div className="error-banner">{error}</div>}
       {summary?.partial && <div className="partial-banner">{t.partialResults}</div>}
       {summary?.ffmpeg_missing && <div className="partial-banner">{t.ffmpegMissing}</div>}
+      {summary?.fpcalc_missing && <div className="partial-banner">{t.fpcalcMissing}</div>}
 
       {showSessionPicker && (
         <div className="session-list">
@@ -560,7 +583,7 @@ export default function App() {
                 {interp(t.scanProgress, {
                   n: scanExec.progress.current,
                   m: scanExec.progress.total_files ?? scanExec.progress.total,
-                  type: config.detectionMode === "images" ? t.typeImages : config.detectionMode === "videos" ? t.typeVideos : t.typeFiles,
+                  type: config.detectionMode === "images" ? t.typeImages : config.detectionMode === "videos" ? t.typeVideos : config.detectionMode === "audio" ? t.typeAudio : t.typeFiles,
                 })}
               </p>
               <div className="progress-track">

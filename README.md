@@ -42,6 +42,7 @@ Outil de détection et suppression de fichiers en double - rapide, local, sans c
 - **Filtres** - panneau collapsible dans les options : extensions exclues (défaut : `tmp`, `DS_Store`, `Thumbs.db`...), extensions incluses exclusivement, taille minimale et maximale en Ko
 - **Export** - après un scan, boutons "Export CSV" et "Rapport HTML" dans la barre de statistiques ; le CSV liste chaque fichier avec son statut (kept/duplicate) ; le HTML est une page autonome avec stats, groupes cliquables et liens système (`file://`)
 - **Profils de scan** - panneau collapsible pour sauvegarder une configuration complète (dossier, mode, type de détection, seuils, filtres) sous un nom ; lancement rapide en un clic (▶) charge et exécute immédiatement le scan
+- **Similarité audio** - détecte les mêmes fichiers audio en formats ou qualités différents via fpcalc (chromaprint) : empreinte acoustique sur vecteur d'entiers 32 bits, distance de Hamming normalisée, filtre de durée configurable, cache inter-scans
 
 ---
 
@@ -86,6 +87,9 @@ src-tauri/src/
   video_config.rs          # Configuration du pipeline video (JSON persistant)
   phash_config.rs          # Configuration du pipeline pHash images
   phash_cache.rs           # Cache inter-scans des pHash images
+  audio_hash.rs            # Empreinte acoustique via fpcalc, distance Hamming
+  audio_cache.rs           # Cache inter-scans des empreintes audio
+  audio_config.rs          # Configuration du pipeline audio (JSON persistant)
 ```
 
 ### Pipeline de déduplication
@@ -107,6 +111,9 @@ pHash images (optionnel) ← gradient hash, 5 filtres, cache inter-scans
         │
         ▼
 Hash vidéos (optionnel)  ← N frames ffmpeg, DTW ou distance séquentielle
+        │
+        ▼
+Empreinte audio (optionnel) ← fpcalc, Hamming sur vecteurs i32, cache inter-scans
         │
         ▼
 Groupes triés par espace gaspillé
@@ -133,8 +140,9 @@ Chaque scan produit un fichier JSON dans `~/.local/share/deduplicateur/sessions/
 | Frontend | React 18 + TypeScript | UI réactive |
 | Bundler | Vite + Tauri CLI | Dev HMR + build natif |
 | CI/CD | GitHub Actions | Build Windows automatique sur push |
-| Tests Rust | cargo test + tempfile | 96 tests unitaires sur le moteur |
-| Tests TS | Vitest + jsdom + React Testing Library | 69 tests (utilitaires + i18n + App + ImageComparator) |
+| Similarité audio | fpcalc/chromaprint (subprocess) | Empreinte acoustique, distance de Hamming sur vecteurs i32, cache inter-scans |
+| Tests Rust | cargo test + tempfile | 115 tests unitaires sur le moteur |
+| Tests TS | Vitest + jsdom + React Testing Library | 75 tests (utilitaires + i18n + App + ImageComparator) |
 
 ---
 
@@ -198,10 +206,10 @@ npm run tauri build    # produit un binaire dans src-tauri/target/release/
 ### Tests
 
 ```bash
-# Moteur Rust (96 tests)
+# Moteur Rust (115 tests)
 cargo test --manifest-path src-tauri/Cargo.toml
 
-# TypeScript - utilitaires + i18n + composants React (69 tests)
+# TypeScript - utilitaires + i18n + composants React (75 tests)
 npm test
 ```
 
@@ -224,6 +232,7 @@ npm test
 | 9 | Comparateur d'images côte à côte, slider superposition, navigation groupes | ✅ |
 | 10 | Scan incrémental (cache hashes exacts), filtres extensions, filtres taille | ✅ |
 | 11 | Export CSV/HTML, profils de scan avec lancement rapide | ✅ |
+| 12 | Similarité audio (fpcalc, empreinte acoustique, cache) | ✅ |
 
 ---
 

@@ -5,12 +5,22 @@ export interface VideoMetadata {
   codec: string;
 }
 
+export interface AudioMetadata {
+  duration_secs: number;
+}
+
+export interface AudioConfig {
+  duration_tolerance: number;
+  cache_enabled: boolean;
+}
+
 export interface DuplicateFile {
   path: string;
   size: number;
   name: string;
   modified: number;
   video_metadata?: VideoMetadata;
+  audio_metadata?: AudioMetadata;
 }
 
 export interface DuplicateGroup {
@@ -21,6 +31,7 @@ export interface DuplicateGroup {
   folder_key?: string;
   similar?: boolean;
   video_similar?: boolean;
+  audio_similar?: boolean;
 }
 
 export interface ScanSummary {
@@ -37,6 +48,8 @@ export interface ScanSummary {
   find_similar?: boolean;
   find_similar_videos?: boolean;
   ffmpeg_missing?: boolean;
+  find_similar_audio?: boolean;
+  fpcalc_missing?: boolean;
 }
 
 export interface PHashConfig {
@@ -92,6 +105,7 @@ export interface ScanProfile {
   detection_mode: string;
   sim_similarity: number;
   video_similarity: number;
+  audio_similarity: number;
   excluded: string[];
   exclude_extensions: string[];
   include_extensions: string[];

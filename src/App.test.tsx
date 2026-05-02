@@ -5,6 +5,7 @@ import App from "./App";
 import { GroupCard } from "./components/GroupCard";
 import { FiltersPanel } from "./components/FiltersPanel";
 import { ProfilesPanel } from "./components/ProfilesPanel";
+import { SessionCard } from "./components/SessionCard";
 import { LangProvider } from "./LangContext";
 import type { ScanProfile } from "./types";
 
@@ -75,6 +76,11 @@ const defaultVideoConfig = {
   use_dtw: false,
 };
 
+const defaultAudioConfig = {
+  duration_tolerance: 0.2,
+  cache_enabled: true,
+};
+
 function makeDefaultMock(overrides: Record<string, unknown> = {}) {
   return (cmd: string, ...args: unknown[]) => {
     if (cmd in overrides) {
@@ -85,6 +91,7 @@ function makeDefaultMock(overrides: Record<string, unknown> = {}) {
     if (cmd === "list_sessions") return Promise.resolve([]);
     if (cmd === "get_phash_config") return Promise.resolve(defaultPhashConfig);
     if (cmd === "get_video_config") return Promise.resolve(defaultVideoConfig);
+    if (cmd === "get_audio_config") return Promise.resolve(defaultAudioConfig);
     if (cmd === "list_profiles") return Promise.resolve([]);
     return Promise.resolve(null);
   };
@@ -413,6 +420,7 @@ describe("H - ProfilesPanel", () => {
     detection_mode: "files",
     sim_similarity: 100,
     video_similarity: 100,
+    audio_similarity: 80,
     excluded: [],
     exclude_extensions: [],
     include_extensions: [],
@@ -580,5 +588,120 @@ describe("I - export de résultats", () => {
     await waitFor(() => {
       expect(mockInvoke).not.toHaveBeenCalledWith("export_results", expect.anything());
     });
+  });
+});
+
+// ---- J : mode audio ----
+describe("J - mode audio", () => {
+  it("scan_folder recu findSimilarAudio:true et audioSimThreshold:0 en mode audio a 100%", async () => {
+    const user = userEvent.setup();
+    const audioSummary = { ...baseSummary, find_similar_audio: true };
+    mockInvoke.mockImplementation(
+      makeDefaultMock({
+        scan_folder: audioSummary,
+        get_groups_page: { groups: [], offset: 0, total: 0, has_more: false },
+      })
+    );
+    mockDialogOpen.mockResolvedValue("/home/music");
+
+    render(<App />);
+    await user.click(screen.getByText(/Cliquer pour choisir un dossier/));
+    await waitFor(() => screen.getByText("/home/music"));
+
+    await user.click(screen.getByText("🎵 Audio"));
+    await user.click(screen.getByText("Analyser"));
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith(
+        "scan_folder",
+        expect.objectContaining({ findSimilarAudio: true, audioSimThreshold: 0 })
+      );
+    });
+  });
+
+  it("affiche le bandeau fpcalcMissing quand le scan retourne fpcalc_missing:true", async () => {
+    const user = userEvent.setup();
+    const summaryFpcalcMissing = { ...baseSummary, fpcalc_missing: true };
+    mockInvoke.mockImplementation(
+      makeDefaultMock({
+        scan_folder: summaryFpcalcMissing,
+        get_groups_page: { groups: [], offset: 0, total: 0, has_more: false },
+      })
+    );
+    mockDialogOpen.mockResolvedValue("/home/music");
+
+    render(<App />);
+    await user.click(screen.getByText(/Cliquer pour choisir un dossier/));
+    await waitFor(() => screen.getByText("/home/music"));
+    await user.click(screen.getByText("Analyser"));
+
+    await waitFor(() => {
+      expect(screen.getByText(/fpcalc introuvable/i)).toBeInTheDocument();
+    });
+  });
+
+  it("SessionCard affiche le tag similarite audio quand find_similar_audio est vrai", () => {
+    const audioSession = { ...baseSummary, find_similar_audio: true };
+    renderWithLang(
+      <SessionCard
+        session={audioSession}
+        active={false}
+        resuming={false}
+        onResume={vi.fn()}
+        onDelete={vi.fn()}
+      />
+    );
+    expect(screen.getByText("similarité audio")).toBeInTheDocument();
+  });
+
+  it("affiche AudioAdvancedPanel quand le mode audio est selectionne", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    const audioBtn = await screen.findByText("🎵 Audio");
+    await user.click(audioBtn);
+
+    const advancedToggle = screen.getByText(/Param.*tres avanc.*s/i);
+    expect(advancedToggle).toBeInTheDocument();
+
+    await user.click(advancedToggle);
+    expect(screen.getByText("Cache entre scans")).toBeInTheDocument();
+  });
+
+  it("GroupCard affiche l'icone et la duree pour un groupe audio_similar", () => {
+    const audioGroup = {
+      id: "ga1",
+      hash: "audio",
+      size: 5000000,
+      audio_similar: true,
+      files: [
+        {
+          path: "/music/track1.mp3",
+          size: 5000000,
+          name: "track1.mp3",
+          modified: 1700000000,
+          audio_metadata: { duration_secs: 183 },
+        },
+        {
+          path: "/music/track2.mp3",
+          size: 5000000,
+          name: "track2.mp3",
+          modified: 1700001000,
+          audio_metadata: { duration_secs: 183 },
+        },
+      ],
+    };
+
+    const onToggle = vi.fn();
+    render(
+      <LangProvider>
+        <GroupCard group={audioGroup} selected={new Set()} onToggle={onToggle} />
+      </LangProvider>
+    );
+
+    expect(screen.getAllByText(/🎵/).length).toBeGreaterThan(0);
+    // formatDurationSecs(183) = "3:03"
+    const durations = screen.getAllByText("3:03");
+    expect(durations.length).toBeGreaterThan(0);
   });
 });
