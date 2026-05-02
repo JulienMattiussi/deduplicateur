@@ -81,3 +81,21 @@ export interface GroupsPage {
   total: number;
   has_more: boolean;
 }
+
+export interface ScanProfile {
+  id: string;
+  name: string;
+  created_at: number;
+  folder: string;
+  recursive: boolean;
+  scan_mode: string;
+  detection_mode: string;
+  sim_similarity: number;
+  video_similarity: number;
+  excluded: string[];
+  exclude_extensions: string[];
+  include_extensions: string[];
+  min_file_size_kb: number;
+  max_file_size_kb: number;
+  exact_cache_enabled: boolean;
+}

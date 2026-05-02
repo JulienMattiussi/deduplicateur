@@ -4,7 +4,9 @@ import userEvent from "@testing-library/user-event";
 import App from "./App";
 import { GroupCard } from "./components/GroupCard";
 import { FiltersPanel } from "./components/FiltersPanel";
+import { ProfilesPanel } from "./components/ProfilesPanel";
 import { LangProvider } from "./LangContext";
+import type { ScanProfile } from "./types";
 
 // ----- Mocks globaux -----
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -13,6 +15,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 }));
 vi.mock("@tauri-apps/plugin-dialog", () => ({
   open: vi.fn(),
+  save: vi.fn(),
 }));
 vi.mock("@tauri-apps/api/webview", () => ({
   getCurrentWebview: vi.fn(() => ({
@@ -21,10 +24,11 @@ vi.mock("@tauri-apps/api/webview", () => ({
 }));
 
 import { invoke } from "@tauri-apps/api/core";
-import { open as dialogOpen } from "@tauri-apps/plugin-dialog";
+import { open as dialogOpen, save as dialogSave } from "@tauri-apps/plugin-dialog";
 
 const mockInvoke = invoke as ReturnType<typeof vi.fn>;
 const mockDialogOpen = dialogOpen as ReturnType<typeof vi.fn>;
+const mockDialogSave = dialogSave as ReturnType<typeof vi.fn>;
 
 const baseSummary = {
   id: "1000",
@@ -81,6 +85,7 @@ function makeDefaultMock(overrides: Record<string, unknown> = {}) {
     if (cmd === "list_sessions") return Promise.resolve([]);
     if (cmd === "get_phash_config") return Promise.resolve(defaultPhashConfig);
     if (cmd === "get_video_config") return Promise.resolve(defaultVideoConfig);
+    if (cmd === "list_profiles") return Promise.resolve([]);
     return Promise.resolve(null);
   };
 }
@@ -392,6 +397,188 @@ describe("G - bascule de langue", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Scan")).toBeInTheDocument();
+    });
+  });
+});
+
+// ---- H : ProfilesPanel ----
+describe("H - ProfilesPanel", () => {
+  const profile: ScanProfile = {
+    id: "p1",
+    name: "Mon profil",
+    created_at: 1700000000000,
+    folder: "/home/test",
+    recursive: true,
+    scan_mode: "all",
+    detection_mode: "files",
+    sim_similarity: 100,
+    video_similarity: 100,
+    excluded: [],
+    exclude_extensions: [],
+    include_extensions: [],
+    min_file_size_kb: 0,
+    max_file_size_kb: 0,
+    exact_cache_enabled: true,
+  };
+
+  function makeProps(overrides: Partial<Parameters<typeof ProfilesPanel>[0]> = {}) {
+    return {
+      profiles: [profile],
+      currentFolder: "/home/test",
+      onSave: vi.fn(),
+      onLoad: vi.fn(),
+      onLaunch: vi.fn(),
+      onDelete: vi.fn(),
+      disabled: false,
+      ...overrides,
+    };
+  }
+
+  it("est fermé par défaut et affiche le count de profils", () => {
+    renderWithLang(<ProfilesPanel {...makeProps()} />);
+    expect(screen.queryByText("Mon profil")).not.toBeInTheDocument();
+    expect(screen.getByText("1")).toBeInTheDocument();
+  });
+
+  it("s'ouvre au clic sur le toggle et affiche les profils", async () => {
+    const user = userEvent.setup();
+    renderWithLang(<ProfilesPanel {...makeProps()} />);
+    await user.click(screen.getByText(/profils/i));
+    expect(screen.getByText("Mon profil")).toBeInTheDocument();
+    expect(screen.getByText("/home/test")).toBeInTheDocument();
+  });
+
+  it("appelle onLoad au clic sur Charger et ferme le dropdown", async () => {
+    const user = userEvent.setup();
+    const onLoad = vi.fn();
+    renderWithLang(<ProfilesPanel {...makeProps({ onLoad })} />);
+    await user.click(screen.getByText(/profils/i));
+    await user.click(screen.getByTitle("Charger"));
+    expect(onLoad).toHaveBeenCalledWith(profile);
+    expect(screen.queryByText("Mon profil")).not.toBeInTheDocument();
+  });
+
+  it("appelle onLaunch au clic sur ▶ et ferme le dropdown", async () => {
+    const user = userEvent.setup();
+    const onLaunch = vi.fn();
+    renderWithLang(<ProfilesPanel {...makeProps({ onLaunch })} />);
+    await user.click(screen.getByText(/profils/i));
+    await user.click(screen.getByTitle("Lancer"));
+    expect(onLaunch).toHaveBeenCalledWith(profile);
+    expect(screen.queryByText("Mon profil")).not.toBeInTheDocument();
+  });
+
+  it("appelle onDelete au clic sur × du profil", async () => {
+    const user = userEvent.setup();
+    const onDelete = vi.fn();
+    renderWithLang(<ProfilesPanel {...makeProps({ onDelete })} />);
+    await user.click(screen.getByText(/profils/i));
+    await user.click(screen.getByTitle("Supprimer"));
+    expect(onDelete).toHaveBeenCalledWith("p1");
+  });
+
+  it("appelle onSave avec le nom saisi via Entrée", async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn();
+    renderWithLang(<ProfilesPanel {...makeProps({ onSave })} />);
+    await user.click(screen.getByText(/profils/i));
+    const input = screen.getByPlaceholderText(/nom du profil/i);
+    await user.type(input, "Nouveau{Enter}");
+    expect(onSave).toHaveBeenCalledWith("Nouveau");
+  });
+
+  it("affiche le message vide quand la liste est vide", async () => {
+    const user = userEvent.setup();
+    renderWithLang(<ProfilesPanel {...makeProps({ profiles: [] })} />);
+    await user.click(screen.getByText(/profils/i));
+    expect(screen.getByText("Aucun profil sauvegardé")).toBeInTheDocument();
+  });
+});
+
+// ---- I : export de résultats ----
+describe("I - export de résultats", () => {
+  it("appelle dialog.save puis invoke export_results pour le CSV", async () => {
+    const user = userEvent.setup();
+
+    mockInvoke.mockImplementation(
+      makeDefaultMock({
+        scan_folder: baseSummary,
+        get_groups_page: { groups: [baseGroup], offset: 0, total: 1, has_more: false },
+        export_results: null,
+      })
+    );
+    mockDialogOpen.mockResolvedValue("/home/test");
+    mockDialogSave.mockResolvedValue("/home/test/rapport.csv");
+
+    render(<App />);
+    await user.click(screen.getByText(/Cliquer pour choisir un dossier/));
+    await waitFor(() => screen.getByText("/home/test"));
+    await user.click(screen.getByText("Analyser"));
+    await waitFor(() => screen.getByText(/fichiers identiques/));
+
+    await user.click(screen.getByText("Export CSV"));
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("export_results", {
+        sessionId: baseSummary.id,
+        format: "csv",
+        outputPath: "/home/test/rapport.csv",
+      });
+    });
+  });
+
+  it("appelle dialog.save avec les bons filtres pour le HTML", async () => {
+    const user = userEvent.setup();
+
+    mockInvoke.mockImplementation(
+      makeDefaultMock({
+        scan_folder: baseSummary,
+        get_groups_page: { groups: [baseGroup], offset: 0, total: 1, has_more: false },
+        export_results: null,
+      })
+    );
+    mockDialogOpen.mockResolvedValue("/home/test");
+    mockDialogSave.mockResolvedValue("/home/test/rapport.html");
+
+    render(<App />);
+    await user.click(screen.getByText(/Cliquer pour choisir un dossier/));
+    await waitFor(() => screen.getByText("/home/test"));
+    await user.click(screen.getByText("Analyser"));
+    await waitFor(() => screen.getByText(/fichiers identiques/));
+
+    await user.click(screen.getByText("Rapport HTML"));
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("export_results", {
+        sessionId: baseSummary.id,
+        format: "html",
+        outputPath: "/home/test/rapport.html",
+      });
+    });
+  });
+
+  it("n'appelle pas export_results si dialog.save est annulé", async () => {
+    const user = userEvent.setup();
+
+    mockInvoke.mockImplementation(
+      makeDefaultMock({
+        scan_folder: baseSummary,
+        get_groups_page: { groups: [baseGroup], offset: 0, total: 1, has_more: false },
+      })
+    );
+    mockDialogOpen.mockResolvedValue("/home/test");
+    mockDialogSave.mockResolvedValue(null);
+
+    render(<App />);
+    await user.click(screen.getByText(/Cliquer pour choisir un dossier/));
+    await waitFor(() => screen.getByText("/home/test"));
+    await user.click(screen.getByText("Analyser"));
+    await waitFor(() => screen.getByText(/fichiers identiques/));
+
+    await user.click(screen.getByText("Export CSV"));
+
+    await waitFor(() => {
+      expect(mockInvoke).not.toHaveBeenCalledWith("export_results", expect.anything());
     });
   });
 });

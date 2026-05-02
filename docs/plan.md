@@ -200,24 +200,24 @@
 - [x] `exact_cache.rs` : `ExactCache` (mtime + taille = invalidation, partial_hash + full_hash), 8 tests
 - [x] `passes_filters()` : logique de filtrage extraite, partagée entre le path recursif et non-recursif
 - [x] `ScanParams` : 5 nouveaux champs (exact_cache_enabled, exclude_extensions, include_extensions, min_file_size_kb, max_file_size_kb)
-- [x] 91 tests Rust (+25 : 8 exact_cache + 9 passes_filters + 4 filtres scan + 2 cache exact + 2 existants), 51 tests TypeScript (+5 FiltersPanel + 17 ImageComparator)
+- [x] 91 tests Rust (+25 : 8 exact_cache + 9 passes_filters + 4 filtres scan + 2 cache exact + 2 existants), 69 tests TypeScript (+5 FiltersPanel + 17 ImageComparator)
 
 **Critère de validation : rescan d'un dossier de 50 000 fichiers après ajout de 100 nouveaux fichiers en moins de 5 secondes**
 
 ---
 
-## Phase 11 - Export et profils de scan
+## Phase 11 - Export et profils de scan ✅
 
 **Objectif : workflow professionnel et scans récurrents sans reconfiguration**
 
-- [ ] Export CSV : liste des fichiers à supprimer avec chemin absolu, taille, doublon conservé, espace récupéré
-- [ ] Export rapport HTML : page autonome avec résumé statistique, groupes cliquables, liens fichiers système
-- [ ] Commande Tauri `export_results(format, session_id)` + bouton dans l'UI post-scan
-- [ ] Profils de scan : sauvegarder une configuration complète (dossier, mode, type, seuil, filtres) sous un nom
-- [ ] Gestion des profils : liste dans la sidebar, sélection, suppression, renommage
-- [ ] Lancement rapide : cliquer sur un profil lance le scan directement sans passer par les options
-
-**Critère de validation : créer un profil "Photos", le relancer d'un clic, exporter les résultats en CSV**
+- [x] Export CSV : liste des fichiers avec chemin, taille, statut (kept/duplicate), ID groupe
+- [x] Export rapport HTML : page autonome avec stats (fichiers scannés, groupes, espace récupérable), groupes cliquables, liens `file://` système, dates formatées via JS
+- [x] Commande Tauri `export_results(session_id, format, output_path)` + boutons dans la stats-row post-scan
+- [x] `profiles.rs` : `ScanProfile` struct (14 champs), CRUD (`list_profiles`, `save_profile`, `delete_profile`), UUID auto-généré
+- [x] `ProfilesPanel` : panneau collapsible (même pattern que FiltersPanel), saisie de nom, liste avec bouton lancement (▶) et suppression (×)
+- [x] Lancement rapide : cliquer sur ▶ charge la config du profil ET lance immédiatement le scan
+- [x] `dialog:allow-save` ajouté dans `capabilities/default.json`
+- [x] 96 tests Rust (+5 profiles.rs), 69 tests TypeScript (+6 ProfilesPanel + 3 export)
 
 ---
 

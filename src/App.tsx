@@ -1,14 +1,16 @@
 import { useState, startTransition, useEffect, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { save as dialogSave } from "@tauri-apps/plugin-dialog";
 import "./App.css";
 import { formatSize } from "./utils";
 import { useLang } from "./LangContext";
 import { interp, type Translations } from "./i18n";
-import type { DuplicateGroup, FolderSummary, ScanSummary } from "./types";
+import type { DuplicateGroup, FolderSummary, ScanProfile, ScanSummary } from "./types";
 import { useScanConfig } from "./hooks/useScanConfig";
 import { useScanExecution } from "./hooks/useScanExecution";
 import { useResults } from "./hooks/useResults";
 import { useSelectionState } from "./hooks/useSelectionState";
+import { useProfiles } from "./hooks/useProfiles";
 import { ImageComparator } from "./ImageComparator";
 import { SessionCard } from "./components/SessionCard";
 import { GroupCard } from "./components/GroupCard";
@@ -17,6 +19,7 @@ import { FiltersPanel } from "./components/FiltersPanel";
 import { AdvancedPanel } from "./components/AdvancedPanel";
 import { VideoAdvancedPanel } from "./components/VideoAdvancedPanel";
 import { ProgressETA } from "./components/ProgressETA";
+import { ProfilesPanel } from "./components/ProfilesPanel";
 
 // Nombre de bits dans le hash Hamming (grille 8x8)
 const HAMMING_BITS = 64;
@@ -52,6 +55,7 @@ export default function App() {
   const results = useResults(setError);
   const scanExec = useScanExecution(handleScanComplete, setError);
   const selection = useSelectionState(results.groups, handleDeleteComplete, setError);
+  const profilesHook = useProfiles();
 
   useEffect(() => {
     localStorage.setItem("theme", theme);
@@ -193,6 +197,75 @@ export default function App() {
     });
   }
 
+  async function handleExport(format: "csv" | "html") {
+    if (!summary) return;
+    const ext = format === "csv" ? "csv" : "html";
+    const outputPath = await dialogSave({
+      defaultPath: `rapport.${ext}`,
+      filters: [{ name: format.toUpperCase(), extensions: [ext] }],
+    });
+    if (!outputPath) return;
+    try {
+      await invoke("export_results", { sessionId: summary.id, format, outputPath });
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  function handleSaveProfile(name: string) {
+    profilesHook.saveProfile({
+      name,
+      folder: config.folder,
+      recursive: config.recursive,
+      scan_mode: config.scanMode,
+      detection_mode: config.detectionMode,
+      sim_similarity: config.simSimilarity,
+      video_similarity: config.videoSimilarity,
+      excluded: config.excluded,
+      exclude_extensions: config.excludeExtensions,
+      include_extensions: config.includeExtensions,
+      min_file_size_kb: config.minFileSizeKb,
+      max_file_size_kb: config.maxFileSizeKb,
+      exact_cache_enabled: config.exactCacheEnabled,
+    }).catch((e) => setError(String(e)));
+  }
+
+  function handleProfileLoad(profile: ScanProfile) {
+    config.setFolder(profile.folder);
+    config.setRecursive(profile.recursive);
+    config.setScanMode(profile.scan_mode as "all" | "by_folder");
+    config.setDetectionMode(profile.detection_mode as "files" | "images" | "videos");
+    config.setSimSimilarity(profile.sim_similarity);
+    config.setVideoSimilarity(profile.video_similarity);
+    config.setExcluded(profile.excluded);
+    config.setExcludeExtensions(profile.exclude_extensions);
+    config.setIncludeExtensions(profile.include_extensions);
+    config.setMinFileSizeKb(profile.min_file_size_kb);
+    config.setMaxFileSizeKb(profile.max_file_size_kb);
+    config.setExactCacheEnabled(profile.exact_cache_enabled);
+  }
+
+  function handleProfileLaunch(profile: ScanProfile) {
+    handleProfileLoad(profile);
+    resetResults();
+    const effectiveRecursive = profile.scan_mode === "by_folder" ? true : profile.recursive;
+    scanExec.scan({
+      path: profile.folder,
+      recursive: effectiveRecursive,
+      excluded: profile.excluded,
+      byFolder: profile.scan_mode === "by_folder",
+      findSimilar: profile.detection_mode === "images",
+      simThreshold: Math.round((1 - profile.sim_similarity / 100) * HAMMING_BITS),
+      findSimilarVideos: profile.detection_mode === "videos",
+      videoSimThreshold: Math.round((1 - profile.video_similarity / 100) * HAMMING_BITS),
+      exactCacheEnabled: profile.exact_cache_enabled,
+      excludeExtensions: profile.exclude_extensions,
+      includeExtensions: profile.include_extensions,
+      minFileSizeKb: profile.min_file_size_kb,
+      maxFileSizeKb: profile.max_file_size_kb,
+    });
+  }
+
   const showSessionPicker = !summary && !scanExec.scanning && sessions.length > 0;
   const showResults = summary !== null && summary.total_groups > 0;
 
@@ -250,6 +323,15 @@ export default function App() {
               <button className={`lang-btn${lang === "fr" ? " lang-btn--active" : ""}`} onClick={() => setLang("fr")}>FR</button>
               <button className={`lang-btn${lang === "en" ? " lang-btn--active" : ""}`} onClick={() => setLang("en")}>EN</button>
             </div>
+            <ProfilesPanel
+              profiles={profilesHook.profiles}
+              currentFolder={config.folder}
+              onSave={handleSaveProfile}
+              onLoad={handleProfileLoad}
+              onLaunch={handleProfileLaunch}
+              onDelete={profilesHook.deleteProfile}
+              disabled={scanExec.scanning}
+            />
             {summary && (
               <button className="btn-ghost" onClick={resetResults}>{t.backToSessions}</button>
             )}
@@ -334,7 +416,6 @@ export default function App() {
           onChangeCache={config.setExactCacheEnabled}
           disabled={scanExec.scanning}
         />
-
         {summary && (
           <div className="stats-row">
             <span className="stat"><strong>{summary.scanned_files}</strong> {t.filesScanned}</span>
@@ -344,6 +425,10 @@ export default function App() {
             <span className="stat"><strong>{summary.total_groups}</strong> {t.groups}</span>
             <span className="stat waste"><strong>{formatSize(summary.total_wasted_bytes)}</strong> {t.recoverable}</span>
             <span className="stat duration">en {formatDuration(summary.duration_ms, t)}</span>
+            <span className="stat-export">
+              <button className="btn-ghost btn-sm" onClick={() => handleExport("csv")}>{t.exportCsv}</button>
+              <button className="btn-ghost btn-sm" onClick={() => handleExport("html")}>{t.exportHtml}</button>
+            </span>
           </div>
         )}
       </header>

@@ -123,6 +123,14 @@ const fr = {
   durationS: "s",
   durationMin: "min",
   durationH: "h",
+  exportCsv: "Export CSV",
+  exportHtml: "Rapport HTML",
+  profiles: "Mes profils",
+  saveProfile: "Sauvegarder",
+  profileNamePlaceholder: "Nom du profil…",
+  profileLoad: "Charger",
+  profileLaunch: "Lancer",
+  noProfiles: "Aucun profil sauvegardé",
 };
 
 const en: typeof fr = {
@@ -248,6 +256,14 @@ const en: typeof fr = {
   durationS: "s",
   durationMin: "min",
   durationH: "h",
+  exportCsv: "Export CSV",
+  exportHtml: "HTML Report",
+  profiles: "My profiles",
+  saveProfile: "Save",
+  profileNamePlaceholder: "Profile name…",
+  profileLoad: "Load",
+  profileLaunch: "Launch",
+  noProfiles: "No saved profiles",
 };
 
 export const translations: Record<Lang, typeof fr> = { fr, en };

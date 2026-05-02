@@ -40,6 +40,8 @@ Outil de détection et suppression de fichiers en double - rapide, local, sans c
 - **Comparateur d'images** - vue plein écran côte à côte pour les groupes d'images similaires : métadonnées complètes (dimensions, format, date EXIF), sélecteur L/R indépendant pour comparer n'importe quelle paire, slider de superposition, navigation entre groupes au clavier, bouton "Garder celui-ci"
 - **Scan incrémental** - cache inter-scans des hashes exacts (`exact_cache.json`) : les fichiers non modifiés (mtime + taille inchangés) ne sont pas rehachés, accélère fortement les rescans sur de grands dossiers
 - **Filtres** - panneau collapsible dans les options : extensions exclues (défaut : `tmp`, `DS_Store`, `Thumbs.db`...), extensions incluses exclusivement, taille minimale et maximale en Ko
+- **Export** - après un scan, boutons "Export CSV" et "Rapport HTML" dans la barre de statistiques ; le CSV liste chaque fichier avec son statut (kept/duplicate) ; le HTML est une page autonome avec stats, groupes cliquables et liens système (`file://`)
+- **Profils de scan** - panneau collapsible pour sauvegarder une configuration complète (dossier, mode, type de détection, seuils, filtres) sous un nom ; lancement rapide en un clic (▶) charge et exécute immédiatement le scan
 
 ---
 
@@ -131,8 +133,8 @@ Chaque scan produit un fichier JSON dans `~/.local/share/deduplicateur/sessions/
 | Frontend | React 18 + TypeScript | UI réactive |
 | Bundler | Vite + Tauri CLI | Dev HMR + build natif |
 | CI/CD | GitHub Actions | Build Windows automatique sur push |
-| Tests Rust | cargo test + tempfile | 91 tests unitaires sur le moteur |
-| Tests TS | Vitest + jsdom + React Testing Library | 51 tests (utilitaires + i18n + App + ImageComparator) |
+| Tests Rust | cargo test + tempfile | 96 tests unitaires sur le moteur |
+| Tests TS | Vitest + jsdom + React Testing Library | 69 tests (utilitaires + i18n + App + ImageComparator) |
 
 ---
 
@@ -196,10 +198,10 @@ npm run tauri build    # produit un binaire dans src-tauri/target/release/
 ### Tests
 
 ```bash
-# Moteur Rust (91 tests)
+# Moteur Rust (96 tests)
 cargo test --manifest-path src-tauri/Cargo.toml
 
-# TypeScript - utilitaires + i18n + composants React (51 tests)
+# TypeScript - utilitaires + i18n + composants React (69 tests)
 npm test
 ```
 
@@ -221,6 +223,7 @@ npm test
 | 8 | UX : drag & drop, raccourcis clavier, filtre résultats, mode clair, tri colonnes | ✅ |
 | 9 | Comparateur d'images côte à côte, slider superposition, navigation groupes | ✅ |
 | 10 | Scan incrémental (cache hashes exacts), filtres extensions, filtres taille | ✅ |
+| 11 | Export CSV/HTML, profils de scan avec lancement rapide | ✅ |
 
 ---
 
