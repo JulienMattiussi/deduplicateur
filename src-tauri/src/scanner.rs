@@ -26,6 +26,14 @@ use crate::video_hash::{
     VideoMetadata,
 };
 
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub enum FileSource {
+    #[serde(rename = "primary")]
+    Primary,
+    #[serde(rename = "secondary")]
+    Secondary,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DuplicateFile {
     pub path: String,
@@ -36,6 +44,10 @@ pub struct DuplicateFile {
     pub video_metadata: Option<VideoMetadata>,
     #[serde(default)]
     pub audio_metadata: Option<AudioMetadata>,
+    /// Provenance du fichier en mode "comparer avec un autre dossier".
+    /// None si le mode n'est pas actif (scan normal).
+    #[serde(default)]
+    pub source: Option<FileSource>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -111,6 +123,9 @@ pub struct ScanParams {
     pub audio_duration_tolerance: f64,
     /// Cles canoniques des groupes a ignorer (chemins tries, joints par |).
     pub ignored_keys: HashSet<String>,
+    /// Dossier secondaire (de reference) pour le mode "comparer avec un autre dossier".
+    /// Quand renseigne, seuls les groupes contenant au moins un fichier de chaque dossier sont rapportes.
+    pub secondary_folder: Option<String>,
 }
 
 impl ScanParams {
@@ -141,6 +156,7 @@ impl ScanParams {
             audio_cache_enabled: true,
             audio_duration_tolerance: 0.20,
             ignored_keys: HashSet::new(),
+            secondary_folder: None,
         }
     }
 }
@@ -287,6 +303,14 @@ fn pair_passes_filters(
     hamming_distance(&a.fine, &b.fine) <= threshold
 }
 
+/// Retourne true si le groupe contient au moins un fichier primaire ET au moins un fichier secondaire.
+/// Utilise pour le mode "comparer avec un autre dossier".
+fn is_cross_source_group(group: &DuplicateGroup) -> bool {
+    let has_primary = group.files.iter().any(|f| f.source == Some(FileSource::Primary));
+    let has_secondary = group.files.iter().any(|f| f.source == Some(FileSource::Secondary));
+    has_primary && has_secondary
+}
+
 pub fn scan_folder<F>(
     params: ScanParams,
     cancelled: Arc<AtomicBool>,
@@ -298,7 +322,10 @@ where
     let start = Instant::now();
     let mut was_cancelled = false;
 
-    let all_files = collect_files(
+    // Mode "comparer avec un autre dossier" : collecte separee des deux dossiers.
+    let compare_mode = params.secondary_folder.is_some();
+
+    let primary_files_raw = collect_files(
         Path::new(&params.folder),
         params.recursive,
         &params.excluded,
@@ -308,6 +335,36 @@ where
         params.min_file_size_kb.saturating_mul(1024),
         params.max_file_size_kb.saturating_mul(1024),
     )?;
+
+    let secondary_files_raw: Vec<DuplicateFile> = if let Some(ref sec) = params.secondary_folder {
+        collect_files(
+            Path::new(sec),
+            true, // toujours recursif pour le dossier secondaire
+            &params.excluded,
+            &cancelled,
+            &params.exclude_extensions,
+            &params.include_extensions,
+            params.min_file_size_kb.saturating_mul(1024),
+            params.max_file_size_kb.saturating_mul(1024),
+        )?
+    } else {
+        vec![]
+    };
+
+    // Marquer la provenance si mode compare.
+    let primary_files: Vec<DuplicateFile> = if compare_mode {
+        primary_files_raw.into_iter().map(|mut f| { f.source = Some(FileSource::Primary); f }).collect()
+    } else {
+        primary_files_raw
+    };
+    let secondary_files: Vec<DuplicateFile> = secondary_files_raw.into_iter()
+        .map(|mut f| { f.source = Some(FileSource::Secondary); f })
+        .collect();
+
+    // Fusionner pour la suite du pipeline.
+    let mut all_files = primary_files;
+    all_files.extend(secondary_files);
+
     let scanned_files = all_files.len();
 
     // In media-specific modes (images/videos/audio), restrict all phases to files of that type.
@@ -498,7 +555,13 @@ where
             })
             .collect();
 
-        groups.extend(partition_groups);
+        // En mode "comparer avec un autre dossier", ne garder que les groupes croises (S+R).
+        let filtered_groups: Vec<DuplicateGroup> = if compare_mode {
+            partition_groups.into_iter().filter(|g| is_cross_source_group(g)).collect()
+        } else {
+            partition_groups
+        };
+        groups.extend(filtered_groups);
     }
 
     // Sauvegarder le cache exact apres la boucle (y compris en cas d'annulation partielle).
@@ -775,17 +838,21 @@ where
             }
             let files: Vec<DuplicateFile> =
                 indices.iter().map(|&i| images[i].file.clone()).collect();
-            let size = files[0].size;
-            groups.push(DuplicateGroup {
+            let g = DuplicateGroup {
                 id: uuid::Uuid::new_v4().to_string(),
                 hash: "phash".to_string(),
-                size,
+                size: files[0].size,
                 folder_key: None,
                 similar: true,
                 video_similar: false,
                 audio_similar: false,
                 files,
-            });
+            };
+            // En mode "comparer avec un autre dossier", ne garder que les groupes croises.
+            if compare_mode && !is_cross_source_group(&g) {
+                continue;
+            }
+            groups.push(g);
         }
 
         // Sauvegarde du cache.
@@ -1010,17 +1077,20 @@ where
             }
             let files: Vec<DuplicateFile> =
                 indices.iter().map(|&i| video_data[i].file.clone()).collect();
-            let size = files[0].size;
-            groups.push(DuplicateGroup {
+            let g = DuplicateGroup {
                 id: uuid::Uuid::new_v4().to_string(),
                 hash: "video".to_string(),
-                size,
+                size: files[0].size,
                 folder_key: None,
                 similar: false,
                 video_similar: true,
                 audio_similar: false,
                 files,
-            });
+            };
+            if compare_mode && !is_cross_source_group(&g) {
+                continue;
+            }
+            groups.push(g);
         }
         } // end 'video
     }
@@ -1156,17 +1226,20 @@ where
         for (_, indices) in group_map {
             if indices.len() < 2 { continue; }
             let files: Vec<DuplicateFile> = indices.iter().map(|&i| audio_data[i].file.clone()).collect();
-            let size = files[0].size;
-            groups.push(DuplicateGroup {
+            let g = DuplicateGroup {
                 id: uuid::Uuid::new_v4().to_string(),
                 hash: "audio".to_string(),
-                size,
+                size: files[0].size,
                 folder_key: None,
                 similar: false,
                 video_similar: false,
                 audio_similar: true,
                 files,
-            });
+            };
+            if compare_mode && !is_cross_source_group(&g) {
+                continue;
+            }
+            groups.push(g);
         }
         } // end 'audio
     }
@@ -1297,6 +1370,7 @@ fn collect_files(
                 modified,
                 video_metadata: None,
                 audio_metadata: None,
+                source: None,
             });
         }
     } else {
@@ -1333,6 +1407,7 @@ fn collect_files(
                 modified,
                 video_metadata: None,
                 audio_metadata: None,
+                source: None,
             });
         }
     }
@@ -2207,5 +2282,116 @@ mod tests {
         ).unwrap();
         // pas de fichiers audio : aucun groupe audio_similar
         assert!(!result.groups.iter().any(|g| g.audio_similar));
+    }
+
+    // --- Tests mode "comparer avec un autre dossier" ---
+
+    #[test]
+    fn compare_mode_groupe_croise_detecte() {
+        // Un fichier identique dans S et R : doit etre signale.
+        let src = TempDir::new().unwrap();
+        let ref_dir = TempDir::new().unwrap();
+        write_file(src.path(), "file.txt", b"contenu identique!!");
+        write_file(ref_dir.path(), "file_copy.txt", b"contenu identique!!");
+
+        let r = scan_folder(
+            ScanParams {
+                secondary_folder: Some(ref_dir.path().to_str().unwrap().to_string()),
+                recursive: true,
+                ..ScanParams::new(src.path().to_str().unwrap())
+            },
+            no_cancel(),
+            no_progress,
+        ).unwrap();
+
+        assert_eq!(r.groups.len(), 1, "le doublon croise doit etre detecte");
+        let g = &r.groups[0];
+        assert_eq!(g.files.len(), 2);
+        let has_primary = g.files.iter().any(|f| f.source == Some(FileSource::Primary));
+        let has_secondary = g.files.iter().any(|f| f.source == Some(FileSource::Secondary));
+        assert!(has_primary, "le groupe doit contenir un fichier primaire");
+        assert!(has_secondary, "le groupe doit contenir un fichier secondaire");
+    }
+
+    #[test]
+    fn compare_mode_groupe_interne_s_ignore() {
+        // Deux fichiers identiques dans S uniquement : ne doit PAS etre signale.
+        let src = TempDir::new().unwrap();
+        let ref_dir = TempDir::new().unwrap();
+        write_file(src.path(), "a.txt", b"doublon interne!!");
+        write_file(src.path(), "b.txt", b"doublon interne!!");
+        write_file(ref_dir.path(), "unique.txt", b"fichier unique !!");
+
+        let r = scan_folder(
+            ScanParams {
+                secondary_folder: Some(ref_dir.path().to_str().unwrap().to_string()),
+                recursive: true,
+                ..ScanParams::new(src.path().to_str().unwrap())
+            },
+            no_cancel(),
+            no_progress,
+        ).unwrap();
+
+        assert_eq!(r.groups.len(), 0, "les doublons internes a S ne doivent pas etre signales");
+    }
+
+    #[test]
+    fn compare_mode_groupe_interne_r_ignore() {
+        // Deux fichiers identiques dans R uniquement : ne doit PAS etre signale.
+        let src = TempDir::new().unwrap();
+        let ref_dir = TempDir::new().unwrap();
+        write_file(src.path(), "unique.txt", b"fichier unique!!!!!");
+        write_file(ref_dir.path(), "a.txt", b"doublon interne ref!");
+        write_file(ref_dir.path(), "b.txt", b"doublon interne ref!");
+
+        let r = scan_folder(
+            ScanParams {
+                secondary_folder: Some(ref_dir.path().to_str().unwrap().to_string()),
+                recursive: true,
+                ..ScanParams::new(src.path().to_str().unwrap())
+            },
+            no_cancel(),
+            no_progress,
+        ).unwrap();
+
+        assert_eq!(r.groups.len(), 0, "les doublons internes a R ne doivent pas etre signales");
+    }
+
+    #[test]
+    fn compare_mode_fichier_present_dans_un_seul_dossier_ignore() {
+        // Un fichier present uniquement dans S : aucun groupe.
+        let src = TempDir::new().unwrap();
+        let ref_dir = TempDir::new().unwrap();
+        write_file(src.path(), "only_in_s.txt", b"seulement dans S!!");
+
+        let r = scan_folder(
+            ScanParams {
+                secondary_folder: Some(ref_dir.path().to_str().unwrap().to_string()),
+                recursive: true,
+                ..ScanParams::new(src.path().to_str().unwrap())
+            },
+            no_cancel(),
+            no_progress,
+        ).unwrap();
+
+        assert_eq!(r.groups.len(), 0, "un fichier present dans un seul dossier ne doit pas etre signale");
+    }
+
+    #[test]
+    fn compare_mode_sans_secondary_folder_fonctionne_normalement() {
+        // Sans secondary_folder, le comportement normal est conserve (doublons internes detectes).
+        let dir = TempDir::new().unwrap();
+        write_file(dir.path(), "a.txt", b"contenu duplique!!");
+        write_file(dir.path(), "b.txt", b"contenu duplique!!");
+
+        let r = scan_folder(
+            ScanParams::new(dir.path().to_str().unwrap()),
+            no_cancel(),
+            no_progress,
+        ).unwrap();
+
+        assert_eq!(r.groups.len(), 1, "sans secondary_folder les doublons internes doivent etre detectes");
+        // En mode normal, source doit etre None
+        assert!(r.groups[0].files.iter().all(|f| f.source.is_none()));
     }
 }

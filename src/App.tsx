@@ -204,7 +204,7 @@ export default function App() {
 
   function handleScan() {
     resetResults();
-    const effectiveRecursive = config.scanMode === "by_folder" ? true : config.recursive;
+    const effectiveRecursive = (config.scanMode === "by_folder" || config.scanMode === "compare_folder") ? true : config.recursive;
     return scanExec.scan({
       path: config.folder,
       recursive: effectiveRecursive,
@@ -225,6 +225,7 @@ export default function App() {
       maxFileSizeKb: config.maxFileSizeKb,
       notificationThresholdSecs: 10,
       notificationLang: lang,
+      secondaryFolder: config.scanMode === "compare_folder" ? (config.secondaryFolder || null) : null,
     });
   }
 
@@ -421,14 +422,15 @@ export default function App() {
             <span className="folder-path">{config.folder || t.pickFolder}</span>
           </div>
           <select className="select-mode" value={config.scanMode}
-            onChange={(e) => config.setScanMode(e.target.value as "all" | "by_folder")} disabled={scanExec.scanning}>
+            onChange={(e) => config.setScanMode(e.target.value as "all" | "by_folder" | "compare_folder")} disabled={scanExec.scanning}>
             <option value="all">{t.scanAll}</option>
             <option value="by_folder">{t.scanByFolder}</option>
+            <option value="compare_folder">{t.scanCompareFolder}</option>
           </select>
-          <label className="toggle-recursive" style={{ visibility: config.scanMode === "by_folder" ? "hidden" : "visible" }}>
+          <label className="toggle-recursive" style={{ visibility: (config.scanMode === "by_folder" || config.scanMode === "compare_folder") ? "hidden" : "visible" }}>
             <input type="checkbox" checked={config.recursive}
               onChange={(e) => config.setRecursive(e.target.checked)}
-              disabled={scanExec.scanning || config.scanMode === "by_folder"} />
+              disabled={scanExec.scanning || config.scanMode === "by_folder" || config.scanMode === "compare_folder"} />
             {t.recursive}
           </label>
           {scanExec.scanning ? (
@@ -439,6 +441,21 @@ export default function App() {
             <button className="btn-primary" onClick={handleScan} disabled={!config.folder}>{t.analyse}</button>
           )}
         </div>
+
+        {config.scanMode === "compare_folder" && (
+          <div className="folder-row folder-row--secondary" data-testid="secondary-folder-row">
+            <span className="secondary-folder-label">{t.secondaryFolderLabel}</span>
+            <div
+              className="folder-input"
+              data-testid="secondary-folder-input"
+              onClick={config.pickSecondaryFolder}
+              style={{ opacity: config.pickingSecondary ? 0.5 : 1, pointerEvents: config.pickingSecondary ? "none" : "auto" }}
+            >
+              <span className="folder-icon">📁</span>
+              <span className="folder-path">{config.secondaryFolder || t.secondaryFolderPick}</span>
+            </div>
+          </div>
+        )}
 
         <div className="similar-options-row">
           <div className="detection-mode-selector">

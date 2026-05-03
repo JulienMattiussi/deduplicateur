@@ -51,6 +51,7 @@ Outil de détection et suppression de fichiers en double - rapide, local, sans c
 - **Aide intégrée** - touche F1 ou bouton "?" dans le header ; drawer latéral avec 30 articles bilingues (FR/EN) organisés en 13 sections ; recherche plein texte dans titres, mots-clés et corps des articles
 - **Notifications système** - en fin de scan long (>10s), notification OS native (Windows Action Center, macOS, libnotify Linux) avec le nombre de groupes trouvés et l'espace récupérable ; pas de notification pour les scans rapides
 - **Comparateur de vidéos** - vue plein écran côte à côte pour les groupes de vidéos : deux lecteurs natifs synchronisés (play/pause/seek), barre de scrubbing commune, métadonnées complètes (résolution, durée, codec, taille), navigation entre groupes au clavier (← →, Échap), bouton "Garder celui-ci"
+- **Mode "Comparer avec un autre dossier"** - 3e mode de scan : compare un dossier source S avec un dossier de référence R et ne signale que les fichiers présents dans les deux ; les doublons internes à S ou à R sont ignorés ; les fichiers du dossier de référence affichent un badge "Réf." dans les résultats
 
 ---
 
@@ -168,8 +169,8 @@ Chaque scan produit un fichier JSON dans `~/.local/share/deduplicateur/sessions/
 | Bundler | Vite + Tauri CLI | Dev HMR + build natif |
 | CI/CD | GitHub Actions | Build Windows automatique sur push |
 | Similarité audio | fpcalc/chromaprint (subprocess) | Empreinte acoustique, distance de Hamming sur vecteurs i32, cache inter-scans |
-| Tests Rust | cargo test + tempfile | 156 tests unitaires sur le moteur |
-| Tests TS | Vitest + jsdom + React Testing Library | 244 tests (utilitaires + i18n + App + ImageComparator + VideoComparator + MissingToolBanner + FileThumbnail + AdvancedPanelWrapper + IgnoredPanel + FolderSection + HelpPanel + AdvancedPanel + AudioAdvancedPanel + VideoAdvancedPanel + ProfilesPanel + ProgressETA) |
+| Tests Rust | cargo test + tempfile | 161 tests unitaires sur le moteur |
+| Tests TS | Vitest + jsdom + React Testing Library | 254 tests (utilitaires + i18n + App + ImageComparator + VideoComparator + MissingToolBanner + FileThumbnail + AdvancedPanelWrapper + IgnoredPanel + FolderSection + HelpPanel + AdvancedPanel + AudioAdvancedPanel + VideoAdvancedPanel + ProfilesPanel + ProgressETA) |
 
 ---
 

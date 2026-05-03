@@ -402,23 +402,28 @@
 
 ---
 
-## Phase 19 - Scan multi-dossiers et mode "comparer avec dossier X"
+## Phase 19 - Mode "Comparer avec un autre dossier" ✅
 
-**Objectif : détecter les doublons entre un dossier source et un dossier de référence, sans signaler les doublons internes**
+**Objectif : détecter les doublons entre un dossier source et un dossier de référence, sans signaler les doublons internes à chaque dossier**
 
-Deux sous-modes :
+Les 3 modes de scan :
+- "Comparer tout le dossier" (existant)
+- "Comparer par sous-dossier" (existant)
+- "Comparer avec un autre dossier" (nouveau)
 
-**Sous-mode A : scan de plusieurs dossiers en parallèle** - plusieurs racines scannées ensemble, doublons croisés détectés (les doublons internes à chaque racine sont aussi signalés).
+En mode "Comparer avec un autre dossier" : dossier source S et dossier de référence R. Seuls les fichiers présents dans les deux dossiers sont signalés. Un doublon interne à S ou interne à R n'apparait pas.
 
-**Sous-mode B : "comparer avec le dossier X"** - dossier source S et dossier de référence R. Seuls les fichiers présents dans les deux dossiers sont signalés. Un doublon interne à S ou interne à R n'apparait pas - seulement les fichiers de S qui ont un jumeau dans R (et vice versa).
-
-- [ ] `ScanParams` : champ `secondary_folder: Option<String>` pour le sous-mode B ; champ `extra_folders: Vec<String>` pour le sous-mode A
-- [ ] `scanner.rs` : mode B - collecte séparée des fichiers S et R, hash en cascade identique, groupement croisé uniquement (exclure les groupes mono-source)
-- [ ] `scanner.rs` : mode A - collecte unifiée multi-racines, même pipeline qu'aujourd'hui
-- [ ] UI : dans les options de scan, troisième mode à côté de "Tous les fichiers" et "Par sous-dossier" - "Comparer avec un dossier"
-- [ ] UI : en mode B, second sélecteur de dossier "Dossier de référence" (même pattern que le sélecteur principal)
-- [ ] UI : label distinctif dans les `GroupCard` en mode B indiquant la provenance (S vs R) de chaque fichier
-- [ ] Tests Rust : mode B - groupe croisé détecté, groupe interne ignoré, fichier présent dans un seul dossier ignoré
-- [ ] Tests TypeScript : rendu du sélecteur secondaire, affichage de la provenance dans GroupCard
+- [x] `ScanParams` : champ `secondary_folder: Option<String>`
+- [x] `scanner.rs` : `FileSource` enum (Primary/Secondary), collecte séparée des fichiers S et R avec marquage, hash en cascade identique sur l'union, filtre `is_cross_source_group` appliqué aux 4 phases (exact, pHash, video, audio)
+- [x] `lib.rs` : paramètre `secondary_folder: Option<String>` dans la commande Tauri `scan_folder`
+- [x] `types.ts` : champ `source?: "primary" | "secondary"` dans `DuplicateFile`
+- [x] UI : troisième option "Comparer avec un autre dossier" dans le sélecteur de mode
+- [x] UI : second sélecteur de dossier "Dossier de référence" visible uniquement dans ce mode (même pattern que le sélecteur principal, avec protection anti-double-clic)
+- [x] UI : badge `Réf.` sur les fichiers provenant du dossier de référence dans `GroupCard`
+- [x] `i18n.ts` : 3 nouvelles clés (scanCompareFolder, secondaryFolderLabel, secondaryFolderPick, badgeReference)
+- [x] `src/help/content.ts` : article "Mode Comparer avec un autre dossier" bilingue + mise à jour de l'article "Modes de scan"
+- [x] Tests Rust : 5 tests (groupe croisé détecté avec sources correctes, groupe interne S ignoré, groupe interne R ignoré, fichier présent dans un seul dossier ignoré, mode normal sans secondary_folder inchangé)
+- [x] Tests TypeScript : 10 tests sections Q et Q2 (sélecteur secondaire absent/présent, clic picker, path affiché, scan_folder invoqué avec secondaryFolder, badge Réf., badge original absent en mode source)
+- [x] 161 tests Rust / 254 tests TypeScript - tous au vert
 
 **Critère de validation : dossier source = `Photos/`, dossier référence = `Backup/Photos/` - seules les photos présentes dans les deux dossiers sont signalées, pas les photos uniques dans l'un ou l'autre**

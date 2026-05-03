@@ -59,20 +59,66 @@ The selected path is shown in the selection area. The scan does not start automa
     sectionId: "start",
     title: { fr: "Modes de scan", en: "Scan modes" },
     keywords: {
-      fr: ["mode", "scan", "tout", "dossier", "sous-dossier", "récursif", "par dossier", "plat", "flat"],
-      en: ["mode", "scan", "entire", "folder", "subfolder", "recursive", "by folder", "flat"],
+      fr: ["mode", "scan", "tout", "dossier", "sous-dossier", "récursif", "par dossier", "plat", "flat", "référence", "comparer", "compare"],
+      en: ["mode", "scan", "entire", "folder", "subfolder", "recursive", "by folder", "flat", "reference", "compare", "cross"],
     },
     body: {
       fr: `**Tout le dossier** : compare tous les fichiers ensemble, quel que soit leur sous-dossier. Idéal pour trouver des doublons dispersés dans une arborescence entière.
 
 **Par sous-dossier** : analyse chaque premier niveau de sous-dossier séparément. Les fichiers de dossiers différents ne sont jamais comparés entre eux. Utile pour nettoyer des photos organisées par année ou par événement.
 
-**Sous-dossiers (récursif)** : en mode "Tout le dossier", cette option inclut les sous-dossiers de façon récursive. Désactivée, seul le niveau de surface est analysé. Cette option est automatiquement forcée en mode "Par sous-dossier".`,
+**Comparer avec un autre dossier** : compare un dossier source avec un dossier de référence. Seuls les fichiers présents dans les deux dossiers sont signalés. Les doublons internes à chaque dossier sont ignorés. Voir l'article dédié pour plus de détails.
+
+**Sous-dossiers (récursif)** : en mode "Tout le dossier", cette option inclut les sous-dossiers de façon récursive. Désactivée, seul le niveau de surface est analysé. Cette option est automatiquement forcée en mode "Par sous-dossier" et "Comparer avec un autre dossier".`,
       en: `**Entire folder**: compares all files together, regardless of subfolder. Best for finding duplicates scattered across a full directory tree.
 
 **By subfolder**: analyzes each first-level subfolder independently. Files from different folders are never compared. Useful for cleaning photos organized by year or event.
 
-**Subfolders (recursive)**: in "Entire folder" mode, this option includes subfolders recursively. When disabled, only the top-level directory is scanned. This option is automatically forced in "By subfolder" mode.`,
+**Compare with another folder**: compares a source folder with a reference folder. Only files present in both folders are reported. Internal duplicates within each folder are ignored. See the dedicated article for details.
+
+**Subfolders (recursive)**: in "Entire folder" mode, this option includes subfolders recursively. When disabled, only the top-level directory is scanned. This option is automatically forced in "By subfolder" and "Compare with another folder" modes.`,
+    },
+  },
+
+  {
+    id: "compare-folder-mode",
+    sectionId: "start",
+    title: { fr: "Mode Comparer avec un autre dossier", en: "Compare with another folder mode" },
+    keywords: {
+      fr: ["comparer", "référence", "dossier secondaire", "source", "backup", "sauvegarde", "doublon croisé", "inter-dossier"],
+      en: ["compare", "reference", "secondary folder", "source", "backup", "cross-folder", "cross duplicate"],
+    },
+    body: {
+      fr: `Ce mode est conçu pour détecter les fichiers qui existent à la fois dans un **dossier source** et dans un **dossier de référence** (ex. une sauvegarde).
+
+**Comment l'utiliser :**
+- Sélectionner "Comparer avec un autre dossier" dans le menu déroulant de mode.
+- Choisir le dossier principal (source) via la zone 📁 habituelle.
+- Choisir le dossier de référence via le second sélecteur "Dossier de référence" qui apparaît.
+- Lancer l'analyse.
+
+**Ce qui est signalé :** uniquement les fichiers présents dans les deux dossiers (au moins un fichier de chaque côté dans le même groupe).
+
+**Ce qui est ignoré :** les fichiers en double uniquement dans le dossier source, et les fichiers en double uniquement dans le dossier de référence.
+
+**Badge "Réf."** : dans les résultats, chaque fichier provenant du dossier de référence affiche un badge \`Réf.\` pour le distinguer visuellement.
+
+**Cas d'usage typique :** vous avez \`Photos/\` sur votre disque dur et \`Backup/Photos/\` sur un disque externe. Ce mode liste uniquement les photos présentes dans les deux, afin de savoir ce qui peut être supprimé en toute sécurité de la sauvegarde.`,
+      en: `This mode is designed to detect files that exist in both a **source folder** and a **reference folder** (e.g. a backup).
+
+**How to use it:**
+- Select "Compare with another folder" from the mode dropdown.
+- Choose the main (source) folder via the usual 📁 area.
+- Choose the reference folder via the second "Reference folder" picker that appears.
+- Start the scan.
+
+**What is reported:** only files present in both folders (at least one file from each side in the same group).
+
+**What is ignored:** duplicates that exist only within the source folder, and duplicates that exist only within the reference folder.
+
+**"Ref." badge:** in the results, each file from the reference folder shows a \`Ref.\` badge to distinguish it visually.
+
+**Typical use case:** you have \`Photos/\` on your hard drive and \`Backup/Photos/\` on an external drive. This mode lists only photos present in both, so you know what can safely be removed from the backup.`,
     },
   },
 

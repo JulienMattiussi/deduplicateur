@@ -168,7 +168,8 @@ export function GroupCard({
                 </button>
               </span>
               <span className="file-col-badge">
-                {idx === 0 && <span className="badge-original">{t.original}</span>}
+                {idx === 0 && !file.source && <span className="badge-original">{t.original}</span>}
+                {file.source === "secondary" && <span className="badge-reference" data-testid="badge-reference">{t.badgeReference}</span>}
               </span>
             </div>
           ))}

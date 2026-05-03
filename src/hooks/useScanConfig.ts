@@ -40,7 +40,9 @@ export function useScanConfig() {
     "node_modules", ".git", "target", "dist", ".next",
     "__pycache__", ".cache", "vendor", "build", ".npm",
   ]);
-  const [scanMode, setScanMode] = useState<"all" | "by_folder">("all");
+  const [scanMode, setScanMode] = useState<"all" | "by_folder" | "compare_folder">("all");
+  const [secondaryFolder, setSecondaryFolder] = useState("");
+  const [pickingSecondary, setPickingSecondary] = useState(false);
   const [detectionMode, setDetectionMode] = useState<"files" | "images" | "videos" | "audio">("files");
   const [simSimilarity, setSimSimilarity] = useState(100);
   const [videoSimilarity, setVideoSimilarity] = useState(100);
@@ -72,6 +74,17 @@ export function useScanConfig() {
     }
   }
 
+  async function pickSecondaryFolder() {
+    if (pickingSecondary) return;
+    setPickingSecondary(true);
+    try {
+      const dir = await open({ directory: true, multiple: false });
+      if (typeof dir === "string") setSecondaryFolder(dir);
+    } finally {
+      setPickingSecondary(false);
+    }
+  }
+
   async function updatePhashConfig(cfg: PHashConfig) {
     setPhashConfig(cfg);
     try { await invoke("set_phash_config", { config: cfg }); } catch { /* best-effort */ }
@@ -99,6 +112,8 @@ export function useScanConfig() {
     updatePhashConfig, updateVideoConfig, updateAudioConfig,
     audioSimilarity, setAudioSimilarity,
     picking, pickFolder,
+    secondaryFolder, setSecondaryFolder,
+    pickingSecondary, pickSecondaryFolder,
     excludeExtensions, setExcludeExtensions,
     includeExtensions, setIncludeExtensions,
     minFileSizeKb, setMinFileSizeKb,

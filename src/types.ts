@@ -21,6 +21,8 @@ export interface DuplicateFile {
   modified: number;
   video_metadata?: VideoMetadata;
   audio_metadata?: AudioMetadata;
+  /** Provenance du fichier en mode "comparer avec un autre dossier". */
+  source?: "primary" | "secondary";
 }
 
 export interface DuplicateGroup {

@@ -174,6 +174,7 @@ async fn scan_folder(
     audio_duration_tolerance: f64,
     notification_threshold_secs: Option<u64>,
     notification_lang: Option<String>,
+    secondary_folder: Option<String>,
 ) -> Result<ScanSummary, String> {
     let app = window.app_handle().clone();
     let cancelled = {
@@ -244,6 +245,7 @@ async fn scan_folder(
             audio_cache_enabled: audio_cache_enabled && audio_cfg.cache_enabled,
             audio_duration_tolerance,
             ignored_keys,
+            secondary_folder,
         };
         do_scan(params, cancelled, move |current, total, total_files, file: &str| {
             *progress_for_scan.lock().unwrap() = Some((current, total, total_files, file.to_string()));
@@ -597,6 +599,7 @@ mod tests {
             modified,
             video_metadata: None,
             audio_metadata: None,
+            source: None,
         }
     }
 

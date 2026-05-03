@@ -1226,3 +1226,137 @@ describe("P - notifications", () => {
     });
   });
 });
+
+// ---- Q : mode "comparer avec un autre dossier" ----
+describe("Q - mode compare_folder", () => {
+  it("le sélecteur de dossier secondaire n'est pas visible en mode 'all'", () => {
+    render(<App />);
+    expect(screen.queryByTestId("secondary-folder-row")).not.toBeInTheDocument();
+  });
+
+  it("le sélecteur de dossier secondaire n'est pas visible en mode 'by_folder'", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    const selects = screen.getAllByRole("combobox");
+    await user.selectOptions(selects[0], "by_folder");
+    expect(screen.queryByTestId("secondary-folder-row")).not.toBeInTheDocument();
+  });
+
+  it("le sélecteur de dossier secondaire est visible en mode 'compare_folder'", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    const selects = screen.getAllByRole("combobox");
+    await user.selectOptions(selects[0], "compare_folder");
+    expect(screen.getByTestId("secondary-folder-row")).toBeInTheDocument();
+  });
+
+  it("cliquer sur le sélecteur secondaire appelle open()", async () => {
+    const user = userEvent.setup();
+    mockDialogOpen.mockResolvedValue("/home/ref");
+    render(<App />);
+    const selects = screen.getAllByRole("combobox");
+    await user.selectOptions(selects[0], "compare_folder");
+    const secondaryInput = screen.getByTestId("secondary-folder-input");
+    await user.click(secondaryInput);
+    await waitFor(() => {
+      expect(mockDialogOpen).toHaveBeenCalledWith({ directory: true, multiple: false });
+    });
+  });
+
+  it("le chemin du dossier secondaire s'affiche après sélection", async () => {
+    const user = userEvent.setup();
+    mockDialogOpen.mockResolvedValue("/home/ref");
+    render(<App />);
+    const selects = screen.getAllByRole("combobox");
+    await user.selectOptions(selects[0], "compare_folder");
+    await user.click(screen.getByTestId("secondary-folder-input"));
+    await waitFor(() => {
+      expect(screen.getByText("/home/ref")).toBeInTheDocument();
+    });
+  });
+
+  it("scan_folder est invoqué avec secondaryFolder en mode compare_folder", async () => {
+    const user = userEvent.setup();
+    mockInvoke.mockImplementation(
+      makeDefaultMock({
+        scan_folder: baseSummary,
+        get_groups_page: { groups: [], offset: 0, total: 0, has_more: false },
+      })
+    );
+    // First click picks primary folder, second picks secondary
+    mockDialogOpen
+      .mockResolvedValueOnce("/home/source")
+      .mockResolvedValueOnce("/home/reference");
+
+    render(<App />);
+    const selects = screen.getAllByRole("combobox");
+    await user.selectOptions(selects[0], "compare_folder");
+    await user.click(screen.getByText(/Cliquer pour choisir un dossier/));
+    await waitFor(() => expect(screen.getByText("/home/source")).toBeInTheDocument());
+    await user.click(screen.getByTestId("secondary-folder-input"));
+    await waitFor(() => expect(screen.getByText("/home/reference")).toBeInTheDocument());
+    await user.click(screen.getByText("Analyser"));
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith(
+        "scan_folder",
+        expect.objectContaining({ secondaryFolder: "/home/reference" })
+      );
+    });
+  });
+
+  it("scan_folder est invoqué avec secondaryFolder: null en mode 'all'", async () => {
+    const user = userEvent.setup();
+    mockInvoke.mockImplementation(
+      makeDefaultMock({
+        scan_folder: baseSummary,
+        get_groups_page: { groups: [], offset: 0, total: 0, has_more: false },
+      })
+    );
+    mockDialogOpen.mockResolvedValue("/home/test");
+
+    render(<App />);
+    await user.click(screen.getByText(/Cliquer pour choisir un dossier/));
+    await waitFor(() => expect(screen.getByText("/home/test")).toBeInTheDocument());
+    await user.click(screen.getByText("Analyser"));
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith(
+        "scan_folder",
+        expect.objectContaining({ secondaryFolder: null })
+      );
+    });
+  });
+});
+
+// ---- Q2 : badge "Réf." dans GroupCard ----
+describe("Q2 - badge source dans GroupCard", () => {
+  it("badge 'Réf.' visible sur le fichier secondaire", () => {
+    const groupWithSource = {
+      ...baseGroup,
+      files: [
+        { path: "/src/file1.txt", size: 1024, name: "file1.txt", modified: 1700000000, source: "primary" as const },
+        { path: "/ref/file2.txt", size: 1024, name: "file2.txt", modified: 1700001000, source: "secondary" as const },
+      ],
+    };
+    render(<GroupCard group={groupWithSource} selected={new Set()} onToggle={() => {}} />);
+    expect(screen.getByTestId("badge-reference")).toBeInTheDocument();
+  });
+
+  it("badge 'Réf.' absent quand aucun fichier n'a source='secondary'", () => {
+    render(<GroupCard group={baseGroup} selected={new Set()} onToggle={() => {}} />);
+    expect(screen.queryByTestId("badge-reference")).not.toBeInTheDocument();
+  });
+
+  it("badge 'original' absent quand les fichiers ont un champ source", () => {
+    const groupWithSource = {
+      ...baseGroup,
+      files: [
+        { path: "/src/file1.txt", size: 1024, name: "file1.txt", modified: 1700000000, source: "primary" as const },
+        { path: "/ref/file2.txt", size: 1024, name: "file2.txt", modified: 1700001000, source: "secondary" as const },
+      ],
+    };
+    render(<GroupCard group={groupWithSource} selected={new Set()} onToggle={() => {}} />);
+    expect(screen.queryByText("original")).not.toBeInTheDocument();
+  });
+});

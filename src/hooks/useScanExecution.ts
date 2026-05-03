@@ -19,6 +19,7 @@ export interface ScanInvokeArgs {
   audioDurationTolerance: number;
   notificationThresholdSecs?: number;
   notificationLang?: string;
+  secondaryFolder?: string | null;
 }
 
 export function useScanExecution(
