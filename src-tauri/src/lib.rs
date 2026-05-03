@@ -755,6 +755,93 @@ mod tests {
         assert_eq!(result.len(), 1);
         assert!(result.contains(&"/a/doc.pdf".to_string()));
     }
+
+    // ── Tests purge_deleted_from_session / recalc_wasted_bytes ───────────────
+
+    fn make_group_with_size(id: &str, size: u64, files: Vec<DuplicateFile>) -> DuplicateGroup {
+        DuplicateGroup {
+            id: id.to_string(),
+            hash: id.to_string(),
+            size,
+            files,
+            folder_key: None,
+            similar: false,
+            video_similar: false,
+            audio_similar: false,
+        }
+    }
+
+    #[test]
+    fn test_purge_removes_deleted_files_from_groups() {
+        let mut groups = vec![
+            make_group_with_size("g1", 100, vec![
+                make_file("/a/1.jpg", 100, 0),
+                make_file("/a/2.jpg", 100, 0),
+                make_file("/a/3.jpg", 100, 0),
+            ]),
+        ];
+        let deleted: std::collections::HashSet<String> =
+            vec!["/a/2.jpg".to_string()].into_iter().collect();
+        purge_deleted_from_session(&mut groups, &deleted);
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].files.len(), 2);
+        assert!(!groups[0].files.iter().any(|f| f.path == "/a/2.jpg"));
+    }
+
+    #[test]
+    fn test_purge_removes_group_when_only_one_file_remains() {
+        let mut groups = vec![
+            make_group_with_size("g1", 100, vec![
+                make_file("/a/1.jpg", 100, 0),
+                make_file("/a/2.jpg", 100, 0),
+            ]),
+        ];
+        let deleted: std::collections::HashSet<String> =
+            vec!["/a/2.jpg".to_string()].into_iter().collect();
+        purge_deleted_from_session(&mut groups, &deleted);
+        assert!(groups.is_empty(), "groupe a 1 fichier doit etre supprime");
+    }
+
+    #[test]
+    fn test_purge_keeps_untouched_groups() {
+        let mut groups = vec![
+            make_group_with_size("g1", 100, vec![
+                make_file("/a/1.jpg", 100, 0),
+                make_file("/a/2.jpg", 100, 0),
+            ]),
+            make_group_with_size("g2", 200, vec![
+                make_file("/b/x.jpg", 200, 0),
+                make_file("/b/y.jpg", 200, 0),
+            ]),
+        ];
+        let deleted: std::collections::HashSet<String> =
+            vec!["/a/2.jpg".to_string()].into_iter().collect();
+        purge_deleted_from_session(&mut groups, &deleted);
+        assert_eq!(groups.len(), 1, "g1 supprime, g2 conserve");
+        assert_eq!(groups[0].id, "g2");
+    }
+
+    #[test]
+    fn test_recalc_wasted_bytes() {
+        let groups = vec![
+            make_group_with_size("g1", 100, vec![
+                make_file("/a/1.jpg", 100, 0),
+                make_file("/a/2.jpg", 100, 0),
+                make_file("/a/3.jpg", 100, 0),
+            ]),
+            make_group_with_size("g2", 500, vec![
+                make_file("/b/x.jpg", 500, 0),
+                make_file("/b/y.jpg", 500, 0),
+            ]),
+        ];
+        // g1 : 100 * (3-1) = 200, g2 : 500 * (2-1) = 500 -> total 700
+        assert_eq!(recalc_wasted_bytes(&groups), 700);
+    }
+
+    #[test]
+    fn test_recalc_wasted_bytes_empty() {
+        assert_eq!(recalc_wasted_bytes(&[]), 0);
+    }
 }
 
 #[derive(serde::Serialize)]
@@ -871,8 +958,22 @@ fn open_file(path: String) -> Result<(), String> {
     open_file_default(&path).map_err(|e| e.to_string())
 }
 
+fn purge_deleted_from_session(
+    groups: &mut Vec<scanner::DuplicateGroup>,
+    deleted: &std::collections::HashSet<String>,
+) {
+    for group in groups.iter_mut() {
+        group.files.retain(|f| !deleted.contains(&f.path));
+    }
+    groups.retain(|g| g.files.len() >= 2);
+}
+
+fn recalc_wasted_bytes(groups: &[scanner::DuplicateGroup]) -> u64 {
+    groups.iter().map(|g| g.size * (g.files.len() as u64 - 1)).sum()
+}
+
 #[tauri::command]
-fn delete_files(paths: Vec<String>) -> Result<(), String> {
+fn delete_files(app: tauri::AppHandle, paths: Vec<String>) -> Result<(), String> {
     let mut errors: Vec<String> = Vec::new();
     for path in &paths {
         if !std::path::Path::new(path).exists() {
@@ -882,11 +983,25 @@ fn delete_files(paths: Vec<String>) -> Result<(), String> {
             errors.push(format!("{}: {}", path, e));
         }
     }
-    if errors.is_empty() {
-        Ok(())
-    } else {
-        Err(errors.join("\n"))
+    if !errors.is_empty() {
+        return Err(errors.join("\n"));
     }
+
+    let deleted: std::collections::HashSet<String> = paths.into_iter().collect();
+    let session_to_save = {
+        let cache = app.state::<ScanCache>();
+        let mut guard = cache.0.lock().unwrap();
+        guard.as_mut().map(|loaded| {
+            purge_deleted_from_session(&mut loaded.groups, &deleted);
+            loaded.summary.total_groups = loaded.groups.len();
+            loaded.summary.total_wasted_bytes = recalc_wasted_bytes(&loaded.groups);
+            (loaded.summary.clone(), loaded.groups.clone())
+        })
+    };
+    if let Some((summary, groups)) = session_to_save {
+        save_session(&app, &summary, &groups);
+    }
+    Ok(())
 }
 
 fn load_cfg<T: Default>(app: &tauri::AppHandle, load: impl Fn(&std::path::Path) -> T) -> T {
