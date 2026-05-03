@@ -183,6 +183,7 @@ Les binaires sont produits automatiquement par le CI à chaque push sur `main`.
 | Windows | `deduplicateur_x.x.x_x64_en-US.msi` | Installeur MSI |
 | Linux | `deduplicateur_x.x.x_amd64.AppImage` | Portable, toutes distros |
 | Linux | `deduplicateur_x.x.x_amd64.deb` | Paquet Debian/Ubuntu |
+| macOS | `deduplicateur_x.x.x_x64.dmg` | Installeur DMG |
 
 > **Windows** : lors du premier lancement, Windows peut afficher un avertissement SmartScreen - cliquer sur « Plus d'informations » puis « Exécuter quand même ».
 
@@ -255,6 +256,11 @@ npm test
 | 11 | Export CSV/HTML, profils de scan avec lancement rapide | ✅ |
 | 12 | Similarité audio (fpcalc, empreinte acoustique, cache) | ✅ |
 | 13 | Bundle fpcalc, recherche élargie des outils, bannière d'installation guidée | ✅ |
+| 14 | Règles de sélection par métadonnées (résolution, bitrate, dossier prioritaire) | - |
+| 15 | Liste d'ignorés (persistante, gérable depuis l'UI) | - |
+| 16 | Notifications système (Windows, macOS, Linux) en fin de scan long | - |
+| 17 | Comparateur vidéo côte à côte avec lecture synchronisée | - |
+| 18 | Scan multi-dossiers et mode "comparer avec le dossier X" | - |
 
 ---
 

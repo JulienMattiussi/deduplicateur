@@ -282,3 +282,94 @@
 - [x] `cache_io.rs` : 5 tests (round-trip, absent, non-dirty, dirty reset, JSON invalide)
 - [x] `tool_finder.rs` : +1 test (binaries/ sous-dossier)
 - [x] 123 tests Rust, 118 tests TypeScript
+
+---
+
+## Phase 14 - Règles de sélection par métadonnées
+
+**Objectif : choisir automatiquement quel fichier garder selon des critères objectifs**
+
+- [ ] Règle "garder la plus haute résolution" pour les images (dimensions px)
+- [ ] Règle "garder le meilleur bitrate / la plus grande taille" pour l'audio et la vidéo
+- [ ] Règle "garder le fichier dans le dossier X" (chemin prioritaire configurable)
+- [ ] Règle "garder le plus récent" et "garder le plus ancien" (déjà disponibles - conserver)
+- [ ] UI : sélecteur de règle dans la barre d'actions, appliquée sur les groupes visibles
+- [ ] La règle s'applique indépendamment par groupe (un seul fichier coché = celui qui gagne)
+- [ ] Tests Rust : extraction des métadonnées nécessaires au scoring
+- [ ] Tests TypeScript : application de chaque règle, tie-breaking (ex. même résolution -> garder le plus récent)
+
+**Critère de validation : sur un groupe image HD + miniature, "garder la plus haute résolution" coche automatiquement le bon fichier**
+
+---
+
+## Phase 15 - Liste d'ignorés
+
+**Objectif : ne plus voir resurgir des groupes que l'utilisateur a décidé de laisser en place**
+
+- [ ] `ignore_list.rs` : persistance JSON dans `~/.local/share/deduplicateur/ignore_list.json`, clé = paire de hashes canoniques (ordre trié pour éviter les doublons A-B / B-A)
+- [ ] Commande Tauri `ignore_group(group_id)` : ajoute la paire de hashes du groupe à la liste
+- [ ] Commande Tauri `get_ignore_list()` / `clear_ignore_entry(key)` / `clear_all_ignored()`
+- [ ] `scanner.rs` : filtrage post-scan - les groupes dont tous les fichiers sont dans la liste d'ignorés sont exclus des résultats
+- [ ] UI : bouton "Ignorer ce groupe" sur chaque `GroupCard` (à côté du bouton de suppression)
+- [ ] UI : panneau "Ignorés" accessible depuis les paramètres - liste les paires ignorées avec chemin, bouton "Retirer" par entrée et bouton "Tout effacer"
+- [ ] Tests Rust : ajout, filtrage, suppression d'entrée, round-trip JSON
+- [ ] Tests TypeScript : bouton ignorer, rendu panneau ignorés, suppression d'entrée
+
+**Critère de validation : ignorer un groupe, relancer le scan, le groupe n'apparait plus ; aller dans les paramètres et le "désignorer"**
+
+---
+
+## Phase 16 - Notifications système
+
+**Objectif : prévenir l'utilisateur quand un scan long se termine, même si l'app est en arrière-plan**
+
+- [ ] Ajouter le plugin `tauri-plugin-notification` dans `Cargo.toml` et `package.json`
+- [ ] Déclarer `notification:default` dans `capabilities/default.json`
+- [ ] Rust / `lib.rs` : émettre une notification OS en fin de scan (titre + résumé : N groupes, X Mo récupérables)
+- [ ] Notification uniquement si le scan a duré plus de N secondes (seuil configurable, défaut 10s) - pas de notification pour les scans rapides
+- [ ] Windows : notification native via le centre de notifications
+- [ ] macOS : notification native via NSUserNotificationCenter / UNUserNotificationCenter
+- [ ] Linux : notification via libnotify (org.freedesktop.Notifications)
+- [ ] Tests Rust : vérifier que la notification est déclenchée avec le bon contenu (mock du plugin)
+
+**Critère de validation : lancer un scan de 50 000 fichiers, basculer sur une autre fenêtre, voir la notification apparaitre en fin de scan**
+
+---
+
+## Phase 17 - Comparateur vidéo
+
+**Objectif : comparer deux vidéos côte à côte avec lecture synchronisée avant de choisir laquelle supprimer**
+
+- [ ] `VideoComparator.tsx` : composant plein écran, même structure que `ImageComparator.tsx`
+- [ ] Deux lecteurs `<video>` natifs côte à côte, synchronisation play/pause/seek via événements cross-ref
+- [ ] Barre de scrubbing commune : déplacer le slider avance les deux vidéos au même timestamp
+- [ ] Affichage des métadonnées par fichier : résolution, durée, codec (via `get_video_metadata`), taille
+- [ ] Bouton "Garder celui-ci" (gauche / droite) - même pattern que `ImageComparator`
+- [ ] Navigation clavier entre groupes (mêmes raccourcis que le comparateur images)
+- [ ] Bouton d'accès au comparateur sur les `GroupCard` vidéo (déjà présent pour les images)
+- [ ] Tests TypeScript : rendu, synchronisation play/pause, bouton "Garder", navigation clavier
+
+**Critère de validation : ouvrir deux vidéos similaires, appuyer play, les deux démarrent en même temps ; scrubber à 30s sur l'une, l'autre saute aussi à 30s**
+
+---
+
+## Phase 18 - Scan multi-dossiers et mode "comparer avec dossier X"
+
+**Objectif : détecter les doublons entre un dossier source et un dossier de référence, sans signaler les doublons internes**
+
+Deux sous-modes :
+
+**Sous-mode A : scan de plusieurs dossiers en parallèle** - plusieurs racines scannées ensemble, doublons croisés détectés (les doublons internes à chaque racine sont aussi signalés).
+
+**Sous-mode B : "comparer avec le dossier X"** - dossier source S et dossier de référence R. Seuls les fichiers présents dans les deux dossiers sont signalés. Un doublon interne à S ou interne à R n'apparait pas - seulement les fichiers de S qui ont un jumeau dans R (et vice versa).
+
+- [ ] `ScanParams` : champ `secondary_folder: Option<String>` pour le sous-mode B ; champ `extra_folders: Vec<String>` pour le sous-mode A
+- [ ] `scanner.rs` : mode B - collecte séparée des fichiers S et R, hash en cascade identique, groupement croisé uniquement (exclure les groupes mono-source)
+- [ ] `scanner.rs` : mode A - collecte unifiée multi-racines, même pipeline qu'aujourd'hui
+- [ ] UI : dans les options de scan, troisième mode à côté de "Tous les fichiers" et "Par sous-dossier" - "Comparer avec un dossier"
+- [ ] UI : en mode B, second sélecteur de dossier "Dossier de référence" (même pattern que le sélecteur principal)
+- [ ] UI : label distinctif dans les `GroupCard` en mode B indiquant la provenance (S vs R) de chaque fichier
+- [ ] Tests Rust : mode B - groupe croisé détecté, groupe interne ignoré, fichier présent dans un seul dossier ignoré
+- [ ] Tests TypeScript : rendu du sélecteur secondaire, affichage de la provenance dans GroupCard
+
+**Critère de validation : dossier source = `Photos/`, dossier référence = `Backup/Photos/` - seules les photos présentes dans les deux dossiers sont signalées, pas les photos uniques dans l'un ou l'autre**
