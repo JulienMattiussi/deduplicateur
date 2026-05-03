@@ -1152,3 +1152,77 @@ describe("O - aide intégrée", () => {
     expect(screen.queryByTestId("help-panel")).not.toBeInTheDocument();
   });
 });
+
+// ---- P : notifications ----
+describe("P - notifications", () => {
+  it("scan_folder recoit notificationThresholdSecs: 10", async () => {
+    const user = userEvent.setup();
+    mockInvoke.mockImplementation(
+      makeDefaultMock({
+        scan_folder: baseSummary,
+        get_groups_page: { groups: [], offset: 0, total: 0, has_more: false },
+      })
+    );
+    mockDialogOpen.mockResolvedValue("/home/test");
+
+    render(<App />);
+    await user.click(screen.getByText(/Cliquer pour choisir un dossier/));
+    await waitFor(() => screen.getByText("/home/test"));
+    await user.click(screen.getByText("Analyser"));
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith(
+        "scan_folder",
+        expect.objectContaining({ notificationThresholdSecs: 10 })
+      );
+    });
+  });
+
+  it("scan_folder recoit notificationLang egal a la langue active (fr par defaut)", async () => {
+    const user = userEvent.setup();
+    mockInvoke.mockImplementation(
+      makeDefaultMock({
+        scan_folder: baseSummary,
+        get_groups_page: { groups: [], offset: 0, total: 0, has_more: false },
+      })
+    );
+    mockDialogOpen.mockResolvedValue("/home/test");
+
+    renderWithLang(<App />);
+    await user.click(screen.getByText(/Cliquer pour choisir un dossier/));
+    await waitFor(() => screen.getByText("/home/test"));
+    await user.click(screen.getByText("Analyser"));
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith(
+        "scan_folder",
+        expect.objectContaining({ notificationLang: "fr" })
+      );
+    });
+  });
+
+  it("notificationLang change si on switche la langue en EN avant le scan", async () => {
+    const user = userEvent.setup();
+    mockInvoke.mockImplementation(
+      makeDefaultMock({
+        scan_folder: baseSummary,
+        get_groups_page: { groups: [], offset: 0, total: 0, has_more: false },
+      })
+    );
+    mockDialogOpen.mockResolvedValue("/home/test");
+
+    renderWithLang(<App />);
+    // switcher en anglais
+    await user.click(screen.getByText("EN"));
+    await user.click(screen.getByText(/Click to choose a folder/));
+    await waitFor(() => screen.getByText("/home/test"));
+    await user.click(screen.getByText("Scan"));
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith(
+        "scan_folder",
+        expect.objectContaining({ notificationLang: "en" })
+      );
+    });
+  });
+});

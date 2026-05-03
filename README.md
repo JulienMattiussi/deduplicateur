@@ -48,7 +48,8 @@ Outil de détection et suppression de fichiers en double - rapide, local, sans c
 - **Bannière d'installation guidée** - si ffmpeg ou fpcalc est absent, l'app affiche un bandeau avec instructions d'installation OS-spécifiques, lien de téléchargement officiel, et bouton "Vérifier à nouveau" pour détecter l'installation sans relancer l'app
 - **Règles de sélection par métadonnées** - dropdown dans la barre d'actions pour choisir automatiquement quel fichier garder dans chaque groupe : plus haute résolution (images via en-tête, vidéos via métadonnées), plus grand fichier (audio/vidéo), dossier prioritaire (chemin configurable - si aucun fichier ne s'y trouve, le groupe est laissé sans sélection), plus récent, plus ancien
 - **Liste d'ignorés** - bouton "✕" sur chaque groupe pour l'exclure des prochains scans ; panneau dédié sous la barre de filtre pour voir, retirer ou effacer toutes les entrées ignorées ; persisté dans `ignore_list.json`
-- **Aide intégrée** - touche F1 ou bouton "?" dans le header ; drawer latéral avec 29 articles bilingues (FR/EN) organisés en 12 sections ; recherche plein texte dans titres, mots-clés et corps des articles
+- **Aide intégrée** - touche F1 ou bouton "?" dans le header ; drawer latéral avec 30 articles bilingues (FR/EN) organisés en 13 sections ; recherche plein texte dans titres, mots-clés et corps des articles
+- **Notifications système** - en fin de scan long (>10s), notification OS native (Windows Action Center, macOS, libnotify Linux) avec le nombre de groupes trouvés et l'espace récupérable ; pas de notification pour les scans rapides
 
 ---
 
@@ -165,8 +166,8 @@ Chaque scan produit un fichier JSON dans `~/.local/share/deduplicateur/sessions/
 | Bundler | Vite + Tauri CLI | Dev HMR + build natif |
 | CI/CD | GitHub Actions | Build Windows automatique sur push |
 | Similarité audio | fpcalc/chromaprint (subprocess) | Empreinte acoustique, distance de Hamming sur vecteurs i32, cache inter-scans |
-| Tests Rust | cargo test + tempfile | 145 tests unitaires sur le moteur |
-| Tests TS | Vitest + jsdom + React Testing Library | 162 tests (utilitaires + i18n + App + ImageComparator + MissingToolBanner + FileThumbnail + AdvancedPanelWrapper + IgnoredPanel + FolderSection + HelpPanel) |
+| Tests Rust | cargo test + tempfile | 156 tests unitaires sur le moteur |
+| Tests TS | Vitest + jsdom + React Testing Library | 209 tests (utilitaires + i18n + App + ImageComparator + MissingToolBanner + FileThumbnail + AdvancedPanelWrapper + IgnoredPanel + FolderSection + HelpPanel + AdvancedPanel + AudioAdvancedPanel + VideoAdvancedPanel + ProfilesPanel) |
 
 ---
 
@@ -231,10 +232,10 @@ npm run tauri build    # produit un binaire dans src-tauri/target/release/
 ### Tests
 
 ```bash
-# Moteur Rust (145 tests)
+# Moteur Rust (156 tests)
 cargo test --manifest-path src-tauri/Cargo.toml
 
-# TypeScript - utilitaires + i18n + composants React (162 tests)
+# TypeScript - utilitaires + i18n + composants React (209 tests)
 npm test
 ```
 
@@ -261,9 +262,10 @@ npm test
 | 13 | Bundle fpcalc, recherche élargie des outils, bannière d'installation guidée | ✅ |
 | 14 | Règles de sélection par métadonnées (résolution, bitrate, dossier prioritaire) | ✅ |
 | 15 | Liste d'ignorés (persistante, gérable depuis l'UI) | ✅ |
-| 16 | Notifications système (Windows, macOS, Linux) en fin de scan long | - |
-| 17 | Comparateur vidéo côte à côte avec lecture synchronisée | - |
-| 18 | Scan multi-dossiers et mode "comparer avec le dossier X" | - |
+| 16 | Documentation intégrée (aide F1, 29 articles bilingues, recherche) | ✅ |
+| 17 | Notifications système (Windows, macOS, Linux) en fin de scan long | ✅ |
+| 18 | Comparateur vidéo côte à côte avec lecture synchronisée | - |
+| 19 | Scan multi-dossiers et mode "comparer avec le dossier X" | - |
 
 ---
 

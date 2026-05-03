@@ -159,6 +159,10 @@ const fr = {
   helpTitle: "Aide",
   helpSearch: "Rechercher…",
   helpNoResults: "Aucun résultat",
+  notifTitle: "Analyse terminee",
+  notifBodyNone: "Aucun doublon trouve.",
+  notifBodyOne: "1 groupe trouve - {size} recuperables",
+  notifBodyMany: "{n} groupes trouves - {size} recuperables",
 };
 
 const en: typeof fr = {
@@ -320,6 +324,10 @@ const en: typeof fr = {
   helpTitle: "Help",
   helpSearch: "Search…",
   helpNoResults: "No results",
+  notifTitle: "Scan complete",
+  notifBodyNone: "No duplicates found.",
+  notifBodyOne: "1 group found - {size} recoverable",
+  notifBodyMany: "{n} groups found - {size} recoverable",
 };
 
 export const translations: Record<Lang, typeof fr> = { fr, en };

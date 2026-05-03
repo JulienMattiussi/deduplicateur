@@ -24,6 +24,7 @@ export const HELP_SECTIONS: HelpSection[] = [
   { id: "sessions",   title: { fr: "Analyses précédentes",          en: "Previous scans" } },
   { id: "tools",      title: { fr: "Outils externes",               en: "External tools" } },
   { id: "misc",       title: { fr: "Export et interface",           en: "Export and interface" } },
+  { id: "notif",      title: { fr: "Notifications",                 en: "Notifications" } },
 ];
 
 export const HELP_ARTICLES: HelpArticle[] = [
@@ -817,6 +818,42 @@ Une boîte de dialogue vous demande où sauvegarder le fichier généré.`,
 **HTML Report**: generates a standalone web page (opens in a browser without internet) with scan statistics, clickable group lists, and `+"`file://`"+` links to open each file directly from the report.
 
 A dialog asks where to save the generated file.`,
+    },
+  },
+
+  // ── Notifications ─────────────────────────────────────────────────────────
+
+  {
+    id: "notifications",
+    sectionId: "notif",
+    title: { fr: "Notifications de fin de scan", en: "Scan completion notifications" },
+    keywords: {
+      fr: ["notification", "notifier", "alerte", "fin de scan", "arrière-plan", "système", "toast"],
+      en: ["notification", "notify", "alert", "scan complete", "background", "system", "toast"],
+    },
+    body: {
+      fr: `Quand un scan long se termine, l'application envoie une **notification système** (centre de notifications Windows, macOS ou libnotify sur Linux).
+
+La notification affiche :
+- Le titre "Analyse terminee"
+- Le nombre de groupes trouvés et l'espace récupérable (ex. "42 groupes trouvés - 1.2 GB récupérables")
+
+**Seuil** : la notification n'est envoyée que si le scan a duré **au moins 10 secondes**. Les scans rapides (dossiers petits ou cache chaud) ne déclenchent pas de notification pour ne pas déranger.
+
+La notification utilise la **langue active** de l'interface (FR ou EN) au moment du lancement du scan.
+
+**Permissions** : sur macOS et Linux, aucune permission supplémentaire n'est nécessaire. Sur Windows, la notification apparait dans le centre de notifications de la barre des tâches.`,
+      en: `When a long scan finishes, the application sends a **system notification** (Windows Action Center, macOS, or libnotify on Linux).
+
+The notification shows:
+- The title "Scan complete"
+- The number of groups found and recoverable space (e.g. "42 groups found - 1.2 GB recoverable")
+
+**Threshold**: a notification is only sent if the scan took **at least 10 seconds**. Quick scans (small folders or warm cache) do not trigger a notification so as not to disturb the user.
+
+The notification uses the **active UI language** (FR or EN) at the time the scan was launched.
+
+**Permissions**: on macOS and Linux, no extra permission is required. On Windows, the notification appears in the taskbar notification center.`,
     },
   },
 

@@ -17,6 +17,8 @@ export interface ScanInvokeArgs {
   audioSimThreshold: number;
   audioCacheEnabled: boolean;
   audioDurationTolerance: number;
+  notificationThresholdSecs?: number;
+  notificationLang?: string;
 }
 
 export function useScanExecution(

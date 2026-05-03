@@ -1603,6 +1603,12 @@
   gap: 12px;
 }
 
+.header-top-right > *,
+.header-top-right .btn-ghost {
+  height: 30px;
+  box-sizing: border-box;
+}
+
 .lang-toggle {
   display: flex;
   gap: 2px;
@@ -1641,7 +1647,6 @@
   color: var(--text-4);
   font-size: 14px;
   width: 30px;
-  height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2230,8 +2235,8 @@
 .help-btn {
   font-size: 16px;
   font-weight: bold;
-  min-width: 28px;
-  padding: 2px 8px;
+  min-width: 30px;
+  padding: 0 8px;
 }
 
 /* ── Help drawer ── */

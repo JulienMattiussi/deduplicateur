@@ -344,24 +344,37 @@
 
 ---
 
-## Phase 17 - Notifications système
+## Phase 17 - Notifications système ✅
 
 **Objectif : prévenir l'utilisateur quand un scan long se termine, même si l'app est en arrière-plan**
 
-- [ ] Ajouter le plugin `tauri-plugin-notification` dans `Cargo.toml` et `package.json`
-- [ ] Déclarer `notification:default` dans `capabilities/default.json`
-- [ ] Rust / `lib.rs` : émettre une notification OS en fin de scan (titre + résumé : N groupes, X Mo récupérables)
-- [ ] Notification uniquement si le scan a duré plus de N secondes (seuil configurable, défaut 10s) - pas de notification pour les scans rapides
-- [ ] Windows : notification native via le centre de notifications
-- [ ] macOS : notification native via NSUserNotificationCenter / UNUserNotificationCenter
-- [ ] Linux : notification via libnotify (org.freedesktop.Notifications)
-- [ ] Tests Rust : vérifier que la notification est déclenchée avec le bon contenu (mock du plugin)
+- [x] Ajouter le plugin `tauri-plugin-notification` dans `Cargo.toml` et `package.json`
+- [x] Déclarer `notification:default` dans `capabilities/default.json`
+- [x] Rust / `lib.rs` : émettre une notification OS en fin de scan (titre + résumé : N groupes, X Mo récupérables)
+- [x] Notification uniquement si le scan a duré plus de N secondes (seuil configurable via `notification_threshold_secs`, défaut 10s) - pas de notification pour les scans rapides
+- [x] Windows : notification native via le centre de notifications (tauri-plugin-notification -> notify-rust)
+- [x] macOS : notification native via UNUserNotificationCenter (tauri-plugin-notification)
+- [x] Linux : notification via libnotify / org.freedesktop.Notifications (tauri-plugin-notification -> notify-rust)
+- [x] Tests Rust : 11 tests unitaires sur `should_notify` et `format_notification_body` (fonctions pures extraites, testables sans runtime Tauri)
+- [x] i18n : 4 nouvelles cles (notifTitle, notifBodyNone, notifBodyOne, notifBodyMany) en FR et EN
+- [x] `src/help/content.ts` : article "Notifications de fin de scan" dans une nouvelle section "Notifications"
+- [x] Langue de la notification = langue active de l'UI au moment du lancement du scan
+- [x] 156 tests Rust (+11 notifications) / 162 tests TypeScript - tous au vert
+
+### Tests TypeScript manquants ajoutés (post-Phase 17)
+
+- [x] `src/components/AdvancedPanel.test.tsx` : rendu, toggle, inputs numériques, checkboxes, bouton Reset (12 tests)
+- [x] `src/components/AudioAdvancedPanel.test.tsx` : rendu, toggle, input tolérance, checkbox cache, bouton Reset (7 tests)
+- [x] `src/components/VideoAdvancedPanel.test.tsx` : rendu, toggle, input n_frames (avec clamping), input tolérance, checkboxes, bouton Reset (12 tests)
+- [x] `src/components/ProfilesPanel.test.tsx` : rendu, toggle, onSave, onLaunch, onDelete, disabled, click outside (13 tests)
+- [x] `src/App.test.tsx` section P - notifications : `notificationThresholdSecs: 10`, `notificationLang` en FR et EN (3 tests)
+- [x] 209 tests TypeScript (+47) / 156 tests Rust - tous au vert
 
 **Critère de validation : lancer un scan de 50 000 fichiers, basculer sur une autre fenêtre, voir la notification apparaitre en fin de scan**
 
 ---
 
-## Phase 17 - Comparateur vidéo
+## Phase 18 - Comparateur vidéo
 
 **Objectif : comparer deux vidéos côte à côte avec lecture synchronisée avant de choisir laquelle supprimer**
 
@@ -378,7 +391,7 @@
 
 ---
 
-## Phase 18 - Scan multi-dossiers et mode "comparer avec dossier X"
+## Phase 19 - Scan multi-dossiers et mode "comparer avec dossier X"
 
 **Objectif : détecter les doublons entre un dossier source et un dossier de référence, sans signaler les doublons internes**
 

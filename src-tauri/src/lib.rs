@@ -25,6 +25,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{Emitter, Manager};
+use tauri_plugin_notification::NotificationExt;
 
 struct CancelFlag(Arc<AtomicBool>);
 
@@ -110,6 +111,47 @@ fn read_session_file(app: &tauri::AppHandle, id: &str) -> Option<SessionFile> {
     serde_json::from_str(&data).ok()
 }
 
+/// Retourne si une notification doit etre emise selon la duree du scan.
+/// La notification n'est emise que si le scan a dure plus de `threshold_secs` secondes.
+pub fn should_notify(duration_ms: u128, threshold_secs: u64) -> bool {
+    duration_ms >= (threshold_secs as u128) * 1000
+}
+
+/// Formate le corps de la notification selon la langue.
+/// lang : "fr" ou autre (-> EN par defaut).
+pub fn format_notification_body(groups: usize, wasted_bytes: u64, lang: &str) -> String {
+    let size_str = format_size_for_notif(wasted_bytes);
+    if lang == "fr" {
+        if groups == 0 {
+            "Aucun doublon trouve.".to_string()
+        } else if groups == 1 {
+            format!("1 groupe trouve - {} recuperables", size_str)
+        } else {
+            format!("{} groupes trouves - {} recuperables", groups, size_str)
+        }
+    } else {
+        if groups == 0 {
+            "No duplicates found.".to_string()
+        } else if groups == 1 {
+            format!("1 group found - {} recoverable", size_str)
+        } else {
+            format!("{} groups found - {} recoverable", groups, size_str)
+        }
+    }
+}
+
+fn format_size_for_notif(bytes: u64) -> String {
+    if bytes >= 1_073_741_824 {
+        format!("{:.1} GB", bytes as f64 / 1_073_741_824.0)
+    } else if bytes >= 1_048_576 {
+        format!("{:.1} MB", bytes as f64 / 1_048_576.0)
+    } else if bytes >= 1024 {
+        format!("{:.0} KB", bytes as f64 / 1024.0)
+    } else {
+        format!("{} B", bytes)
+    }
+}
+
 #[tauri::command]
 async fn scan_folder(
     window: tauri::Window,
@@ -130,6 +172,8 @@ async fn scan_folder(
     audio_sim_threshold: u32,
     audio_cache_enabled: bool,
     audio_duration_tolerance: f64,
+    notification_threshold_secs: Option<u64>,
+    notification_lang: Option<String>,
 ) -> Result<ScanSummary, String> {
     let app = window.app_handle().clone();
     let cancelled = {
@@ -248,6 +292,19 @@ async fn scan_folder(
         summary: summary.clone(),
         groups: result.groups,
     });
+
+    // Notification de fin de scan (uniquement si le scan a dure assez longtemps).
+    let threshold = notification_threshold_secs.unwrap_or(10);
+    if should_notify(summary.duration_ms, threshold) {
+        let lang = notification_lang.as_deref().unwrap_or("en");
+        let title = if lang == "fr" { "Analyse terminee" } else { "Scan complete" };
+        let body = format_notification_body(summary.total_groups, summary.total_wasted_bytes, lang);
+        let _ = app.notification()
+            .builder()
+            .title(title)
+            .body(body)
+            .show();
+    }
 
     Ok(summary)
 }
@@ -457,6 +514,80 @@ mod tests {
     use super::*;
     use scanner::{DuplicateFile, DuplicateGroup};
     use video_hash::VideoMetadata;
+
+    // ── Tests notifications ────────────────────────────────────────────────────
+
+    #[test]
+    fn test_should_notify_above_threshold() {
+        assert!(should_notify(15_000, 10), "15s > seuil 10s");
+        assert!(should_notify(10_000, 10), "exactement le seuil");
+        assert!(should_notify(60_000, 10), "60s > seuil 10s");
+    }
+
+    #[test]
+    fn test_should_notify_below_threshold() {
+        assert!(!should_notify(9_999, 10), "9.999s < seuil 10s");
+        assert!(!should_notify(0, 10), "0ms < seuil 10s");
+        assert!(!should_notify(5_000, 10), "5s < seuil 10s");
+    }
+
+    #[test]
+    fn test_should_notify_zero_threshold() {
+        assert!(should_notify(0, 0), "seuil 0 = toujours notifier");
+        assert!(should_notify(1, 0), "seuil 0 = toujours notifier");
+    }
+
+    #[test]
+    fn test_format_notification_body_fr_no_groups() {
+        let body = format_notification_body(0, 0, "fr");
+        assert_eq!(body, "Aucun doublon trouve.");
+    }
+
+    #[test]
+    fn test_format_notification_body_fr_one_group() {
+        let body = format_notification_body(1, 2_097_152, "fr");
+        assert!(body.contains("1 groupe"), "corps FR singulier");
+        assert!(body.contains("2.0 MB"), "taille en MB");
+    }
+
+    #[test]
+    fn test_format_notification_body_fr_many_groups() {
+        let body = format_notification_body(42, 1_073_741_824, "fr");
+        assert!(body.contains("42 groupes"), "corps FR pluriel");
+        assert!(body.contains("1.0 GB"), "taille en GB");
+    }
+
+    #[test]
+    fn test_format_notification_body_en_no_groups() {
+        let body = format_notification_body(0, 0, "en");
+        assert_eq!(body, "No duplicates found.");
+    }
+
+    #[test]
+    fn test_format_notification_body_en_one_group() {
+        let body = format_notification_body(1, 512 * 1024, "en");
+        assert!(body.contains("1 group found"), "corps EN singulier");
+        assert!(body.contains("512 KB"), "taille en KB");
+    }
+
+    #[test]
+    fn test_format_notification_body_en_many_groups() {
+        let body = format_notification_body(7, 1024, "en");
+        assert!(body.contains("7 groups found"), "corps EN pluriel");
+        assert!(body.contains("1 KB"), "taille 1 KB");
+    }
+
+    #[test]
+    fn test_format_notification_body_unknown_lang_defaults_to_en() {
+        let body = format_notification_body(3, 3_145_728, "de");
+        assert!(body.contains("groups found"), "langue inconnue -> EN");
+    }
+
+    #[test]
+    fn test_format_size_bytes() {
+        let body = format_notification_body(1, 500, "en");
+        assert!(body.contains("500 B"), "octets bruts");
+    }
 
     fn make_file(path: &str, size: u64, modified: u64) -> DuplicateFile {
         DuplicateFile {
@@ -1100,6 +1231,7 @@ pub fn run() {
         .manage(CancelFlag(Arc::new(AtomicBool::new(false))))
         .manage(ScanCache(Mutex::new(None)))
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_fs::init())
         .invoke_handler(tauri::generate_handler![

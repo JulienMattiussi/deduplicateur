@@ -221,6 +221,8 @@ export default function App() {
       includeExtensions: config.includeExtensions,
       minFileSizeKb: config.minFileSizeKb,
       maxFileSizeKb: config.maxFileSizeKb,
+      notificationThresholdSecs: 10,
+      notificationLang: lang,
     });
   }
 
@@ -386,6 +388,9 @@ export default function App() {
               onDelete={profilesHook.deleteProfile}
               disabled={scanExec.scanning}
             />
+            {summary && (
+              <button className="btn-ghost" onClick={resetResults}>{t.backToSessions}</button>
+            )}
             <button
               className="btn-ghost help-btn"
               onClick={() => setHelpOpen(true)}
@@ -394,9 +399,6 @@ export default function App() {
             >
               ?
             </button>
-            {summary && (
-              <button className="btn-ghost" onClick={resetResults}>{t.backToSessions}</button>
-            )}
           </div>
         </div>
 
