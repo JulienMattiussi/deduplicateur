@@ -545,20 +545,16 @@ This mode is ideal for photo or music libraries organized by folder.`,
       en: ["synchronized playback", "play", "pause", "scrubbing", "slider", "timestamp", "seek", "time"],
     },
     body: {
-      fr: `**Play/Pause** : le bouton ▶/⏸ dans la barre de scrubbing lance ou met en pause les deux vidéos simultanément. Appuyer Play sur l'une des vidéos synchronise automatiquement l'autre.
+      fr: `**Contrôles sur la vidéo de gauche** : la barre de lecture native (play/pause, scrubbing, volume) est affichée uniquement sous la vidéo de gauche. La vidéo de droite suit automatiquement.
 
-**Barre de scrubbing commune** : le curseur en bas du comparateur permet de naviguer dans les deux vidéos en même temps. Faites glisser pour sauter à un timestamp précis sur les deux lecteurs simultanément.
+**Synchronisation automatique** : play, pause et déplacement dans la vidéo de gauche sont immédiatement répercutés sur la droite. La vidéo de droite est muette par défaut pour éviter la superposition du son.
 
-**Synchronisation de la lecture** : quand une vidéo joue ou est mise en pause, l'autre suit automatiquement. Quand vous cherchez une position dans l'une, l'autre saute au même timestamp.
+**Onglets de fichiers** : pour les groupes de 3+ fichiers, des onglets en haut (Gauche / Droite) permettent de sélectionner quel fichier s'affiche dans chaque panneau. Changer d'onglet ne modifie pas l'autre panneau.`,
+      en: `**Controls on the left video**: the native playback bar (play/pause, scrubbing, volume) is shown only below the left video. The right video follows automatically.
 
-**Onglets de fichiers** : pour les groupes de 3+ fichiers, des onglets en haut (Gauche / Droite) permettent de sélectionner quel fichier s'affiche dans chaque panneau.`,
-      en: `**Play/Pause**: the ▶/⏸ button in the scrubbing bar starts or pauses both videos simultaneously. Pressing play on one video automatically synchronizes the other.
+**Automatic synchronization**: play, pause, and seeking in the left video are immediately applied to the right. The right video is muted by default to avoid sound overlap.
 
-**Common scrubbing bar**: the slider at the bottom of the comparator navigates both videos at the same time. Drag to jump to a specific timestamp on both players simultaneously.
-
-**Playback synchronization**: when one video plays or pauses, the other follows automatically. When you seek a position in one, the other jumps to the same timestamp.
-
-**File tabs**: for groups of 3+ files, tabs at the top (Left / Right) let you select which file appears in each panel.`,
+**File tabs**: for groups of 3+ files, tabs at the top (Left / Right) let you select which file appears in each panel. Changing one tab does not affect the other.`,
     },
   },
 
@@ -855,28 +851,36 @@ The acoustic fingerprint is computed by **fpcalc** (chromaprint). If fpcalc is n
     sectionId: "sessions",
     title: { fr: "Analyses précédentes", en: "Previous scans" },
     keywords: {
-      fr: ["session", "analyse", "précédent", "reprendre", "historique", "sauvegarder", "supprimer", "tag"],
-      en: ["session", "scan", "previous", "resume", "history", "saved", "delete", "tag"],
+      fr: ["session", "analyse", "précédent", "reprendre", "historique", "sauvegarder", "supprimer", "tag", "cache", "purger", "espace disque"],
+      en: ["session", "scan", "previous", "resume", "history", "saved", "delete", "tag", "cache", "purge", "disk space"],
     },
     body: {
-      fr: `Chaque scan est automatiquement sauvegardé. Le bouton **"← Mes analyses"** (visible après un scan) affiche la liste des analyses précédentes.
+      fr: `Chaque scan est automatiquement sauvegardé. Le bouton **"← Mes analyses"** dans la barre d'outils est toujours visible et affiche la liste des analyses précédentes.
 
-**Reprendre** : recharge les résultats d'un scan sans le relancer. Groupes et statistiques sont restaurés tels quels.
+**Reprendre** : recharge les résultats d'un scan sans le relancer. Les groupes et statistiques sont restaurés. Les fichiers supprimés entre-temps sont filtrés automatiquement.
+
+**Mise à jour automatique** : quand vous supprimez des fichiers depuis les résultats, la session est mise à jour instantanément (groupes vidés retirés, espace récupérable recalculé). Si vous rechargez une ancienne session, les fichiers absents du disque sont également ignorés.
 
 **Tags** : chaque session affiche les modes utilisés : "par dossier", "récursif", "dossier plat", "similarité images/vidéos/audio", "doublons exacts".
 
 **Date relative** : "à l'instant", "il y a 5 min", "il y a 2 h", "il y a 3 j".
 
-**Supprimer** : retire la session de la liste sans supprimer aucun fichier sur le disque. Les résultats sont définitivement perdus.`,
-      en: `Every scan is automatically saved. The **"← My scans"** button (visible after a scan) shows the list of previous scans.
+**Supprimer** : retire la session de la liste sans supprimer aucun fichier sur le disque. Les résultats sont définitivement perdus.
 
-**Resume**: reloads a scan's results without re-running it. Groups and statistics are restored as-is.
+**Cache de détection** : en bas de la liste, l'app affiche la taille totale du cache accumulé (hashes pHash, vidéo, audio, exacts). Ce cache accélère les prochains scans mais peut prendre de l'espace disque. Le bouton **"Purger"** le supprime après confirmation - une seule confirmation inline suffit.`,
+      en: `Every scan is automatically saved. The **"← My scans"** button in the toolbar is always visible and shows the list of previous scans.
+
+**Resume**: reloads a scan's results without re-running it. Groups and statistics are restored. Files deleted in the meantime are filtered out automatically.
+
+**Automatic update**: when you delete files from the results, the session is updated instantly (empty groups removed, recoverable space recalculated). When you reload an older session, files missing from disk are also filtered out.
 
 **Tags**: each session shows the modes used: "by folder", "recursive", "flat folder", "image/video/audio similarity", "exact duplicates".
 
 **Relative date**: "just now", "5 min ago", "2 h ago", "3 d ago".
 
-**Delete**: removes the session from the list without deleting any files on disk. The results are permanently lost.`,
+**Delete**: removes the session from the list without deleting any files on disk. The results are permanently lost.
+
+**Detection cache**: at the bottom of the list, the app shows the total size of accumulated cache (pHash, video, audio, exact hashes). This cache speeds up future scans but can take up disk space. The **"Purge"** button deletes it after confirmation - a single inline confirmation is enough.`,
     },
   },
 

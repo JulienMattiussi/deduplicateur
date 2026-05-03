@@ -52,6 +52,9 @@ Outil de détection et suppression de fichiers en double - rapide, local, sans c
 - **Notifications système** - en fin de scan long (>10s), notification OS native (Windows Action Center, macOS, libnotify Linux) avec le nombre de groupes trouvés et l'espace récupérable ; pas de notification pour les scans rapides
 - **Comparateur de vidéos** - vue plein écran côte à côte pour les groupes de vidéos : deux lecteurs natifs synchronisés (play/pause/seek), barre de scrubbing commune, métadonnées complètes (résolution, durée, codec, taille), navigation entre groupes au clavier (← →, Échap), bouton "Garder celui-ci"
 - **Mode "Comparer avec un autre dossier"** - 3e mode de scan : compare un dossier source S avec un dossier de référence R et ne signale que les fichiers présents dans les deux ; les doublons internes à S ou à R sont ignorés ; les fichiers du dossier de référence affichent un badge "Réf." dans les résultats
+- **Sessions toujours visibles** - la section "Mes analyses" est affichée dès le démarrage même sans scan précédent ; le bouton "← Mes analyses" dans la barre d'outils est toujours accessible ; affiche "Aucune analyse enregistrée" quand la liste est vide
+- **Sessions mises à jour à la suppression** - quand des fichiers sont supprimés, la session en cours est mise à jour instantanément (groupes réduits à 1 fichier retirés, espace récupérable recalculé) ; au rechargement d'une session ancienne, les fichiers absents du disque sont filtrés automatiquement
+- **Gestion du cache de détection** - la section "Mes analyses" affiche la taille totale du cache (phash, vidéo, audio, hashes exacts) et propose un bouton "Purger" avec confirmation inline pour libérer l'espace disque
 
 ---
 
@@ -169,8 +172,8 @@ Chaque scan produit un fichier JSON dans `~/.local/share/deduplicateur/sessions/
 | Bundler | Vite + Tauri CLI | Dev HMR + build natif |
 | CI/CD | GitHub Actions | Build Windows automatique sur push |
 | Similarité audio | fpcalc/chromaprint (subprocess) | Empreinte acoustique, distance de Hamming sur vecteurs i32, cache inter-scans |
-| Tests Rust | cargo test + tempfile | 161 tests unitaires sur le moteur |
-| Tests TS | Vitest + jsdom + React Testing Library | 254 tests (utilitaires + i18n + App + ImageComparator + VideoComparator + MissingToolBanner + FileThumbnail + AdvancedPanelWrapper + IgnoredPanel + FolderSection + HelpPanel + AdvancedPanel + AudioAdvancedPanel + VideoAdvancedPanel + ProfilesPanel + ProgressETA) |
+| Tests Rust | cargo test + tempfile | 171 tests unitaires sur le moteur |
+| Tests TS | Vitest + jsdom + React Testing Library | 268 tests (utilitaires + i18n + App + ImageComparator + VideoComparator + MissingToolBanner + FileThumbnail + AdvancedPanelWrapper + IgnoredPanel + FolderSection + HelpPanel + AdvancedPanel + AudioAdvancedPanel + VideoAdvancedPanel + ProfilesPanel + ProgressETA) |
 
 ---
 
@@ -235,10 +238,10 @@ npm run tauri build    # produit un binaire dans src-tauri/target/release/
 ### Tests
 
 ```bash
-# Moteur Rust (156 tests)
+# Moteur Rust (171 tests)
 cargo test --manifest-path src-tauri/Cargo.toml
 
-# TypeScript - utilitaires + i18n + composants React (244 tests)
+# TypeScript - utilitaires + i18n + composants React (268 tests)
 npm test
 ```
 
@@ -269,6 +272,7 @@ npm test
 | 17 | Notifications système (Windows, macOS, Linux) en fin de scan long | ✅ |
 | 18 | Comparateur vidéo côte à côte avec lecture synchronisée | ✅ |
 | 19 | Scan multi-dossiers et mode "comparer avec le dossier X" | ✅ |
+| 20 | Sessions auto-mises à jour à la suppression, cache purge, sessions toujours visibles | ✅ |
 
 ---
 

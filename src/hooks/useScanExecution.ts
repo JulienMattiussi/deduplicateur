@@ -28,7 +28,7 @@ export function useScanExecution(
 ) {
   const [scanning, setScanning] = useState(false);
   const [cancelling, setCancelling] = useState(false);
-  const [progress, setProgress] = useState<{ current: number; total: number; total_files?: number; file?: string } | null>(null);
+  const [progress, setProgress] = useState<{ current: number; total: number; total_files?: number; file?: string; phase_current?: number; phase_total?: number } | null>(null);
   const progressHistoryRef = useRef<{ time: number; current: number }[]>([]);
 
   async function scan(args: ScanInvokeArgs) {
@@ -36,7 +36,7 @@ export function useScanExecution(
     setProgress(null);
     progressHistoryRef.current = [];
 
-    const unlisten = await listen<{ current: number; total: number; total_files?: number; file?: string }>(
+    const unlisten = await listen<{ current: number; total: number; total_files?: number; file?: string; phase_current?: number; phase_total?: number }>(
       "scan:progress",
       (event) => {
         const p = event.payload;

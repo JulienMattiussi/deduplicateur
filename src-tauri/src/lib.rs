@@ -201,7 +201,7 @@ async fn scan_folder(
 
     // Shared progress state written by rayon threads, read by the async emitter task.
     // Never call window.emit() from rayon threads directly - it deadlocks the GTK main loop.
-    let progress_state: Arc<Mutex<Option<(usize, usize, usize, String)>>> = Arc::new(Mutex::new(None));
+    let progress_state: Arc<Mutex<Option<(usize, usize, usize, String, usize, usize)>>> = Arc::new(Mutex::new(None));
     let progress_for_scan = Arc::clone(&progress_state);
     let progress_for_emit = Arc::clone(&progress_state);
 
@@ -211,10 +211,10 @@ async fn scan_folder(
         loop {
             interval.tick().await;
             let snapshot = progress_for_emit.lock().unwrap().clone();
-            if let Some((current, total, total_files, file)) = snapshot {
+            if let Some((current, total, total_files, file, phase_current, phase_total)) = snapshot {
                 let _ = window_emit.emit(
                     "scan:progress",
-                    serde_json::json!({ "current": current, "total": total, "total_files": total_files, "file": file }),
+                    serde_json::json!({ "current": current, "total": total, "total_files": total_files, "file": file, "phase_current": phase_current, "phase_total": phase_total }),
                 );
             }
         }
@@ -249,8 +249,8 @@ async fn scan_folder(
             ignored_keys,
             secondary_folder,
         };
-        do_scan(params, cancelled, move |current, total, total_files, file: &str| {
-            *progress_for_scan.lock().unwrap() = Some((current, total, total_files, file.to_string()));
+        do_scan(params, cancelled, move |current, total, total_files, file: &str, phase_current, phase_total| {
+            *progress_for_scan.lock().unwrap() = Some((current, total, total_files, file.to_string(), phase_current, phase_total));
         })
     })
     .await

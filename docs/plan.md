@@ -427,3 +427,24 @@ En mode "Comparer avec un autre dossier" : dossier source S et dossier de réfé
 - [x] 161 tests Rust / 254 tests TypeScript - tous au vert
 
 **Critère de validation : dossier source = `Photos/`, dossier référence = `Backup/Photos/` - seules les photos présentes dans les deux dossiers sont signalées, pas les photos uniques dans l'un ou l'autre**
+
+---
+
+## Phase 20 - Qualité sessions + gestion du cache ✅
+
+**Objectif : sessions fiables et espace disque maitrisé**
+
+- [x] `lib.rs` : `delete_files` met à jour la session active en mémoire et sur disque après chaque suppression (`purge_deleted_from_session`, `recalc_wasted_bytes`, `save_session`)
+- [x] `lib.rs` : `load_session` filtre les fichiers absents du disque avant de charger la session (filtre défensif, resauvegarde si changé)
+- [x] `App.tsx` : `handleDeleteComplete` recalcule `total_wasted_bytes` en plus de `total_groups`
+- [x] Comparateur vidéo : video de droite muette par défaut (`muted={!master}`) - pattern maitre/esclave sans risque de boucle synchronisation
+- [x] `lib.rs` : commande Tauri `get_cache_size()` - somme les tailles de `phash_cache.json`, `video_cache.json`, `audio_cache.json`, `exact_cache.json`
+- [x] `lib.rs` : commande Tauri `purge_cache()` - supprime ces 4 fichiers cache
+- [x] `App.tsx` : section "Mes analyses" toujours visible (`showSessionPicker = !summary && !scanExec.scanning`), bouton "← Mes analyses" toujours visible dans la barre d'outils
+- [x] `App.tsx` : état vide "Aucune analyse enregistrée" quand `sessions.length === 0`
+- [x] `App.tsx` : section cache en bas de la liste - affiche la taille et un bouton "Purger" avec confirmation inline
+- [x] `i18n.ts` : 4 nouvelles clés (`noSessions`, `cacheSize`, `purgeCache`, `purgeCacheQuestion`) en FR et EN
+- [x] `src/help/content.ts` : article "Analyses précédentes" mis à jour - mise à jour automatique à la suppression, cache de détection, purge
+- [x] Tests Rust : 4 tests unitaires (`get_cache_size` et `purge_cache` sur dossier temp)
+- [x] Tests TypeScript : 7 tests section R (`App.test.tsx`) - vide, titre visible, cache > 0, cache = 0, confirmation, annulation, purge invoquée
+- [x] 171 tests Rust / 268 tests TypeScript - tous au vert

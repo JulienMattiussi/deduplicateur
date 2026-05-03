@@ -742,8 +742,8 @@ export default function App() {
             <div className="progress-container">
               <p className="progress-label">
                 {interp(t.scanProgress, {
-                  n: scanExec.progress.current,
-                  m: scanExec.progress.total_files ?? scanExec.progress.total,
+                  n: scanExec.progress.phase_current ?? scanExec.progress.current,
+                  m: scanExec.progress.phase_total ?? (scanExec.progress.total_files ?? scanExec.progress.total),
                   type: config.detectionMode === "images" ? t.typeImages : config.detectionMode === "videos" ? t.typeVideos : config.detectionMode === "audio" ? t.typeAudio : t.typeFiles,
                 })}
               </p>
