@@ -89,6 +89,7 @@ function makeDefaultMock(overrides: Record<string, unknown> = {}) {
       return Promise.resolve(val);
     }
     if (cmd === "list_sessions") return Promise.resolve([]);
+    if (cmd === "get_cache_size") return Promise.resolve(0);
     if (cmd === "get_phash_config") return Promise.resolve(defaultPhashConfig);
     if (cmd === "get_video_config") return Promise.resolve(defaultVideoConfig);
     if (cmd === "get_audio_config") return Promise.resolve(defaultAudioConfig);
@@ -193,6 +194,49 @@ describe("C - suppression de fichiers", () => {
       expect(mockInvoke).toHaveBeenCalledWith("delete_files", {
         paths: expect.arrayContaining(["/a/file1.txt"]),
       });
+    });
+  });
+
+  it("met a jour total_wasted_bytes apres suppression", async () => {
+    const user = userEvent.setup();
+
+    const group1 = { id: "g1", hash: "a", size: 1024, files: [
+      { path: "/a/file1.txt", size: 1024, name: "file1.txt", modified: 1 },
+      { path: "/a/file2.txt", size: 1024, name: "file2.txt", modified: 2 },
+    ]};
+    const group2 = { id: "g2", hash: "b", size: 2048, files: [
+      { path: "/b/file3.txt", size: 2048, name: "file3.txt", modified: 1 },
+      { path: "/b/file4.txt", size: 2048, name: "file4.txt", modified: 2 },
+    ]};
+    // total_wasted_bytes = 1024*(2-1) + 2048*(2-1) = 3072
+    const summary2 = { ...baseSummary, total_groups: 2, total_wasted_bytes: 3072 };
+
+    mockInvoke.mockImplementation(
+      makeDefaultMock({
+        scan_folder: summary2,
+        get_groups_page: { groups: [group1, group2], offset: 0, total: 2, has_more: false },
+        delete_files: [],
+      })
+    );
+    mockDialogOpen.mockResolvedValue("/home/test");
+
+    render(<App />);
+    await user.click(screen.getByText(/Cliquer pour choisir un dossier/));
+    await waitFor(() => expect(screen.getByText("/home/test")).toBeInTheDocument());
+    await user.click(screen.getByText("Analyser"));
+    // Attendre l'affichage du total récupérable initial
+    await waitFor(() => expect(screen.getByText("3.0 Ko")).toBeInTheDocument());
+
+    // Supprimer file1 du groupe 1 (groupe 1 disparait, seul groupe 2 reste : 2048 o)
+    await user.click(within(screen.getAllByTestId("group-files")[0]).getAllByRole("checkbox")[0]);
+    const deleteBtn = await screen.findByText(/Supprimer \d+ fichier/);
+    await user.click(deleteBtn);
+    await user.click(await screen.findByRole("button", { name: "Supprimer" }));
+
+    await waitFor(() => {
+      // Apres suppression : seul groupe 2 reste -> 2048 o = 2.0 Ko
+      expect(screen.getByText("2.0 Ko")).toBeInTheDocument();
+      expect(screen.queryByText("3.0 Ko")).not.toBeInTheDocument();
     });
   });
 });
@@ -1366,5 +1410,88 @@ describe("Q2 - badge source dans GroupCard", () => {
     };
     render(<GroupCard group={groupWithSource} selected={new Set()} onToggle={() => {}} />);
     expect(screen.queryByText("original")).not.toBeInTheDocument();
+  });
+});
+
+// ---- R : session picker toujours visible + cache ----
+describe("R - session picker et gestion du cache", () => {
+  it("affiche 'Aucune analyse enregistrée' quand il n'y a pas de sessions", async () => {
+    mockInvoke.mockImplementation(makeDefaultMock({ list_sessions: [] }));
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByText("Aucune analyse enregistrée")).toBeInTheDocument();
+    });
+  });
+
+  it("affiche le titre 'Analyses précédentes' même sans session", async () => {
+    mockInvoke.mockImplementation(makeDefaultMock({ list_sessions: [] }));
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByText("Analyses précédentes")).toBeInTheDocument();
+    });
+  });
+
+  it("affiche la taille du cache et le bouton Purger quand cache > 0", async () => {
+    mockInvoke.mockImplementation(makeDefaultMock({ get_cache_size: 2048000 }));
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByText(/Cache de détection/)).toBeInTheDocument();
+      expect(screen.getByText("Purger")).toBeInTheDocument();
+    });
+  });
+
+  it("n'affiche pas la section cache quand cache = 0", async () => {
+    mockInvoke.mockImplementation(makeDefaultMock({ get_cache_size: 0 }));
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.queryByText(/Cache de détection/)).not.toBeInTheDocument();
+    });
+  });
+
+  it("affiche la confirmation avant la purge", async () => {
+    const user = userEvent.setup();
+    mockInvoke.mockImplementation(makeDefaultMock({ get_cache_size: 1048576, purge_cache: null }));
+    render(<App />);
+    const purgeBtn = await screen.findByText("Purger");
+    await user.click(purgeBtn);
+    expect(screen.getByText(/Purger le cache de détection/)).toBeInTheDocument();
+  });
+
+  it("annule la confirmation au clic sur Annuler", async () => {
+    const user = userEvent.setup();
+    mockInvoke.mockImplementation(makeDefaultMock({ get_cache_size: 1048576, purge_cache: null }));
+    render(<App />);
+    const purgeBtn = await screen.findByText("Purger");
+    await user.click(purgeBtn);
+    await user.click(screen.getByText("Annuler"));
+    expect(screen.queryByText(/Purger le cache de détection/)).not.toBeInTheDocument();
+    expect(screen.getByText("Purger")).toBeInTheDocument();
+  });
+
+  it("appelle purge_cache et recharge la taille apres confirmation", async () => {
+    const user = userEvent.setup();
+    mockInvoke.mockImplementation(makeDefaultMock({
+      get_cache_size: (cmd: string) => Promise.resolve(cmd === "get_cache_size" ? 1048576 : null),
+      purge_cache: null,
+    }));
+    let callCount = 0;
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "list_sessions") return Promise.resolve([]);
+      if (cmd === "get_phash_config") return Promise.resolve(defaultPhashConfig);
+      if (cmd === "get_video_config") return Promise.resolve(defaultVideoConfig);
+      if (cmd === "get_audio_config") return Promise.resolve(defaultAudioConfig);
+      if (cmd === "list_profiles") return Promise.resolve([]);
+      if (cmd === "get_ignore_list") return Promise.resolve([]);
+      if (cmd === "get_cache_size") { callCount++; return Promise.resolve(callCount === 1 ? 1048576 : 0); }
+      if (cmd === "purge_cache") return Promise.resolve(null);
+      return Promise.resolve(null);
+    });
+    render(<App />);
+    const purgeBtn = await screen.findByText("Purger");
+    await user.click(purgeBtn);
+    await user.click(screen.getAllByText("Purger")[0]);
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("purge_cache");
+    });
   });
 });

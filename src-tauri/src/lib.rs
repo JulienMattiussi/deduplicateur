@@ -904,6 +904,55 @@ mod tests {
         assert_eq!(groups.len(), 1, "groupe intact si tous les fichiers existent");
         assert_eq!(groups[0].files.len(), 2);
     }
+
+    // ── Tests get_cache_size / purge_cache (logique pure) ─────────────────────
+
+    fn sum_cache_files(dir: &std::path::Path) -> u64 {
+        const CACHE_FILES: &[&str] = &["phash_cache.json", "video_cache.json", "audio_cache.json", "exact_cache.json"];
+        CACHE_FILES.iter().map(|name| {
+            std::fs::metadata(dir.join(name)).map(|m| m.len()).unwrap_or(0)
+        }).sum()
+    }
+
+    fn purge_cache_files(dir: &std::path::Path) {
+        const CACHE_FILES: &[&str] = &["phash_cache.json", "video_cache.json", "audio_cache.json", "exact_cache.json"];
+        for name in CACHE_FILES {
+            let _ = std::fs::remove_file(dir.join(name));
+        }
+    }
+
+    #[test]
+    fn test_get_cache_size_no_files() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(sum_cache_files(dir.path()), 0);
+    }
+
+    #[test]
+    fn test_get_cache_size_with_files() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("phash_cache.json"), b"ABCDE").unwrap();
+        std::fs::write(dir.path().join("video_cache.json"), b"XY").unwrap();
+        assert_eq!(sum_cache_files(dir.path()), 7);
+    }
+
+    #[test]
+    fn test_purge_cache_removes_all_cache_files() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("phash_cache.json"), b"data1").unwrap();
+        std::fs::write(dir.path().join("video_cache.json"), b"data2").unwrap();
+        std::fs::write(dir.path().join("audio_cache.json"), b"data3").unwrap();
+        std::fs::write(dir.path().join("exact_cache.json"), b"data4").unwrap();
+        purge_cache_files(dir.path());
+        assert_eq!(sum_cache_files(dir.path()), 0);
+    }
+
+    #[test]
+    fn test_purge_cache_no_error_when_files_absent() {
+        let dir = tempfile::tempdir().unwrap();
+        // should not panic when cache files don't exist
+        purge_cache_files(dir.path());
+        assert_eq!(sum_cache_files(dir.path()), 0);
+    }
 }
 
 #[derive(serde::Serialize)]
@@ -1062,6 +1111,28 @@ fn delete_files(app: tauri::AppHandle, paths: Vec<String>) -> Result<(), String>
     };
     if let Some((summary, groups)) = session_to_save {
         save_session(&app, &summary, &groups);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn get_cache_size(app: tauri::AppHandle) -> u64 {
+    const CACHE_FILES: &[&str] = &["phash_cache.json", "video_cache.json", "audio_cache.json", "exact_cache.json"];
+    let Some(dir) = app_data_dir(&app) else { return 0; };
+    CACHE_FILES.iter().map(|name| {
+        std::fs::metadata(dir.join(name)).map(|m| m.len()).unwrap_or(0)
+    }).sum()
+}
+
+#[tauri::command]
+fn purge_cache(app: tauri::AppHandle) -> Result<(), String> {
+    const CACHE_FILES: &[&str] = &["phash_cache.json", "video_cache.json", "audio_cache.json", "exact_cache.json"];
+    let dir = app_data_dir(&app).ok_or("Impossible d'acceder au dossier de donnees")?;
+    for name in CACHE_FILES {
+        let path = dir.join(name);
+        if path.exists() {
+            std::fs::remove_file(&path).map_err(|e| format!("{}: {}", name, e))?;
+        }
     }
     Ok(())
 }
@@ -1466,6 +1537,8 @@ pub fn run() {
             clear_ignore_entry,
             clear_all_ignored,
             get_media_server_port,
+            get_cache_size,
+            purge_cache,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

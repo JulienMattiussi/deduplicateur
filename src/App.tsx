@@ -64,6 +64,8 @@ export default function App() {
   const [priorityFolder, setPriorityFolder] = useState("");
   const [ignoredEntries, setIgnoredEntries] = useState<IgnoreEntry[]>([]);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [cacheBytes, setCacheBytes] = useState<number | null>(null);
+  const [purgeConfirm, setPurgeConfirm] = useState(false);
 
   const config = useScanConfig();
   const results = useResults(setError);
@@ -142,6 +144,7 @@ export default function App() {
     invoke<ScanSummary[]>("list_sessions")
       .then((s) => startTransition(() => setSessions(s)))
       .catch(() => {});
+    invoke<number>("get_cache_size").then(setCacheBytes).catch(() => {});
     loadIgnoredEntries();
   }, []);
 
@@ -150,6 +153,17 @@ export default function App() {
     results.reset();
     selection.setSelected(new Set());
     setFilterText("");
+  }
+
+  async function handlePurgeCache() {
+    try {
+      await invoke("purge_cache");
+      const newSize = await invoke<number>("get_cache_size");
+      setCacheBytes(newSize);
+    } catch {
+      // non-fatal
+    }
+    setPurgeConfirm(false);
   }
 
   async function handleScanComplete(s: ScanSummary) {
@@ -168,10 +182,10 @@ export default function App() {
     const updatedGroups = results.groups
       .map((g) => ({ ...g, files: g.files.filter((f) => !deletedPaths.has(f.path)) }))
       .filter((g) => g.files.length > 1);
-    const removedCount = results.groups.length - updatedGroups.length;
+    const newWasted = updatedGroups.reduce((acc, g) => acc + g.size * (g.files.length - 1), 0);
     startTransition(() => {
       results.setGroups(updatedGroups);
-      setSummary((s) => s ? { ...s, total_groups: s.total_groups - removedCount } : null);
+      setSummary((s) => s ? { ...s, total_groups: updatedGroups.length, total_wasted_bytes: newWasted } : null);
     });
   }
 
@@ -324,7 +338,7 @@ export default function App() {
     });
   }
 
-  const showSessionPicker = !summary && !scanExec.scanning && sessions.length > 0;
+  const showSessionPicker = !summary && !scanExec.scanning;
   const showResults = summary !== null && summary.total_groups > 0;
 
   const filteredGroups = useMemo(() => {
@@ -402,9 +416,7 @@ export default function App() {
               onDelete={profilesHook.deleteProfile}
               disabled={scanExec.scanning}
             />
-            {summary && (
-              <button className="btn-ghost" onClick={resetResults}>{t.backToSessions}</button>
-            )}
+            <button className="btn-ghost" onClick={resetResults}>{t.backToSessions}</button>
             <button
               className="btn-ghost help-btn"
               onClick={() => setHelpOpen(true)}
@@ -556,9 +568,31 @@ export default function App() {
       {showSessionPicker && (
         <div className="session-list">
           <p className="session-list-title">{t.previousSessions}</p>
-          {sessions.map((s) => (
-            <SessionCard key={s.id} session={s} active={false} resuming={resumingId === s.id} onResume={resumeSession} onDelete={removeSession} />
-          ))}
+          {sessions.length === 0 ? (
+            <p className="session-list-empty">{t.noSessions}</p>
+          ) : (
+            sessions.map((s) => (
+              <SessionCard key={s.id} session={s} active={false} resuming={resumingId === s.id} onResume={resumeSession} onDelete={removeSession} />
+            ))
+          )}
+          {cacheBytes !== null && cacheBytes > 0 && (
+            <div className="cache-section">
+              {purgeConfirm ? (
+                <>
+                  <span className="cache-confirm-text">{t.purgeCacheQuestion}</span>
+                  <div className="cache-confirm-buttons">
+                    <button className="btn-ghost btn-sm btn-danger" onClick={handlePurgeCache}>{t.purgeCache}</button>
+                    <button className="btn-ghost btn-sm" onClick={() => setPurgeConfirm(false)}>{t.confirmCancel}</button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <span className="cache-size-label">{interp(t.cacheSize, { size: formatSize(cacheBytes) })}</span>
+                  <button className="btn-ghost btn-sm" onClick={() => setPurgeConfirm(true)}>{t.purgeCache}</button>
+                </>
+              )}
+            </div>
+          )}
         </div>
       )}
 

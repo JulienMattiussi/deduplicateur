@@ -169,6 +169,10 @@ const fr = {
   notifBodyNone: "Aucun doublon trouvé.",
   notifBodyOne: "1 groupe trouvé - {size} récupérables",
   notifBodyMany: "{n} groupes trouvés - {size} récupérables",
+  noSessions: "Aucune analyse enregistrée",
+  cacheSize: "Cache de détection : {size}",
+  purgeCache: "Purger",
+  purgeCacheQuestion: "Purger le cache de détection ? Cette action est irréversible.",
 };
 
 const en: typeof fr = {
@@ -340,6 +344,10 @@ const en: typeof fr = {
   notifBodyNone: "No duplicates found.",
   notifBodyOne: "1 group found - {size} recoverable",
   notifBodyMany: "{n} groups found - {size} recoverable",
+  noSessions: "No saved scans",
+  cacheSize: "Detection cache: {size}",
+  purgeCache: "Purge",
+  purgeCacheQuestion: "Purge detection cache? This cannot be undone.",
 };
 
 export const translations: Record<Lang, typeof fr> = { fr, en };
