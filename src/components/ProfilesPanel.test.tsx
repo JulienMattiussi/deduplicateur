@@ -149,6 +149,26 @@ describe("ProfilesPanel", () => {
     expect(screen.getByTitle("Lancer")).toBeDisabled();
   });
 
+  it("clic Sauvegarder sans saisir de nom n'appelle pas onSave", async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn();
+    renderPanel({ onSave });
+    await user.click(screen.getByText(/profils/i));
+    await user.click(screen.getByText("Sauvegarder"));
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it("clic Sauvegarder avec un nom compose uniquement d'espaces n'appelle pas onSave", async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn();
+    renderPanel({ onSave });
+    await user.click(screen.getByText(/profils/i));
+    const input = screen.getByPlaceholderText(/nom du profil/i);
+    await user.type(input, "   ");
+    await user.click(screen.getByText("Sauvegarder"));
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
   it("fermeture au clic exterieur (click outside)", async () => {
     const user = userEvent.setup();
     renderPanel();

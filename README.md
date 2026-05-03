@@ -50,6 +50,7 @@ Outil de détection et suppression de fichiers en double - rapide, local, sans c
 - **Liste d'ignorés** - bouton "✕" sur chaque groupe pour l'exclure des prochains scans ; panneau dédié sous la barre de filtre pour voir, retirer ou effacer toutes les entrées ignorées ; persisté dans `ignore_list.json`
 - **Aide intégrée** - touche F1 ou bouton "?" dans le header ; drawer latéral avec 30 articles bilingues (FR/EN) organisés en 13 sections ; recherche plein texte dans titres, mots-clés et corps des articles
 - **Notifications système** - en fin de scan long (>10s), notification OS native (Windows Action Center, macOS, libnotify Linux) avec le nombre de groupes trouvés et l'espace récupérable ; pas de notification pour les scans rapides
+- **Comparateur de vidéos** - vue plein écran côte à côte pour les groupes de vidéos : deux lecteurs natifs synchronisés (play/pause/seek), barre de scrubbing commune, métadonnées complètes (résolution, durée, codec, taille), navigation entre groupes au clavier (← →, Échap), bouton "Garder celui-ci"
 
 ---
 
@@ -72,6 +73,7 @@ src/                       # Frontend React + TypeScript
   App.tsx                  # Composant principal - UI, état, appels Tauri
   App.css                  # Thème sombre/clair (variables CSS + data-theme)
   ImageComparator.tsx      # Comparateur d'images côte à côte / slider superposition
+  VideoComparator.tsx      # Comparateur de vidéos côte à côte / lecture synchronisée
   LangContext.tsx          # Contexte i18n FR/EN
   i18n.ts                  # Traductions FR et EN
   types.ts                 # Types TypeScript partagés
@@ -167,7 +169,7 @@ Chaque scan produit un fichier JSON dans `~/.local/share/deduplicateur/sessions/
 | CI/CD | GitHub Actions | Build Windows automatique sur push |
 | Similarité audio | fpcalc/chromaprint (subprocess) | Empreinte acoustique, distance de Hamming sur vecteurs i32, cache inter-scans |
 | Tests Rust | cargo test + tempfile | 156 tests unitaires sur le moteur |
-| Tests TS | Vitest + jsdom + React Testing Library | 209 tests (utilitaires + i18n + App + ImageComparator + MissingToolBanner + FileThumbnail + AdvancedPanelWrapper + IgnoredPanel + FolderSection + HelpPanel + AdvancedPanel + AudioAdvancedPanel + VideoAdvancedPanel + ProfilesPanel) |
+| Tests TS | Vitest + jsdom + React Testing Library | 244 tests (utilitaires + i18n + App + ImageComparator + VideoComparator + MissingToolBanner + FileThumbnail + AdvancedPanelWrapper + IgnoredPanel + FolderSection + HelpPanel + AdvancedPanel + AudioAdvancedPanel + VideoAdvancedPanel + ProfilesPanel + ProgressETA) |
 
 ---
 
@@ -235,7 +237,7 @@ npm run tauri build    # produit un binaire dans src-tauri/target/release/
 # Moteur Rust (156 tests)
 cargo test --manifest-path src-tauri/Cargo.toml
 
-# TypeScript - utilitaires + i18n + composants React (209 tests)
+# TypeScript - utilitaires + i18n + composants React (244 tests)
 npm test
 ```
 

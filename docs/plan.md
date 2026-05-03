@@ -374,20 +374,31 @@
 
 ---
 
-## Phase 18 - Comparateur vidéo
+## Phase 18 - Comparateur vidéo ✅
 
 **Objectif : comparer deux vidéos côte à côte avec lecture synchronisée avant de choisir laquelle supprimer**
 
-- [ ] `VideoComparator.tsx` : composant plein écran, même structure que `ImageComparator.tsx`
-- [ ] Deux lecteurs `<video>` natifs côte à côte, synchronisation play/pause/seek via événements cross-ref
-- [ ] Barre de scrubbing commune : déplacer le slider avance les deux vidéos au même timestamp
-- [ ] Affichage des métadonnées par fichier : résolution, durée, codec (via `get_video_metadata`), taille
-- [ ] Bouton "Garder celui-ci" (gauche / droite) - même pattern que `ImageComparator`
-- [ ] Navigation clavier entre groupes (mêmes raccourcis que le comparateur images)
-- [ ] Bouton d'accès au comparateur sur les `GroupCard` vidéo (déjà présent pour les images)
-- [ ] Tests TypeScript : rendu, synchronisation play/pause, bouton "Garder", navigation clavier
+- [x] `VideoComparator.tsx` : composant plein écran, même structure que `ImageComparator.tsx`
+- [x] Deux lecteurs `<video>` natifs côte à côte, synchronisation play/pause/seek via événements cross-ref
+- [x] Barre de scrubbing commune : déplacer le slider avance les deux vidéos au même timestamp
+- [x] Affichage des métadonnées par fichier : résolution, durée, codec (via `get_video_metadata`), taille
+- [x] Bouton "Garder celui-ci" (gauche / droite) - même pattern que `ImageComparator`
+- [x] Navigation clavier entre groupes (mêmes raccourcis que le comparateur images)
+- [x] Bouton d'accès au comparateur sur les `GroupCard` vidéo (déjà présent pour les images)
+- [x] Tests TypeScript : rendu, synchronisation play/pause, bouton "Garder", navigation clavier
+- [x] Commande Tauri `get_video_metadata` exposée (async + spawn_blocking)
+- [x] `src/help/content.ts` : 3 articles bilingues dans la section "Comparateur de vidéos"
+- [x] 156 tests Rust / 244 tests TypeScript - tous au vert
 
 **Critère de validation : ouvrir deux vidéos similaires, appuyer play, les deux démarrent en même temps ; scrubber à 30s sur l'une, l'autre saute aussi à 30s**
+
+### Tests TypeScript manquants ajoutés (post-Phase 18)
+
+- [x] `src/components/ProgressETA.test.tsx` : 8 tests (etat initial current=0/total=0, total=0 sans crash, estimating au demarrage, almostDone a 95%+, estimation en secondes apres 15s, almostDone a 100%, duree en minutes en phase stable, classe CSS)
+- [x] `src/VideoComparator.test.tsx` section E2 : seek sync via slider - verifie que currentTime des deux videos est mis a jour
+- [x] `src/VideoComparator.test.tsx` section E3 : groupe avec 1 seul fichier - retourne null sans crash
+- [x] `src/components/ProfilesPanel.test.tsx` : clic Sauvegarder sans nom n'appelle pas onSave ; clic Sauvegarder avec nom d'espaces uniquement n'appelle pas onSave
+- [x] 156 tests Rust / 244 tests TypeScript - tous au vert
 
 ---
 

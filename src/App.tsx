@@ -2,7 +2,7 @@ import { useState, startTransition, useEffect, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { save as dialogSave } from "@tauri-apps/plugin-dialog";
 import "./App.css";
-import { formatSize } from "./utils";
+import { formatSize, VIDEO_EXTS } from "./utils";
 import { useLang } from "./LangContext";
 import { interp, type Translations } from "./i18n";
 import type { DuplicateGroup, FolderSummary, IgnoreEntry, ScanProfile, ScanSummary } from "./types";
@@ -14,6 +14,7 @@ import { IgnoredPanel } from "./components/IgnoredPanel";
 import { HelpPanel } from "./components/HelpPanel";
 import { useProfiles } from "./hooks/useProfiles";
 import { ImageComparator } from "./ImageComparator";
+import { VideoComparator } from "./VideoComparator";
 import { SessionCard } from "./components/SessionCard";
 import { GroupCard } from "./components/GroupCard";
 import { FolderSection } from "./components/FolderSection";
@@ -53,6 +54,7 @@ export default function App() {
   const [dragOver, setDragOver] = useState(false);
   const [filterText, setFilterText] = useState("");
   const [comparatorIdx, setComparatorIdx] = useState<number | null>(null);
+  const [videoComparatorIdx, setVideoComparatorIdx] = useState<number | null>(null);
   const [resumingId, setResumingId] = useState<string | null>(null);
   const [smartRule, setSmartRule] = useState<SmartMode>("newest");
   const [priorityFolder, setPriorityFolder] = useState("");
@@ -100,7 +102,7 @@ export default function App() {
         setHelpOpen((v) => !v);
         return;
       }
-      if (comparatorIdx !== null) return;
+      if (comparatorIdx !== null || videoComparatorIdx !== null) return;
       const target = e.target as HTMLElement;
       const inInput = target.tagName === "INPUT" || target.tagName === "TEXTAREA";
 
@@ -121,7 +123,7 @@ export default function App() {
     }
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [summary, selection, scanExec.scanning, comparatorIdx]);
+  }, [summary, selection, scanExec.scanning, comparatorIdx, videoComparatorIdx]);
 
   async function loadIgnoredEntries() {
     try {
@@ -333,6 +335,13 @@ export default function App() {
     return filteredGroups.filter((g) => {
       const ext = g.files[0]?.path.split(".").pop()?.toLowerCase() ?? "";
       return g.similar || (!g.video_similar && IMAGE_EXTS_LOCAL.has(ext));
+    });
+  }, [filteredGroups]);
+
+  const videoGroups = useMemo(() => {
+    return filteredGroups.filter((g) => {
+      const ext = g.files[0]?.path.split(".").pop()?.toLowerCase() ?? "";
+      return g.video_similar || VIDEO_EXTS.has(ext);
     });
   }, [filteredGroups]);
 
@@ -630,6 +639,7 @@ export default function App() {
                 ) : (
                   filteredGroups.map((group: DuplicateGroup) => {
                     const imgIdx = imageGroups.indexOf(group);
+                    const vidIdx = videoGroups.indexOf(group);
                     return (
                       <GroupCard
                         key={group.id}
@@ -637,6 +647,7 @@ export default function App() {
                         selected={selection.selected}
                         onToggle={selection.toggleFile}
                         onCompare={imgIdx >= 0 ? () => setComparatorIdx(imgIdx) : undefined}
+                        onCompareVideo={vidIdx >= 0 ? () => setVideoComparatorIdx(vidIdx) : undefined}
                         onIgnore={() => handleIgnoreGroup(group.id)}
                       />
                     );
@@ -707,6 +718,16 @@ export default function App() {
           selected={selection.selected}
           onSelectPaths={handleSelectPaths}
           onClose={() => setComparatorIdx(null)}
+        />
+      )}
+
+      {videoComparatorIdx !== null && (
+        <VideoComparator
+          groups={videoGroups}
+          startIdx={videoComparatorIdx}
+          selected={selection.selected}
+          onSelectPaths={handleSelectPaths}
+          onClose={() => setVideoComparatorIdx(null)}
         />
       )}
 

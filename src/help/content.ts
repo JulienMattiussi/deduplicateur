@@ -17,6 +17,7 @@ export const HELP_SECTIONS: HelpSection[] = [
   { id: "select",     title: { fr: "Sélectionner et supprimer",     en: "Select and delete" } },
   { id: "byfolder",   title: { fr: "Mode par sous-dossier",         en: "By-folder mode" } },
   { id: "comparator", title: { fr: "Comparateur d'images",          en: "Image comparator" } },
+  { id: "video-comparator", title: { fr: "Comparateur de vidéos",   en: "Video comparator" } },
   { id: "ignored",    title: { fr: "Groupes ignorés",               en: "Ignored groups" } },
   { id: "profiles",   title: { fr: "Profils de scan",               en: "Scan profiles" } },
   { id: "filters",    title: { fr: "Filtres",                       en: "Filters" } },
@@ -461,6 +462,82 @@ This mode is ideal for photo or music libraries organized by folder.`,
     },
   },
 
+  // ── Comparateur de vidéos ─────────────────────────────────────────────────
+
+  {
+    id: "video-comparator-open",
+    sectionId: "video-comparator",
+    title: { fr: "Ouvrir le comparateur de vidéos", en: "Open the video comparator" },
+    keywords: {
+      fr: ["comparateur vidéo", "comparer vidéos", "ouvrir", "bouton comparer", "vidéos similaires"],
+      en: ["video comparator", "compare videos", "open", "compare button", "similar videos"],
+    },
+    body: {
+      fr: `Le bouton **"Comparer"** s'affiche dans l'en-tête de chaque groupe de vidéos (similaires ou identiques). Cliquez-le pour ouvrir le comparateur plein écran.
+
+**Deux lecteurs côte à côte** : chaque vidéo s'affiche dans son propre lecteur. Vous pouvez voir les métadonnées sous chaque vidéo : nom, taille, résolution, durée, codec.
+
+**Navigation entre groupes** : utilisez les boutons **◀** et **▶** ou les touches **← →** du clavier pour passer d'un groupe au suivant sans fermer le comparateur.
+
+**Fermer** : bouton **✕** en haut à droite, ou touche **Échap**.`,
+      en: `The **"Compare"** button appears in the header of each video group (similar or identical). Click it to open the full-screen comparator.
+
+**Two players side by side**: each video is shown in its own player. Metadata is displayed below each video: name, size, resolution, duration, codec.
+
+**Navigate between groups**: use the **◀** and **▶** buttons or the keyboard **← →** arrow keys to move between video groups without closing the comparator.
+
+**Close**: **✕** button in the top-right corner, or **Escape** key.`,
+    },
+  },
+
+  {
+    id: "video-comparator-sync",
+    sectionId: "video-comparator",
+    title: { fr: "Lecture synchronisée et scrubbing", en: "Synchronized playback and scrubbing" },
+    keywords: {
+      fr: ["lecture synchronisée", "play", "pause", "scrubbing", "slider", "timestamp", "avancer", "reculer", "temps"],
+      en: ["synchronized playback", "play", "pause", "scrubbing", "slider", "timestamp", "seek", "time"],
+    },
+    body: {
+      fr: `**Play/Pause** : le bouton ▶/⏸ dans la barre de scrubbing lance ou met en pause les deux vidéos simultanément. Appuyer Play sur l'une des vidéos synchronise automatiquement l'autre.
+
+**Barre de scrubbing commune** : le curseur en bas du comparateur permet de naviguer dans les deux vidéos en même temps. Faites glisser pour sauter à un timestamp précis sur les deux lecteurs simultanément.
+
+**Synchronisation de la lecture** : quand une vidéo joue ou est mise en pause, l'autre suit automatiquement. Quand vous cherchez une position dans l'une, l'autre saute au même timestamp.
+
+**Onglets de fichiers** : pour les groupes de 3+ fichiers, des onglets en haut (Gauche / Droite) permettent de sélectionner quel fichier s'affiche dans chaque panneau.`,
+      en: `**Play/Pause**: the ▶/⏸ button in the scrubbing bar starts or pauses both videos simultaneously. Pressing play on one video automatically synchronizes the other.
+
+**Common scrubbing bar**: the slider at the bottom of the comparator navigates both videos at the same time. Drag to jump to a specific timestamp on both players simultaneously.
+
+**Playback synchronization**: when one video plays or pauses, the other follows automatically. When you seek a position in one, the other jumps to the same timestamp.
+
+**File tabs**: for groups of 3+ files, tabs at the top (Left / Right) let you select which file appears in each panel.`,
+    },
+  },
+
+  {
+    id: "video-comparator-keep",
+    sectionId: "video-comparator",
+    title: { fr: "Garder une vidéo et supprimer les autres", en: "Keep a video and delete the others" },
+    keywords: {
+      fr: ["garder", "supprimer", "conserver", "bouton garder", "cocher", "doublons vidéo"],
+      en: ["keep", "delete", "keep this one", "check", "video duplicates"],
+    },
+    body: {
+      fr: `Sous chaque vidéo, le bouton **"Garder celui-ci"** marque les autres fichiers du groupe comme à supprimer et retire ce fichier de la sélection.
+
+Le bouton affiche **"✓ Garder celui-ci"** quand ce fichier est effectivement conservé (tous les autres sont cochés).
+
+La suppression effective se fait ensuite depuis la liste principale via le bouton "Supprimer N fichiers". Les fichiers supprimés sont envoyés dans la corbeille - récupérables.`,
+      en: `Below each video, the **"Keep this one"** button marks the other files in the group as to be deleted and removes this file from the selection.
+
+The button shows **"✓ Keep this one"** when this file is actually kept (all others are checked).
+
+The actual deletion is done from the main list via the "Delete N files" button. Deleted files are sent to the trash - recoverable.`,
+    },
+  },
+
   // ── Groupes ignorés ───────────────────────────────────────────────────────
 
   {
@@ -874,8 +951,8 @@ The notification uses the **active UI language** (FR or EN) at the time the scan
 
 - **Ctrl+A** : sélectionne tous les doublons (équivalent "Tout cocher")
 - **Suppr** : ouvre la confirmation de suppression si des fichiers sont sélectionnés
-- **Échap** : ferme la confirmation de suppression ou le comparateur d'images
-- **← →** (dans le comparateur) : navigue entre les groupes d'images
+- **Échap** : ferme la confirmation de suppression ou le comparateur (images/vidéos)
+- **← →** (dans le comparateur) : navigue entre les groupes d'images ou de vidéos
 - **F1** ou bouton **?** : ouvre cette aide`,
       en: `**Theme**: click **☀** (light mode) or **☽** (dark mode) in the top-right. The choice is remembered across sessions.
 
@@ -885,8 +962,8 @@ The notification uses the **active UI language** (FR or EN) at the time the scan
 
 - **Ctrl+A**: selects all duplicates (equivalent to "Select all")
 - **Delete**: opens the deletion confirmation if files are selected
-- **Escape**: closes the deletion confirmation or the image comparator
-- **← →** (in comparator): navigate between image groups
+- **Escape**: closes the deletion confirmation or the image/video comparator
+- **← →** (in comparator): navigate between image or video groups
 - **F1** or **?** button: opens this help`,
     },
   },

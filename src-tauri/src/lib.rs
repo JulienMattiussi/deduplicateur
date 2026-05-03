@@ -950,6 +950,16 @@ fn check_path_is_dir(path: String) -> bool {
     std::path::Path::new(&path).is_dir()
 }
 
+#[tauri::command]
+async fn get_video_metadata(path: String) -> Result<video_hash::VideoMetadata, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        video_hash::get_video_metadata(&path)
+            .ok_or_else(|| "impossible de lire les metadonnees video".to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[derive(Debug, serde::Serialize)]
 struct ImageMeta {
     width: u32,
@@ -1257,6 +1267,7 @@ pub fn run() {
             get_audio_config,
             set_audio_config,
             check_path_is_dir,
+            get_video_metadata,
             get_image_meta,
             export_results,
             list_profiles,
