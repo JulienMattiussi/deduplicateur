@@ -202,6 +202,18 @@ describe("E - synchronisation (gauche maitresse)", () => {
     expect(rightVideo).not.toHaveAttribute("controls");
   });
 
+  it("la video de droite est mutee par defaut", () => {
+    renderComp();
+    const rightVideo = screen.getByTestId("video-right") as HTMLVideoElement;
+    expect(rightVideo.muted).toBe(true);
+  });
+
+  it("la video de gauche n'est pas mutee par defaut", () => {
+    renderComp();
+    const leftVideo = screen.getByTestId("video-left") as HTMLVideoElement;
+    expect(leftVideo.muted).toBe(false);
+  });
+
   it("onPlay gauche declenche play sur la droite", () => {
     renderComp();
     const rightVideo = screen.getByTestId("video-right") as HTMLVideoElement;

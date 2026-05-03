@@ -81,6 +81,7 @@ function VideoPanel({
           src={src}
           className="comparator-video"
           controls={master}
+          muted={!master}
           onPlay={master ? onPlay : undefined}
           onPause={master ? onPause : undefined}
           onSeeked={master ? onSeeked : undefined}
