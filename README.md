@@ -94,6 +94,21 @@ src-tauri/src/
   audio_cache.rs           # Cache inter-scans des empreintes audio
   audio_config.rs          # Configuration du pipeline audio (JSON persistant)
   tool_finder.rs           # Recherche d'outils (fpcalc, ffmpeg) : binaire bundte, chemins systeme, PATH
+  build.rs                 # Placeholder fpcalc vide en dev si download-fpcalc.sh pas encore lancé
+
+src-tauri/binaries/        # Binaires bundlés (non commités - voir scripts/download-fpcalc.sh)
+scripts/
+  download-fpcalc.sh       # Télécharge fpcalc v1.5.1 pour la plateforme courante
+
+src/components/
+  MissingToolBanner.tsx    # Bandeau guidé si ffmpeg/fpcalc absent : instructions OS, téléchargement, re-check
+  GroupCard.tsx            # Carte d'un groupe de doublons (fichiers, sélection, tri)
+  FileThumbnail.tsx        # Miniature cliquable image/vidéo/audio
+  FiltersPanel.tsx         # Panneau filtres extensions et taille
+  ProfilesPanel.tsx        # Dropdown profils de scan
+  SessionCard.tsx          # Carte session précédente
+  AudioAdvancedPanel.tsx   # Paramètres avancés audio
+  VideoAdvancedPanel.tsx   # Paramètres avancés vidéo
 ```
 
 ### Pipeline de déduplication

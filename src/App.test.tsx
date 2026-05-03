@@ -619,6 +619,27 @@ describe("J - mode audio", () => {
     });
   });
 
+  it("affiche le bandeau ffmpegMissing quand le scan retourne ffmpeg_missing:true", async () => {
+    const user = userEvent.setup();
+    const summaryFfmpegMissing = { ...baseSummary, ffmpeg_missing: true };
+    mockInvoke.mockImplementation(
+      makeDefaultMock({
+        scan_folder: summaryFfmpegMissing,
+        get_groups_page: { groups: [], offset: 0, total: 0, has_more: false },
+      })
+    );
+    mockDialogOpen.mockResolvedValue("/home/videos");
+
+    render(<App />);
+    await user.click(screen.getByText(/Cliquer pour choisir un dossier/));
+    await waitFor(() => screen.getByText("/home/videos"));
+    await user.click(screen.getByText("Analyser"));
+
+    await waitFor(() => {
+      expect(screen.getByText(/ffmpeg introuvable/i)).toBeInTheDocument();
+    });
+  });
+
   it("affiche le bandeau fpcalcMissing quand le scan retourne fpcalc_missing:true", async () => {
     const user = userEvent.setup();
     const summaryFpcalcMissing = { ...baseSummary, fpcalc_missing: true };

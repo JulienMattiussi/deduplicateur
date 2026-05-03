@@ -261,6 +261,45 @@ Sur GNOME Shell, `window.set_icon()` n'affecte pas la barre des taches - GNOME u
 le fichier `.desktop` installe. En mode dev, aucun `.desktop` n'est present.
 Voir [docs/icone.md](docs/icone.md) pour le setup complet et le comportement par plateforme.
 
+### externalBin Tauri : build.rs obligatoire pour eviter l'echec en dev
+Quand `tauri.conf.json` declare `"externalBin": ["binaries/fpcalc"]`, Tauri attend que le
+fichier `binaries/fpcalc-{triple}` existe au moment du build. En dev, le script
+`scripts/download-fpcalc.sh` n'est pas toujours lance. Sans `build.rs`, le build echoue
+silencieusement avec "external binary not found". Solution : `build.rs` cree un placeholder
+vide si le binaire n'existe pas encore :
+```rust
+fn main() {
+    let triple = std::env::var("TAURI_ENV_TARGET_TRIPLE")
+        .or_else(|_| std::env::var("TARGET")).unwrap_or_default();
+    if !triple.is_empty() {
+        let name = if cfg!(windows) { format!("binaries/fpcalc-{}.exe", triple) }
+                   else { format!("binaries/fpcalc-{}", triple) };
+        if !std::path::Path::new(&name).exists() {
+            let _ = std::fs::create_dir_all("binaries");
+            let _ = std::fs::write(&name, b"");
+        }
+    }
+    tauri_build::build()
+}
+```
+En CI et en prod, `scripts/download-fpcalc.sh` place le vrai binaire avant le build.
+Les binaires `src-tauri/binaries/fpcalc*` sont dans `.gitignore`.
+
+### Recherche d'outils externes : tool_finder::find_tool
+Pour tout sous-processus externe (fpcalc, ffmpeg, ffprobe), ne pas utiliser directement
+`Command::new(name)` qui depend uniquement du PATH. Utiliser `tool_finder::find_tool(name)`
+qui cherche dans cet ordre :
+1. A cote de l'executable (binaire bundte via externalBin)
+2. Chemins systeme courants selon l'OS (Chocolatey, Scoop, Homebrew, /usr/bin...)
+3. Retourne None → l'appelant fait `Command::new(name)` comme fallback
+
+```rust
+let path = tool_finder::find_tool("fpcalc")
+    .map(|p| p.into_os_string())
+    .unwrap_or_else(|| OsString::from("fpcalc"));
+let mut cmd = Command::new(&path);
+```
+
 ### Vitest + worktrees : plusieurs instances React -> "Invalid hook call"
 Quand des agents travaillent en worktree isole, leurs `node_modules/` sont dans
 `.claude/worktrees/<id>/`. Vitest decouvre leurs fichiers de test et charge plusieurs

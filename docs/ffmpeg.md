@@ -55,4 +55,4 @@ ffmpeg -version
 
 Les deux commandes doivent afficher un numéro de version. Si l'une renvoie « commande introuvable » ou « n'est pas reconnu », ffmpeg n'est pas dans le PATH.
 
-Sur Windows, si les commandes fonctionnent dans PowerShell mais que Déduplicateur affiche quand même le bandeau d'avertissement, vérifier que ffmpeg est dans le PATH **système** et non uniquement dans le PATH utilisateur.
+Si les commandes fonctionnent dans le terminal mais que Déduplicateur affiche quand même le bandeau, utiliser le bouton "Vérifier à nouveau" dans le bandeau - l'app cherche dans les emplacements courants (`C:\ffmpeg\bin`, Chocolatey, Scoop, `/usr/bin`, Homebrew...) sans nécessiter de redémarrage. Sur Windows, installer de préférence dans `C:\ffmpeg\bin` qui est cherché automatiquement.
