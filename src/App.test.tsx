@@ -1053,18 +1053,26 @@ describe("N - liste d'ignorés", () => {
     expect(screen.getByTestId("ignore-group-btn")).toBeInTheDocument();
   });
 
-  it("cliquer ignorer appelle invoke ignore_group avec le bon id", async () => {
+  it("cliquer ignorer affiche la confirmation", async () => {
     const user = await renderWithResults();
     await user.click(screen.getByTestId("ignore-group-btn"));
+    expect(screen.getByTestId("ignore-confirm-row")).toBeInTheDocument();
+  });
+
+  it("confirmer ignore appelle invoke ignore_group avec le bon id", async () => {
+    const user = await renderWithResults();
+    await user.click(screen.getByTestId("ignore-group-btn"));
+    await user.click(screen.getByTestId("ignore-confirm-btn"));
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith("ignore_group", { groupId: "g1" });
     });
   });
 
-  it("après ignore, le groupe disparaît de la liste", async () => {
+  it("après confirm ignore, le groupe disparaît de la liste", async () => {
     const user = await renderWithResults();
     expect(screen.getByText("file1.txt")).toBeInTheDocument();
     await user.click(screen.getByTestId("ignore-group-btn"));
+    await user.click(screen.getByTestId("ignore-confirm-btn"));
     await waitFor(() => {
       expect(screen.queryByText("file1.txt")).not.toBeInTheDocument();
     });

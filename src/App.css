@@ -2191,6 +2191,29 @@
   border-color: var(--color-danger);
 }
 
+.ignore-confirm-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.ignore-confirm-text {
+  font-size: 12px;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+.comparator-video-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-4);
+  font-size: 13px;
+}
+
 /* Ignored groups dropdown (header top-right) */
 .ignored-container {
   position: relative;

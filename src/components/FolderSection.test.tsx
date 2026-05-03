@@ -62,6 +62,7 @@ describe("FolderSection - onIgnore", () => {
     renderSection(onIgnore);
     await user.click(screen.getByRole("button", { name: /Photos/ }));
     await user.click(screen.getByTestId("ignore-group-btn"));
+    await user.click(screen.getByTestId("ignore-confirm-btn"));
     expect(onIgnore).toHaveBeenCalledWith("g1");
   });
 });

@@ -26,6 +26,7 @@ export function GroupCard({
   const [expanded, setExpanded] = useState(true);
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [confirmIgnore, setConfirmIgnore] = useState(false);
 
   const isSimilar = group.similar === true;
   const isVideoSimilar = group.video_similar === true;
@@ -72,7 +73,7 @@ export function GroupCard({
 
   return (
     <div className="group-card">
-      <button className="group-header" onClick={() => setExpanded((v) => !v)}>
+      <div className="group-header" onClick={() => setExpanded((v) => !v)}>
         <span className="group-chevron">{expanded ? "▾" : "▸"}</span>
         <span className="group-count">
           {isVideoGroup ? "🎬 " : isImageGroup ? "🖼 " : isAudioGroup ? "🎵 " : ""}
@@ -95,20 +96,34 @@ export function GroupCard({
             {t.compare}
           </button>
         )}
-        {onIgnore && (
+        {onIgnore && !confirmIgnore && (
           <button
             data-testid="ignore-group-btn"
             className="btn-ignore"
             title={t.ignoreGroup}
-            onClick={(e) => { e.stopPropagation(); onIgnore(); }}
+            onClick={(e) => { e.stopPropagation(); setConfirmIgnore(true); }}
           >
             ✕
           </button>
         )}
+        {onIgnore && confirmIgnore && (
+          <span className="ignore-confirm-row" data-testid="ignore-confirm-row">
+            <span className="ignore-confirm-text">{t.ignoreConfirmQuestion}</span>
+            <button
+              className="btn-ghost btn-sm"
+              onClick={(e) => { e.stopPropagation(); setConfirmIgnore(false); }}
+            >{t.confirmCancel}</button>
+            <button
+              data-testid="ignore-confirm-btn"
+              className="btn-danger btn-sm"
+              onClick={(e) => { e.stopPropagation(); onIgnore(); }}
+            >{t.ignoreConfirm}</button>
+          </span>
+        )}
         <span className="group-waste">
           {formatSize(group.size * (group.files.length - 1))} {t.duplicate}
         </span>
-      </button>
+      </div>
 
       {expanded && (
         <div className="group-files" data-testid="group-files">

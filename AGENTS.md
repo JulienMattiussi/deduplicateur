@@ -308,6 +308,64 @@ let path = tool_finder::find_tool("fpcalc")
 let mut cmd = Command::new(&path);
 ```
 
+### Lecture de fichiers media dans Tauri/Linux : utiliser un serveur HTTP local
+Trois approches ont ete essayees pour servir des fichiers video locaux dans un `<video>` element :
+
+1. `convertFileSrc` (asset protocol) - ne fonctionne pas sans configuration specifique
+2. `readFile` via IPC + blob URL - **bloque le thread UI** pour tout fichier (serialisation IPC en JSON base64)
+3. Scheme custom (`localfile://` via `register_uri_scheme_protocol`) - **ecran noir** sur Linux :
+   WebKitGTK utilise GStreamer comme backend media. GStreamer ne connait que `http://`, `https://`,
+   `file://` - il ignore completement les schemes WebKit personnalises pour les elements `<video>`.
+
+**Solution correcte** : serveur HTTP local axum sur `127.0.0.1:0` (port aleatoire), expose via
+une commande Tauri `get_media_server_port`. Inclure le support des requetes Range pour que la
+barre de progression et le scrubbing fonctionnent :
+```rust
+// media_server.rs
+pub fn start() -> u16 {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    listener.set_nonblocking(true).unwrap();
+    tauri::async_runtime::spawn(async move {
+        let tl = tokio::net::TcpListener::from_std(listener).unwrap();
+        axum::serve(tl, Router::new().fallback(handle)).await.ok();
+    });
+    port
+}
+```
+Et dans le handler : retourner `206 Partial Content` avec `Content-Range` si la requete contient
+un header `Range`, sinon `200 OK` avec le fichier complet + `Accept-Ranges: bytes`.
+
+### Composants React definis dans un autre composant : remontage a chaque rendu
+Definir `MetaBlock` ou `VideoPanel` comme fonctions a l'interieur de `VideoComparator` cree une
+nouvelle reference de fonction a chaque rendu du parent. React interprete ca comme un nouveau
+type de composant et demonte/remonte l'integralite du sous-arbre DOM - l'element `<video>` est
+recrée et perd son etat (position, lecture en cours). **Toujours definir les composants au niveau
+module**, jamais a l'interieur d'un autre composant.
+
+### Synchronisation bidirectionnelle de deux `<video>` : boucle infinie asynchrone
+Un guard `syncingRef` ne protege pas contre les evenements asynchrones du navigateur.
+Scenario : `left.play()` → `onPlay` → `syncingRef = true` → `right.play()` → `syncingRef = false`
+→ `right.play()` resout de facon asynchrone → `onPlay` de droite fire → `syncingRef` est deja
+`false` → boucle infinie. `useState` pour le flag ne fonctionne pas non plus (batching React :
+`true` puis `false` dans le meme evenement = un seul rendu avec `false`).
+
+**Solution** : pattern maitre/esclave. Une seule video a `controls` (la gauche). La droite n'a
+aucun controle et aucun handler d'evenement. La gauche synchronise la droite via :
+```tsx
+function syncPlay() {
+  const rv = rightVideoRef.current, lv = leftVideoRef.current;
+  if (rv && lv) { rv.currentTime = lv.currentTime; rv.play().catch(() => {}); }
+}
+function syncPause() { rightVideoRef.current?.pause(); }
+function syncSeek() {
+  const lv = leftVideoRef.current, rv = rightVideoRef.current;
+  if (lv && rv) rv.currentTime = lv.currentTime;
+}
+// VideoPanel gauche : master onPlay={syncPlay} onPause={syncPause} onSeeked={syncSeek}
+// VideoPanel droite : master={false} (aucun handler)
+```
+
 ### Vitest + worktrees : plusieurs instances React -> "Invalid hook call"
 Quand des agents travaillent en worktree isole, leurs `node_modules/` sont dans
 `.claude/worktrees/<id>/`. Vitest decouvre leurs fichiers de test et charge plusieurs

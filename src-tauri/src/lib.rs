@@ -1,4 +1,5 @@
 mod audio_cache;
+mod media_server;
 mod audio_config;
 mod audio_hash;
 mod cache_io;
@@ -28,6 +29,7 @@ use tauri::{Emitter, Manager};
 use tauri_plugin_notification::NotificationExt;
 
 struct CancelFlag(Arc<AtomicBool>);
+struct MediaServerPort(u16);
 
 struct LoadedSession {
     summary: ScanSummary,
@@ -1228,10 +1230,16 @@ async fn clear_all_ignored(app: tauri::AppHandle) -> Result<(), String> {
     .map_err(|e| e.to_string())?
 }
 
+#[tauri::command]
+fn get_media_server_port(state: tauri::State<MediaServerPort>) -> u16 {
+    state.0
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
+            app.manage(MediaServerPort(media_server::start()));
             if let Some(window) = app.get_webview_window("main") {
                 let icon_bytes = include_bytes!("../icons/128x128.png");
                 if let Ok(icon) = tauri::image::Image::from_bytes(icon_bytes) {
@@ -1280,6 +1288,7 @@ pub fn run() {
             get_ignore_list,
             clear_ignore_entry,
             clear_all_ignored,
+            get_media_server_port,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
