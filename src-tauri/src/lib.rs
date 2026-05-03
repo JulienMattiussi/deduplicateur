@@ -354,12 +354,24 @@ fn load_session(app: tauri::AppHandle, id: String) -> Result<ScanSummary, String
     let file = read_session_file(&app, &id)
         .ok_or_else(|| "Session introuvable".to_string())?;
 
-    let summary = file.summary.clone();
-    *app.state::<ScanCache>().0.lock().unwrap() = Some(LoadedSession {
-        summary: file.summary,
-        groups: file.groups,
-    });
-    Ok(summary)
+    let mut groups = file.groups;
+    let mut summary = file.summary;
+
+    let before = groups.len();
+    for group in groups.iter_mut() {
+        group.files.retain(|f| std::path::Path::new(&f.path).exists());
+    }
+    groups.retain(|g| g.files.len() >= 2);
+
+    if groups.len() != before {
+        summary.total_groups = groups.len();
+        summary.total_wasted_bytes = recalc_wasted_bytes(&groups);
+        save_session(&app, &summary, &groups);
+    }
+
+    let result = summary.clone();
+    *app.state::<ScanCache>().0.lock().unwrap() = Some(LoadedSession { summary, groups });
+    Ok(result)
 }
 
 #[tauri::command]
@@ -841,6 +853,56 @@ mod tests {
     #[test]
     fn test_recalc_wasted_bytes_empty() {
         assert_eq!(recalc_wasted_bytes(&[]), 0);
+    }
+
+    // ── Tests filtrage load_session (fichiers inexistants) ───────────────────
+
+    #[test]
+    fn test_load_session_purge_missing_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let existing = dir.path().join("kept.jpg");
+        std::fs::write(&existing, b"data").unwrap();
+        let missing = dir.path().join("gone.jpg");
+        // missing n'est pas créé volontairement
+
+        let mut groups = vec![
+            make_group_with_size("g1", 100, vec![
+                make_file(existing.to_str().unwrap(), 100, 0),
+                make_file(missing.to_str().unwrap(), 100, 0),
+            ]),
+        ];
+
+        for group in groups.iter_mut() {
+            group.files.retain(|f| std::path::Path::new(&f.path).exists());
+        }
+        groups.retain(|g| g.files.len() >= 2);
+
+        // Le groupe doit être supprimé car il ne reste qu'un seul fichier
+        assert!(groups.is_empty(), "groupe avec 1 fichier manquant doit disparaitre");
+    }
+
+    #[test]
+    fn test_load_session_keeps_group_when_all_files_exist() {
+        let dir = tempfile::tempdir().unwrap();
+        let f1 = dir.path().join("a.jpg");
+        let f2 = dir.path().join("b.jpg");
+        std::fs::write(&f1, b"data").unwrap();
+        std::fs::write(&f2, b"data").unwrap();
+
+        let mut groups = vec![
+            make_group_with_size("g1", 100, vec![
+                make_file(f1.to_str().unwrap(), 100, 0),
+                make_file(f2.to_str().unwrap(), 100, 0),
+            ]),
+        ];
+
+        for group in groups.iter_mut() {
+            group.files.retain(|f| std::path::Path::new(&f.path).exists());
+        }
+        groups.retain(|g| g.files.len() >= 2);
+
+        assert_eq!(groups.len(), 1, "groupe intact si tous les fichiers existent");
+        assert_eq!(groups[0].files.len(), 2);
     }
 }
 
