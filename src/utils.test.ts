@@ -27,12 +27,12 @@ describe("formatSize", () => {
 
 describe("dirname", () => {
   it("retourne le dossier parent (chemin Unix)", () => {
-    expect(dirname("/home/julien/photos/image.jpg")).toBe("/home/julien/photos");
-    expect(dirname("/home/julien/fichier.txt")).toBe("/home/julien");
+    expect(dirname("/home/user/photos/image.jpg")).toBe("/home/user/photos");
+    expect(dirname("/home/user/fichier.txt")).toBe("/home/user");
   });
 
   it("retourne le dossier parent (chemin Windows)", () => {
-    expect(dirname("C:\\Users\\julien\\photos\\image.jpg")).toBe("C:\\Users\\julien\\photos");
+    expect(dirname("C:\\Users\\user\\photos\\image.jpg")).toBe("C:\\Users\\user\\photos");
   });
 
   it("retourne le séparateur pour un fichier à la racine", () => {
