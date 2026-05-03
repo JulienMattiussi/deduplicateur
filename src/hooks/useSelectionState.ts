@@ -2,6 +2,13 @@ import { useState, startTransition } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { DuplicateGroup } from "../types";
 
+export type SmartMode =
+  | "newest"
+  | "oldest"
+  | "largest_size"
+  | "highest_resolution"
+  | "priority_folder";
+
 export function useSelectionState(
   groups: DuplicateGroup[],
   onDeleteComplete: (deletedPaths: Set<string>) => void,
@@ -40,7 +47,14 @@ export function useSelectionState(
   }
 
   function selectAllDuplicates() { return runSelection("select_all_duplicates"); }
-  function selectSmart(mode: "newest" | "oldest") { return runSelection("smart_select", { mode }); }
+
+  function selectSmart(mode: SmartMode, folderPrefix?: string) {
+    return runSelection("smart_select", {
+      mode,
+      folderPrefix: folderPrefix ?? null,
+    });
+  }
+
   function clearSelection() { setSelected(new Set()); }
 
   async function doDelete() {

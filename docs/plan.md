@@ -285,18 +285,22 @@
 
 ---
 
-## Phase 14 - Règles de sélection par métadonnées
+## Phase 14 - Règles de sélection par métadonnées ✅
 
 **Objectif : choisir automatiquement quel fichier garder selon des critères objectifs**
 
-- [ ] Règle "garder la plus haute résolution" pour les images (dimensions px)
-- [ ] Règle "garder le meilleur bitrate / la plus grande taille" pour l'audio et la vidéo
-- [ ] Règle "garder le fichier dans le dossier X" (chemin prioritaire configurable)
-- [ ] Règle "garder le plus récent" et "garder le plus ancien" (déjà disponibles - conserver)
-- [ ] UI : sélecteur de règle dans la barre d'actions, appliquée sur les groupes visibles
-- [ ] La règle s'applique indépendamment par groupe (un seul fichier coché = celui qui gagne)
-- [ ] Tests Rust : extraction des métadonnées nécessaires au scoring
-- [ ] Tests TypeScript : application de chaque règle, tie-breaking (ex. même résolution -> garder le plus récent)
+- [x] Règle "garder la plus haute résolution" : vidéos via `VideoMetadata.width*height`, images via lecture d'en-tête (`image::image_dimensions`), tie-break size puis newest
+- [x] Règle "garder le plus grand fichier" (`largest_size`) : utile pour audio/vidéo, tie-break newest
+- [x] Règle "garder le fichier dans le dossier X" (`priority_folder`, chemin configurable) : si plusieurs matchent, garde le plus récent ; si aucun ne matche, groupe ignoré (aucun fichier coché)
+- [x] Règle "garder le plus récent" et "garder le plus ancien" conservées (désormais dans le dropdown)
+- [x] `select_files_to_delete` : fonction pure extraite de `smart_select` (testable sans Tauri)
+- [x] `smart_select` rendue async + spawn_blocking (I/O image header pour highest_resolution)
+- [x] UI : dropdown + bouton "Appliquer" dans la toolbar (remplace les deux boutons séparés)
+- [x] UI : input "Chemin prioritaire" affiché uniquement quand la règle priority_folder est sélectionnée
+- [x] `SmartMode` type exporté depuis `useSelectionState.ts`
+- [x] `highest_resolution` : si aucun fichier du groupe n'a de résolution détectable, le groupe est ignoré (aucun fichier coché) ; si mélange image/autre, les fichiers sans résolution reçoivent 0 px et sont supprimés
+- [x] 134 tests Rust (+11 : largest_size, tiebreak, priority_folder x3, highest_resolution video x2, groupe vide, no-metadata skip, mixed group)
+- [x] 127 tests TypeScript (+9 section M : dropdown options, input conditionnel, appels smart_select, groupe ignoré retourne [], fichiers retournés cochés dans l'UI)
 
 **Critère de validation : sur un groupe image HD + miniature, "garder la plus haute résolution" coche automatiquement le bon fichier**
 

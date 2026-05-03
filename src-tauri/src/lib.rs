@@ -17,7 +17,7 @@ mod video_hash;
 use audio_config::AudioConfig;
 use phash_config::{load_config, save_config, PHashConfig};
 use video_config::VideoConfig;
-use scanner::{scan_folder as do_scan, DuplicateGroup, ScanParams};
+use scanner::{scan_folder as do_scan, DuplicateFile, DuplicateGroup, ScanParams};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -332,6 +332,82 @@ fn make_page(groups: &[DuplicateGroup], offset: usize, limit: usize) -> GroupsPa
     }
 }
 
+/// Retourne le nombre de pixels (largeur x hauteur) pour un fichier.
+/// Pour les videos, utilise les metadonnees deja chargees.
+/// Pour les images, lit l'en-tete via le crate image (pas de decode complet).
+fn pixel_count_for_file(file: &DuplicateFile) -> Option<u64> {
+    if let Some(ref vm) = file.video_metadata {
+        return Some(vm.width as u64 * vm.height as u64);
+    }
+    image::image_dimensions(&file.path)
+        .ok()
+        .map(|(w, h)| w as u64 * h as u64)
+}
+
+/// Logique pure de selection : retourne les chemins a supprimer (un fichier garde par groupe).
+///
+/// Modes :
+/// - "newest" / "oldest" : par date de modification
+/// - "largest_size" : par taille de fichier (plus grand = garde), tie-break par newest
+/// - "highest_resolution" : pixels (video_metadata ou en-tete image), tie-break par largest_size puis newest;
+///   si aucun fichier du groupe n'a de resolution detectable, le groupe est ignore (aucun fichier coche)
+/// - "priority_folder" : garde le fichier dont le chemin commence par `folder_prefix`;
+///   si aucun ne matche, le groupe est ignore (aucun fichier coche); si plusieurs matchent, garde le plus recent
+pub fn select_files_to_delete(
+    groups: &[DuplicateGroup],
+    mode: &str,
+    folder_prefix: Option<&str>,
+) -> Vec<String> {
+    groups
+        .iter()
+        .flat_map(|group| {
+            if group.files.is_empty() {
+                return vec![];
+            }
+            let keep: Option<&DuplicateFile> = match mode {
+                "newest" => group.files.iter().max_by_key(|f| f.modified),
+                "oldest" => group.files.iter().min_by_key(|f| f.modified),
+                "largest_size" => group.files.iter().max_by(|a, b| {
+                    a.size.cmp(&b.size).then(a.modified.cmp(&b.modified))
+                }),
+                "highest_resolution" => {
+                    let any_has_resolution =
+                        group.files.iter().any(|f| pixel_count_for_file(f).is_some());
+                    if !any_has_resolution {
+                        return vec![];
+                    }
+                    group.files.iter().max_by(|a, b| {
+                        let pa = pixel_count_for_file(a).unwrap_or(0);
+                        let pb = pixel_count_for_file(b).unwrap_or(0);
+                        pa.cmp(&pb)
+                            .then(a.size.cmp(&b.size))
+                            .then(a.modified.cmp(&b.modified))
+                    })
+                }
+                "priority_folder" => {
+                    let prefix = folder_prefix.unwrap_or("");
+                    let in_priority: Vec<&DuplicateFile> = group
+                        .files
+                        .iter()
+                        .filter(|f| f.path.starts_with(prefix))
+                        .collect();
+                    if in_priority.is_empty() {
+                        return vec![];
+                    }
+                    in_priority.into_iter().max_by_key(|f| f.modified)
+                }
+                _ => group.files.first(),
+            };
+            group
+                .files
+                .iter()
+                .filter(|f| keep.map_or(true, |k| k.path != f.path))
+                .map(|f| f.path.clone())
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
 #[tauri::command]
 fn select_all_duplicates(app: tauri::AppHandle) -> Result<Vec<String>, String> {
     let cache = app.state::<ScanCache>();
@@ -350,34 +426,193 @@ fn select_all_duplicates(app: tauri::AppHandle) -> Result<Vec<String>, String> {
 }
 
 #[tauri::command]
-fn smart_select(app: tauri::AppHandle, mode: String) -> Result<Vec<String>, String> {
+async fn smart_select(
+    app: tauri::AppHandle,
+    mode: String,
+    folder_prefix: Option<String>,
+) -> Result<Vec<String>, String> {
     let cache = app.state::<ScanCache>();
-    let guard = cache.0.lock().unwrap();
-    match *guard {
-        None => Err("Aucune session chargée".to_string()),
-        Some(ref loaded) => {
-            let paths: Vec<String> = loaded
-                .groups
-                .iter()
-                .flat_map(|group| {
-                    if group.files.is_empty() {
-                        return vec![];
-                    }
-                    let keep = match mode.as_str() {
-                        "newest" => group.files.iter().max_by_key(|f| f.modified),
-                        "oldest" => group.files.iter().min_by_key(|f| f.modified),
-                        _ => group.files.first(),
-                    };
-                    group
-                        .files
-                        .iter()
-                        .filter(|f| keep.map_or(true, |k| k.path != f.path))
-                        .map(|f| f.path.clone())
-                        .collect::<Vec<_>>()
-                })
-                .collect();
-            Ok(paths)
+    let groups = {
+        let guard = cache.0.lock().unwrap();
+        match *guard {
+            None => return Err("Aucune session chargée".to_string()),
+            Some(ref loaded) => loaded.groups.clone(),
         }
+    };
+    tauri::async_runtime::spawn_blocking(move || {
+        Ok(select_files_to_delete(&groups, &mode, folder_prefix.as_deref()))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use scanner::{DuplicateFile, DuplicateGroup};
+    use video_hash::VideoMetadata;
+
+    fn make_file(path: &str, size: u64, modified: u64) -> DuplicateFile {
+        DuplicateFile {
+            path: path.to_string(),
+            name: path.split('/').last().unwrap_or(path).to_string(),
+            size,
+            modified,
+            video_metadata: None,
+            audio_metadata: None,
+        }
+    }
+
+    fn make_group(files: Vec<DuplicateFile>) -> DuplicateGroup {
+        DuplicateGroup {
+            id: "test".to_string(),
+            hash: "abc".to_string(),
+            size: files.first().map_or(0, |f| f.size),
+            files,
+            folder_key: None,
+            similar: false,
+            video_similar: false,
+            audio_similar: false,
+        }
+    }
+
+    #[test]
+    fn test_largest_size_keeps_biggest() {
+        let groups = vec![make_group(vec![
+            make_file("/a/small.jpg", 100, 100),
+            make_file("/a/large.jpg", 300, 50),
+            make_file("/a/medium.jpg", 200, 200),
+        ])];
+        let result = select_files_to_delete(&groups, "largest_size", None);
+        assert_eq!(result.len(), 2);
+        assert!(!result.contains(&"/a/large.jpg".to_string()));
+        assert!(result.contains(&"/a/small.jpg".to_string()));
+        assert!(result.contains(&"/a/medium.jpg".to_string()));
+    }
+
+    #[test]
+    fn test_largest_size_tiebreak_newest() {
+        let groups = vec![make_group(vec![
+            make_file("/a/old.jpg", 100, 50),
+            make_file("/a/new.jpg", 100, 200),
+        ])];
+        let result = select_files_to_delete(&groups, "largest_size", None);
+        assert_eq!(result.len(), 1);
+        assert!(result.contains(&"/a/old.jpg".to_string()));
+    }
+
+    #[test]
+    fn test_priority_folder_keeps_matching() {
+        let groups = vec![make_group(vec![
+            make_file("/other/file.jpg", 100, 50),
+            make_file("/priority/file.jpg", 100, 50),
+        ])];
+        let result = select_files_to_delete(&groups, "priority_folder", Some("/priority"));
+        assert_eq!(result.len(), 1);
+        assert!(result.contains(&"/other/file.jpg".to_string()));
+    }
+
+    #[test]
+    fn test_priority_folder_no_match_skips_group() {
+        let groups = vec![make_group(vec![
+            make_file("/a/old.jpg", 100, 50),
+            make_file("/a/new.jpg", 100, 200),
+        ])];
+        let result =
+            select_files_to_delete(&groups, "priority_folder", Some("/not-matching"));
+        assert!(result.is_empty(), "aucun fichier coché si aucun ne correspond au préfixe");
+    }
+
+    #[test]
+    fn test_priority_folder_multiple_matches_keeps_newest() {
+        let groups = vec![make_group(vec![
+            make_file("/priority/old.jpg", 100, 50),
+            make_file("/priority/new.jpg", 100, 200),
+            make_file("/other/file.jpg", 100, 300),
+        ])];
+        let result = select_files_to_delete(&groups, "priority_folder", Some("/priority"));
+        assert_eq!(result.len(), 2);
+        assert!(!result.contains(&"/priority/new.jpg".to_string()));
+        assert!(result.contains(&"/priority/old.jpg".to_string()));
+        assert!(result.contains(&"/other/file.jpg".to_string()));
+    }
+
+    #[test]
+    fn test_highest_resolution_video_keeps_hd() {
+        let mut hd = make_file("/a/hd.mp4", 1000, 100);
+        hd.video_metadata = Some(VideoMetadata {
+            duration_secs: 60.0,
+            width: 1920,
+            height: 1080,
+            codec: "h264".to_string(),
+        });
+        let mut sd = make_file("/a/sd.mp4", 500, 200);
+        sd.video_metadata = Some(VideoMetadata {
+            duration_secs: 60.0,
+            width: 1280,
+            height: 720,
+            codec: "h264".to_string(),
+        });
+        let groups = vec![make_group(vec![sd, hd])];
+        let result = select_files_to_delete(&groups, "highest_resolution", None);
+        assert_eq!(result.len(), 1);
+        assert!(result.contains(&"/a/sd.mp4".to_string()));
+    }
+
+    #[test]
+    fn test_highest_resolution_tiebreak_largest_then_newest() {
+        let mut a = make_file("/a/a.mp4", 100, 100);
+        a.video_metadata = Some(VideoMetadata {
+            duration_secs: 60.0,
+            width: 1920,
+            height: 1080,
+            codec: "h264".to_string(),
+        });
+        let mut b = make_file("/a/b.mp4", 200, 50);
+        b.video_metadata = Some(VideoMetadata {
+            duration_secs: 60.0,
+            width: 1920,
+            height: 1080,
+            codec: "h264".to_string(),
+        });
+        let groups = vec![make_group(vec![a, b])];
+        let result = select_files_to_delete(&groups, "highest_resolution", None);
+        assert_eq!(result.len(), 1);
+        assert!(result.contains(&"/a/a.mp4".to_string()));
+    }
+
+    #[test]
+    #[test]
+    fn test_select_empty_group_returns_empty() {
+        let groups = vec![make_group(vec![])];
+        let result = select_files_to_delete(&groups, "largest_size", None);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_highest_resolution_no_metadata_skips_group() {
+        let groups = vec![make_group(vec![
+            make_file("/a/doc1.pdf", 100, 100),
+            make_file("/a/doc2.pdf", 200, 200),
+        ])];
+        let result = select_files_to_delete(&groups, "highest_resolution", None);
+        assert!(result.is_empty(), "aucun fichier coché si aucune résolution détectable");
+    }
+
+    #[test]
+    fn test_highest_resolution_mixed_keeps_image_over_no_metadata() {
+        let mut img = make_file("/a/photo.jpg", 50, 100);
+        img.video_metadata = Some(VideoMetadata {
+            duration_secs: 0.0,
+            width: 1920,
+            height: 1080,
+            codec: "jpeg".to_string(),
+        });
+        let other = make_file("/a/doc.pdf", 200, 200);
+        let groups = vec![make_group(vec![other, img])];
+        let result = select_files_to_delete(&groups, "highest_resolution", None);
+        assert_eq!(result.len(), 1);
+        assert!(result.contains(&"/a/doc.pdf".to_string()));
     }
 }
 

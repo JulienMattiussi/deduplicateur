@@ -898,3 +898,127 @@ describe("L - SessionCard", () => {
     expect(screen.getByText("Chargement…").closest("button")).toBeDisabled();
   });
 });
+
+// ---- M : règles de sélection par métadonnées ----
+describe("M - règles de sélection", () => {
+  async function renderWithResults() {
+    const user = userEvent.setup();
+    mockInvoke.mockImplementation(
+      makeDefaultMock({
+        scan_folder: baseSummary,
+        get_groups_page: { groups: [baseGroup], offset: 0, total: 1, has_more: false },
+        smart_select: [],
+      })
+    );
+    mockDialogOpen.mockResolvedValue("/home/test");
+
+    render(<App />);
+    await user.click(screen.getByText(/Cliquer pour choisir un dossier/));
+    await waitFor(() => expect(screen.getByText("/home/test")).toBeInTheDocument());
+    await user.click(screen.getByText("Analyser"));
+    await waitFor(() => expect(screen.getByText(/fichiers identiques/)).toBeInTheDocument());
+    return user;
+  }
+
+  it("affiche le dropdown avec les 5 règles de sélection", async () => {
+    await renderWithResults();
+    const select = screen.getByTestId("rule-select") as HTMLSelectElement;
+    const options = Array.from(select.options).map((o) => o.value);
+    expect(options).toContain("newest");
+    expect(options).toContain("oldest");
+    expect(options).toContain("highest_resolution");
+    expect(options).toContain("largest_size");
+    expect(options).toContain("priority_folder");
+  });
+
+  it("l'input dossier prioritaire n'est pas visible par défaut", async () => {
+    await renderWithResults();
+    expect(screen.queryByPlaceholderText(/prioritaire/i)).not.toBeInTheDocument();
+  });
+
+  it("l'input dossier prioritaire apparaît quand priority_folder est sélectionné", async () => {
+    const user = await renderWithResults();
+    const select = screen.getByTestId("rule-select");
+    await user.selectOptions(select, "priority_folder");
+    expect(screen.getByPlaceholderText(/prioritaire/i)).toBeInTheDocument();
+  });
+
+  it("l'input dossier prioritaire disparaît quand on change de règle", async () => {
+    const user = await renderWithResults();
+    const select = screen.getByTestId("rule-select");
+    await user.selectOptions(select, "priority_folder");
+    await user.selectOptions(select, "newest");
+    expect(screen.queryByPlaceholderText(/prioritaire/i)).not.toBeInTheDocument();
+  });
+
+  it("Appliquer avec newest appelle smart_select avec mode newest", async () => {
+    const user = await renderWithResults();
+    await user.click(screen.getByRole("button", { name: "Appliquer" }));
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("smart_select", {
+        mode: "newest",
+        folderPrefix: null,
+      });
+    });
+  });
+
+  it("Appliquer avec largest_size appelle smart_select avec mode largest_size", async () => {
+    const user = await renderWithResults();
+    const select = screen.getByTestId("rule-select");
+    await user.selectOptions(select, "largest_size");
+    await user.click(screen.getByRole("button", { name: "Appliquer" }));
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("smart_select", {
+        mode: "largest_size",
+        folderPrefix: null,
+      });
+    });
+  });
+
+  it("Appliquer avec priority_folder transmet le chemin saisi", async () => {
+    const user = await renderWithResults();
+    const select = screen.getByTestId("rule-select");
+    await user.selectOptions(select, "priority_folder");
+    const input = screen.getByPlaceholderText(/prioritaire/i);
+    await user.type(input, "/home/important");
+    await user.click(screen.getByRole("button", { name: "Appliquer" }));
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("smart_select", {
+        mode: "priority_folder",
+        folderPrefix: "/home/important",
+      });
+    });
+  });
+
+  it("aucun fichier coché si smart_select retourne [] (groupe ignoré)", async () => {
+    const user = await renderWithResults();
+    await user.click(screen.getByRole("button", { name: "Appliquer" }));
+    await waitFor(() =>
+      expect(mockInvoke).toHaveBeenCalledWith("smart_select", expect.anything())
+    );
+    expect(screen.queryByText(/Supprimer \d+ fichier/)).not.toBeInTheDocument();
+  });
+
+  it("les fichiers retournés par smart_select sont cochés dans l'UI", async () => {
+    const user = userEvent.setup();
+    mockInvoke.mockImplementation(
+      makeDefaultMock({
+        scan_folder: baseSummary,
+        get_groups_page: { groups: [baseGroup], offset: 0, total: 1, has_more: false },
+        smart_select: ["/a/file1.txt"],
+      })
+    );
+    mockDialogOpen.mockResolvedValue("/home/test");
+
+    render(<App />);
+    await user.click(screen.getByText(/Cliquer pour choisir un dossier/));
+    await waitFor(() => expect(screen.getByText("/home/test")).toBeInTheDocument());
+    await user.click(screen.getByText("Analyser"));
+    await waitFor(() => expect(screen.getByText(/fichiers identiques/)).toBeInTheDocument());
+
+    await user.click(screen.getByRole("button", { name: "Appliquer" }));
+    await waitFor(() =>
+      expect(screen.getByText(/Supprimer 1 fichier/)).toBeInTheDocument()
+    );
+  });
+});

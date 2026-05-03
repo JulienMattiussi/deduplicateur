@@ -9,7 +9,7 @@ import type { DuplicateGroup, FolderSummary, ScanProfile, ScanSummary } from "./
 import { useScanConfig } from "./hooks/useScanConfig";
 import { useScanExecution } from "./hooks/useScanExecution";
 import { useResults } from "./hooks/useResults";
-import { useSelectionState } from "./hooks/useSelectionState";
+import { useSelectionState, type SmartMode } from "./hooks/useSelectionState";
 import { useProfiles } from "./hooks/useProfiles";
 import { ImageComparator } from "./ImageComparator";
 import { SessionCard } from "./components/SessionCard";
@@ -52,6 +52,8 @@ export default function App() {
   const [filterText, setFilterText] = useState("");
   const [comparatorIdx, setComparatorIdx] = useState<number | null>(null);
   const [resumingId, setResumingId] = useState<string | null>(null);
+  const [smartRule, setSmartRule] = useState<SmartMode>("newest");
+  const [priorityFolder, setPriorityFolder] = useState("");
 
   const config = useScanConfig();
   const results = useResults(setError);
@@ -484,8 +486,38 @@ export default function App() {
         <>
           <div className="toolbar">
             <button className="btn-ghost" onClick={selection.selectAllDuplicates} disabled={selection.selecting}>{t.selectAll}</button>
-            <button className="btn-ghost" onClick={() => selection.selectSmart("newest")} disabled={selection.selecting}>{t.keepNewest}</button>
-            <button className="btn-ghost" onClick={() => selection.selectSmart("oldest")} disabled={selection.selecting}>{t.keepOldest}</button>
+            <span className="rule-selector">
+              <span className="rule-label">{t.selectionRule}</span>
+              <select
+                data-testid="rule-select"
+                className="rule-select"
+                value={smartRule}
+                onChange={(e) => setSmartRule(e.target.value as SmartMode)}
+                disabled={selection.selecting}
+              >
+                <option value="newest">{t.keepNewest}</option>
+                <option value="oldest">{t.keepOldest}</option>
+                <option value="highest_resolution">{t.keepHighestResolution}</option>
+                <option value="largest_size">{t.keepLargestFile}</option>
+                <option value="priority_folder">{t.keepPriorityFolder}</option>
+              </select>
+              {smartRule === "priority_folder" && (
+                <input
+                  className="rule-folder-input"
+                  value={priorityFolder}
+                  onChange={(e) => setPriorityFolder(e.target.value)}
+                  placeholder={t.priorityFolderPlaceholder}
+                  disabled={selection.selecting}
+                />
+              )}
+              <button
+                className="btn-ghost"
+                onClick={() => selection.selectSmart(smartRule, smartRule === "priority_folder" ? priorityFolder : undefined)}
+                disabled={selection.selecting}
+              >
+                {t.applyRule}
+              </button>
+            </span>
             <button className="btn-ghost" onClick={selection.clearSelection} disabled={selection.selecting}>{t.deselect}</button>
             {selection.selected.size > 0 && !selection.selecting && (
               <button className="btn-danger" onClick={() => selection.setConfirmPending(true)} disabled={selection.deleting}>
