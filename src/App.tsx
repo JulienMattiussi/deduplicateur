@@ -440,7 +440,7 @@ export default function App() {
           disabled={scanExec.scanning}
         />
         {summary && (
-          <div className="stats-row">
+          <div className="stats-row" data-testid="stats-row">
             <span className="stat"><strong>{summary.scanned_files}</strong> {t.filesScanned}</span>
             {summary.by_folder && (
               <span className="stat"><strong>{summary.total_folders}</strong> {summary.total_folders > 1 ? t.folders : t.folder}</span>

@@ -56,6 +56,7 @@ export function GroupCard({
     const active = sortKey === col;
     return (
       <span
+        data-testid={`sort-${col}`}
         className={`${className} file-col-sortable`}
         onClick={() => handleSortClick(col)}
       >
@@ -88,7 +89,7 @@ export function GroupCard({
       </button>
 
       {expanded && (
-        <div className="group-files">
+        <div className="group-files" data-testid="group-files">
           <div className="file-row-header">
             <span className="file-col-cb" />
             {(isImageGroup || isVideoGroup || isAudioGroup) && <span className="file-col-thumb" />}

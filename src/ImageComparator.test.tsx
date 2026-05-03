@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ImageComparator } from "./ImageComparator";
 import { LangProvider } from "./LangContext";
@@ -155,12 +155,10 @@ describe("D - onglets et swap", () => {
 
   it("groupe de 3 fichiers : affiche 3 onglets dans chaque groupe L et R", () => {
     render2({ groups: [group3] });
-    // Chaque groupe d'onglets (Gauche et Droite) doit contenir 3 boutons d'onglet
-    const tabGroups = document.querySelectorAll(".comparator-tabs-group");
-    expect(tabGroups).toHaveLength(2);
-    tabGroups.forEach((group) => {
-      expect(group.querySelectorAll(".comparator-tab")).toHaveLength(3);
-    });
+    const tabsLeft = screen.getByTestId("tabs-left");
+    const tabsRight = screen.getByTestId("tabs-right");
+    expect(within(tabsLeft).getAllByRole("button")).toHaveLength(3);
+    expect(within(tabsRight).getAllByRole("button")).toHaveLength(3);
   });
 });
 
@@ -169,11 +167,9 @@ describe("E - mode overlay", () => {
   it("bascule en mode overlay au clic sur ⧉", async () => {
     const user = userEvent.setup();
     render2();
-    // En mode normal, les panneaux côte à côte existent
-    expect(document.querySelector(".comparator-body")).toBeInTheDocument();
+    expect(screen.getByTestId("comparator-body")).toBeInTheDocument();
     await user.click(screen.getByText("⧉"));
-    // En mode overlay, la classe --overlay est ajoutée
-    expect(document.querySelector(".comparator-body--overlay")).toBeInTheDocument();
+    expect(screen.getByTestId("comparator-body-overlay")).toBeInTheDocument();
   });
 
   it("repasse en mode normal au deuxième clic sur ⧉", async () => {
@@ -181,7 +177,7 @@ describe("E - mode overlay", () => {
     render2();
     await user.click(screen.getByText("⧉"));
     await user.click(screen.getByText("⧉"));
-    expect(document.querySelector(".comparator-body--overlay")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("comparator-body-overlay")).not.toBeInTheDocument();
   });
 });
 

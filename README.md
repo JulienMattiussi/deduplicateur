@@ -25,7 +25,7 @@ Outil de détection et suppression de fichiers en double - rapide, local, sans c
 - **Similarité images** - détecte les images visuellement identiques même si les résolutions, formats ou compressions diffèrent (gradient hash via `image_hasher`, seuil configurable)
 - **Pipeline pHash optimisé** - 5 optimisations configurables (filtre taille, filtre ratio d'aspect, hash 2 passes, cache inter-scans, comparaison parallèle) avec seuils intelligents par nombre d'images
 - **Paramètres avancés images** - panneau configurable dans l'UI (taille minimale, tolérance ratio, cache, mode développeur avec log de perf)
-- **Thumbnails cliquables** - aperçu côte à côte des images et vidéos similaires ; cliquer ouvre le fichier dans le visualisateur par défaut du système
+- **Thumbnails cliquables** - aperçu des images, vidéos et fichiers audio similaires (bouton play pour l'audio) ; cliquer ouvre le fichier dans l'application par défaut du système
 - **Similarité vidéos** - détecte les mêmes vidéos en formats/résolutions différents via ffmpeg (N frames échantillonnées → mean hash 64 bits, seuil configurable)
 - **Pipeline vidéo optimisé** - métadonnées en parallèle, cache inter-scans (`video_cache.json`), extraction rayon, filtre de durée configurable, comparaison O(n²) parallèle
 - **DTW vidéo** - option alignement temporel (Dynamic Time Warping) pour détecter les vidéos avec intro ou générique court, via une bande de Sakoe-Chiba
@@ -109,6 +109,8 @@ src/components/
   SessionCard.tsx          # Carte session précédente
   AudioAdvancedPanel.tsx   # Paramètres avancés audio
   VideoAdvancedPanel.tsx   # Paramètres avancés vidéo
+  AdvancedPanel.tsx        # Paramètres avancés images (pHash)
+  AdvancedPanelWrapper.tsx # Wrapper partagé : toggle, reset, body collapsible
 ```
 
 ### Pipeline de déduplication
@@ -160,8 +162,8 @@ Chaque scan produit un fichier JSON dans `~/.local/share/deduplicateur/sessions/
 | Bundler | Vite + Tauri CLI | Dev HMR + build natif |
 | CI/CD | GitHub Actions | Build Windows automatique sur push |
 | Similarité audio | fpcalc/chromaprint (subprocess) | Empreinte acoustique, distance de Hamming sur vecteurs i32, cache inter-scans |
-| Tests Rust | cargo test + tempfile | 117 tests unitaires sur le moteur |
-| Tests TS | Vitest + jsdom + React Testing Library | 83 tests (utilitaires + i18n + App + ImageComparator + MissingToolBanner) |
+| Tests Rust | cargo test + tempfile | 123 tests unitaires sur le moteur |
+| Tests TS | Vitest + jsdom + React Testing Library | 118 tests (utilitaires + i18n + App + ImageComparator + MissingToolBanner + FileThumbnail + AdvancedPanelWrapper) |
 
 ---
 
@@ -225,10 +227,10 @@ npm run tauri build    # produit un binaire dans src-tauri/target/release/
 ### Tests
 
 ```bash
-# Moteur Rust (117 tests)
+# Moteur Rust (123 tests)
 cargo test --manifest-path src-tauri/Cargo.toml
 
-# TypeScript - utilitaires + i18n + composants React (83 tests)
+# TypeScript - utilitaires + i18n + composants React (118 tests)
 npm test
 ```
 

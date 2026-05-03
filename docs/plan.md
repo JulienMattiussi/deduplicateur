@@ -232,9 +232,11 @@
 - [x] Extensions audio supportées : mp3, flac, ogg, m4a, aac, wav, wma, opus, aiff, ape
 - [x] Filtre de durée audio (tolérance %) avant comparaison O(n²), comme pour les vidéos
 - [x] Pipeline intégré au scanner : phase 4 optionnelle après hash exact, images et vidéos
-- [x] Seuil de similarité audio configurable dans l'UI (slider, défaut 80%)
+- [x] Seuil de similarité audio configurable dans l'UI (slider, défaut 100%)
 - [x] `AudioAdvancedPanel` : tolérance durée + cache
-- [x] Affichage durée dans les groupes audio (colonne Durée), icône 🎵, label "fichiers audio"
+- [x] Affichage durée dans les groupes audio (colonne Durée), icône bouton play (SVG), label "fichiers audio"
+- [x] Miniature bouton play cliquable dans les groupes audio : clic ouvre le fichier dans l'app par défaut
+- [x] Scan audio filtre les fichiers : seuls les fichiers audio sont passes dans la phase exacte en mode audio-only (correction bug doublons non-audio)
 - [x] Détection automatique absence de fpcalc - bandeau d'avertissement
 - [x] 115 tests Rust (+3 scanner audio phase), 75 tests TypeScript (+3 section J : params scan, bannière fpcalcMissing, tag SessionCard)
 
@@ -259,6 +261,24 @@
 - [x] `i18n.ts` : 5 nouvelles cles (toolMissingTitle, toolMissingDesc, toolInstallWindows/Mac/Linux, toolDownload, toolCheckAgain, toolFound)
 - [x] `App.tsx` : remplace les deux banners texte par `<MissingToolBanner>` avec callback `onAvailable`
 - [x] `MissingToolBanner.test.tsx` : 8 tests (rendu, boutons, shell open, check_tools, onAvailable, message trouvé)
-- [x] 117 tests Rust (+2 tool_finder), 83 tests TypeScript (+8 MissingToolBanner)
+- [x] 117 tests Rust (+2 tool_finder), 84 tests TypeScript (+8 MissingToolBanner, +1 audio improvements)
+
 
 **Critère de validation : lancer l'app sans fpcalc ni ffmpeg, voir la banniere avec instructions, cliquer Telecharger**
+
+---
+
+## Refactoring code quality ✅
+
+- [x] `lib.rs` : suppression du parametre `summary` inutilise dans `generate_csv`
+- [x] `lib.rs` : helpers `load_cfg` / `save_cfg` - les 6 commandes de config (get/set phash/video/audio) utilisent ces helpers au lieu de repeter le pattern `app_data_dir + ok_or`
+- [x] `AdvancedPanelWrapper.tsx` : composant wrapper partage pour les 3 panneaux avances (toggle, reset, body) - `AdvancedPanel`, `VideoAdvancedPanel`, `AudioAdvancedPanel` refactores pour l'utiliser
+- [x] `App.test.tsx` : remplacement des 3 `document.querySelector` par des queries RTL (`getByTestId`, `within`, `getAllByRole`) ; `data-testid` ajoutes sur `stats-row` (App.tsx) et `group-files` (GroupCard.tsx)
+- [x] `ImageComparator.test.tsx` : remplacement des `document.querySelector` par `getByTestId` + `within` ; `data-testid` ajoutes sur les deux groupes d'onglets et les divs corps du comparateur
+- [x] `FileThumbnail.test.tsx` : 8 tests (mode audio SVG + click, mode image invoke + rendu + erreur + click, mode vidéo invoke + args + erreur)
+- [x] `AdvancedPanelWrapper.test.tsx` : 7 tests (ouverture/fermeture, reset visible seulement ouvert, click reset, disabled toggle et reset)
+- [x] `GroupCard` section K dans App.test.tsx : 7 tests (tri nom asc/desc/reset, indicateurs ↑↓, tri date)
+- [x] `SessionCard` section L dans App.test.tsx : 11 tests (relativeDate 4 cas, sessionTags 5 cas, active/resuming)
+- [x] `cache_io.rs` : 5 tests (round-trip, absent, non-dirty, dirty reset, JSON invalide)
+- [x] `tool_finder.rs` : +1 test (binaries/ sous-dossier)
+- [x] 123 tests Rust, 118 tests TypeScript

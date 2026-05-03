@@ -207,7 +207,7 @@ export function ImageComparator({
       </div>
 
       <div className="comparator-tabs">
-        <div className="comparator-tabs-group">
+        <div className="comparator-tabs-group" data-testid="tabs-left">
           <span className="comparator-tabs-side">{t.panelLeft}</span>
           {group.files.map((f, i) => (
             <button
@@ -220,7 +220,7 @@ export function ImageComparator({
             </button>
           ))}
         </div>
-        <div className="comparator-tabs-group">
+        <div className="comparator-tabs-group" data-testid="tabs-right">
           <span className="comparator-tabs-side">{t.panelRight}</span>
           {group.files.map((f, i) => (
             <button
@@ -236,13 +236,13 @@ export function ImageComparator({
       </div>
 
       {!overlayMode ? (
-        <div className="comparator-body">
+        <div className="comparator-body" data-testid="comparator-body">
           <Panel file={leftFile} thumb={leftThumb} meta={leftMeta} />
           <div className="comparator-divider" />
           <Panel file={rightFile} thumb={rightThumb} meta={rightMeta} />
         </div>
       ) : (
-        <div className="comparator-body comparator-body--overlay">
+        <div className="comparator-body comparator-body--overlay" data-testid="comparator-body-overlay">
           <div className="comparator-slider-wrap" ref={sliderWrapRef}>
             {leftThumb && leftThumb !== "error" && (
               <img

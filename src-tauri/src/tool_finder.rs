@@ -95,6 +95,31 @@ mod tests {
     }
 
     #[test]
+    fn find_tool_cherche_dans_binaries_sous_dossier() {
+        let exe = std::env::current_exe().expect("current_exe ok");
+        let exe_dir = exe.parent().expect("exe parent ok");
+        let binaries_dir = exe_dir.join("binaries");
+        std::fs::create_dir_all(&binaries_dir).expect("mkdir binaries ok");
+
+        #[cfg(target_os = "windows")]
+        let fake_name = "__test_tool_binaries__.exe";
+        #[cfg(not(target_os = "windows"))]
+        let fake_name = "__test_tool_binaries__";
+
+        let fake_path = binaries_dir.join(fake_name);
+        {
+            let mut f = std::fs::File::create(&fake_path).expect("create ok");
+            f.write_all(b"fake binary").expect("write ok");
+        }
+
+        let result = find_tool("__test_tool_binaries__");
+        let _ = std::fs::remove_file(&fake_path);
+
+        assert!(result.is_some(), "doit trouver le binaire dans binaries/");
+        assert_eq!(result.unwrap(), fake_path);
+    }
+
+    #[test]
     fn find_tool_returns_bundled_if_present() {
         // Simuler un binaire bundte en creant un fichier temporaire
         // a cote de l'executable courant

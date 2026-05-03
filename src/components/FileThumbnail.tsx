@@ -37,6 +37,7 @@ export function FileThumbnail({ file, mode }: { file: DuplicateFile; mode: "imag
       <img
         src={thumb}
         alt=""
+        data-testid="thumb-img"
         className="file-thumb-img"
         onClick={(e) => { e.stopPropagation(); openFile(file.path); }}
       />

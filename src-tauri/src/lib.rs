@@ -513,44 +513,32 @@ fn delete_files(paths: Vec<String>) -> Result<(), String> {
     }
 }
 
-#[tauri::command]
-fn get_phash_config(app: tauri::AppHandle) -> PHashConfig {
-    app_data_dir(&app)
-        .as_deref()
-        .map(load_config)
-        .unwrap_or_default()
+fn load_cfg<T: Default>(app: &tauri::AppHandle, load: impl Fn(&std::path::Path) -> T) -> T {
+    app_data_dir(app).as_deref().map(load).unwrap_or_default()
+}
+
+fn save_cfg<T>(app: &tauri::AppHandle, config: &T, save: impl Fn(&std::path::Path, &T) -> Result<(), String>) -> Result<(), String> {
+    let dir = app_data_dir(app).ok_or("Impossible d'acceder au dossier de donnees")?;
+    save(&dir, config)
 }
 
 #[tauri::command]
-fn set_phash_config(app: tauri::AppHandle, config: PHashConfig) -> Result<(), String> {
-    let dir = app_data_dir(&app).ok_or("Impossible d'acceder au dossier de donnees")?;
-    save_config(&dir, &config)
-}
+fn get_phash_config(app: tauri::AppHandle) -> PHashConfig { load_cfg(&app, load_config) }
 
 #[tauri::command]
-fn get_video_config(app: tauri::AppHandle) -> VideoConfig {
-    app_data_dir(&app)
-        .as_deref()
-        .map(video_config::load_config)
-        .unwrap_or_default()
-}
+fn set_phash_config(app: tauri::AppHandle, config: PHashConfig) -> Result<(), String> { save_cfg(&app, &config, save_config) }
 
 #[tauri::command]
-fn set_video_config(app: tauri::AppHandle, config: VideoConfig) -> Result<(), String> {
-    let dir = app_data_dir(&app).ok_or("Impossible d'acceder au dossier de donnees")?;
-    video_config::save_config(&dir, &config)
-}
+fn get_video_config(app: tauri::AppHandle) -> VideoConfig { load_cfg(&app, video_config::load_config) }
 
 #[tauri::command]
-fn get_audio_config(app: tauri::AppHandle) -> AudioConfig {
-    app_data_dir(&app).as_deref().map(audio_config::load_config).unwrap_or_default()
-}
+fn set_video_config(app: tauri::AppHandle, config: VideoConfig) -> Result<(), String> { save_cfg(&app, &config, video_config::save_config) }
 
 #[tauri::command]
-fn set_audio_config(app: tauri::AppHandle, config: AudioConfig) -> Result<(), String> {
-    let dir = app_data_dir(&app).ok_or("Impossible d'acceder au dossier de donnees")?;
-    audio_config::save_config(&dir, &config)
-}
+fn get_audio_config(app: tauri::AppHandle) -> AudioConfig { load_cfg(&app, audio_config::load_config) }
+
+#[tauri::command]
+fn set_audio_config(app: tauri::AppHandle, config: AudioConfig) -> Result<(), String> { save_cfg(&app, &config, audio_config::save_config) }
 
 #[tauri::command]
 async fn get_image_thumbnail(path: String, max_size: u32) -> Result<String, String> {
@@ -630,7 +618,7 @@ fn html_esc(s: &str) -> String {
     s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
 }
 
-fn generate_csv(summary: &ScanSummary, groups: &[DuplicateGroup]) -> String {
+fn generate_csv(groups: &[DuplicateGroup]) -> String {
     let mut out = String::from("Group ID,File Path,File Name,Size (bytes),Modified (Unix),Status\n");
     for group in groups {
         for (i, file) in group.files.iter().enumerate() {
@@ -725,7 +713,7 @@ async fn export_results(
     let file = read_session_file(&app, &session_id)
         .ok_or_else(|| "Session introuvable".to_string())?;
     let content = match format.as_str() {
-        "csv" => generate_csv(&file.summary, &file.groups),
+        "csv" => generate_csv(&file.groups),
         "html" => generate_html(&file.summary, &file.groups),
         _ => return Err(format!("Format inconnu: {}", format)),
     };

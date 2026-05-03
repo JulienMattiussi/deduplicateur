@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import App from "./App";
 import { GroupCard } from "./components/GroupCard";
@@ -130,14 +130,13 @@ describe("A - bouton retour Mes analyses", () => {
     expect(backBtn).toBeInTheDocument();
 
     await waitFor(() => {
-      const statElems = document.querySelectorAll(".stat");
-      expect(statElems.length).toBeGreaterThan(0);
+      expect(screen.getByTestId("stats-row")).toBeInTheDocument();
     });
 
     await user.click(backBtn);
 
     await waitFor(() => {
-      expect(document.querySelector(".stats-row")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("stats-row")).not.toBeInTheDocument();
     }, { timeout: 3000 });
   });
 });
@@ -181,9 +180,7 @@ describe("C - suppression de fichiers", () => {
     await user.click(screen.getByText("Analyser"));
     await waitFor(() => expect(screen.getByText(/fichiers identiques/)).toBeInTheDocument());
 
-    const groupCard = document.querySelector(".group-card");
-    const fileCheckboxes = groupCard!.querySelectorAll('input[type="checkbox"]');
-    await user.click(fileCheckboxes[0] as HTMLElement);
+    await user.click(within(screen.getAllByTestId("group-files")[0]).getAllByRole("checkbox")[0]);
 
     const deleteBtn = await screen.findByText(/Supprimer \d+ fichier/);
     await user.click(deleteBtn);
@@ -724,5 +721,180 @@ describe("J - mode audio", () => {
     // formatDurationSecs(183) = "3:03"
     const durations = screen.getAllByText("3:03");
     expect(durations.length).toBeGreaterThan(0);
+  });
+});
+
+// ---- K : tri des colonnes dans GroupCard ----
+const sortGroup = {
+  id: "g-sort",
+  hash: "abc",
+  size: 1024,
+  files: [
+    { path: "/a/charlie.txt", size: 1024, name: "charlie.txt", modified: 1700002000 },
+    { path: "/b/alpha.txt",   size: 2048, name: "alpha.txt",   modified: 1700001000 },
+    { path: "/c/bravo.txt",   size: 512,  name: "bravo.txt",   modified: 1700000000 },
+  ],
+};
+
+describe("K - tri des colonnes GroupCard", () => {
+  it("clic sur Nom trie par nom croissant (alpha en premier)", () => {
+    const onToggle = vi.fn();
+    render(<GroupCard group={sortGroup} selected={new Set()} onToggle={onToggle} />);
+    fireEvent.click(screen.getByTestId("sort-name"));
+    fireEvent.click(within(screen.getByTestId("group-files")).getAllByRole("checkbox")[0]);
+    expect(onToggle).toHaveBeenCalledWith("/b/alpha.txt");
+  });
+
+  it("deuxième clic sur Nom trie par nom décroissant (charlie en premier)", () => {
+    const onToggle = vi.fn();
+    render(<GroupCard group={sortGroup} selected={new Set()} onToggle={onToggle} />);
+    fireEvent.click(screen.getByTestId("sort-name"));
+    fireEvent.click(screen.getByTestId("sort-name"));
+    fireEvent.click(within(screen.getByTestId("group-files")).getAllByRole("checkbox")[0]);
+    expect(onToggle).toHaveBeenCalledWith("/a/charlie.txt");
+  });
+
+  it("troisième clic sur Nom remet l'ordre original (charlie en premier)", () => {
+    const onToggle = vi.fn();
+    render(<GroupCard group={sortGroup} selected={new Set()} onToggle={onToggle} />);
+    fireEvent.click(screen.getByTestId("sort-name"));
+    fireEvent.click(screen.getByTestId("sort-name"));
+    fireEvent.click(screen.getByTestId("sort-name"));
+    fireEvent.click(within(screen.getByTestId("group-files")).getAllByRole("checkbox")[0]);
+    expect(onToggle).toHaveBeenCalledWith("/a/charlie.txt");
+  });
+
+  it("indicateur ↑ visible après premier clic sur Nom", () => {
+    render(<GroupCard group={sortGroup} selected={new Set()} onToggle={vi.fn()} />);
+    fireEvent.click(screen.getByTestId("sort-name"));
+    expect(screen.getByText("↑")).toBeInTheDocument();
+  });
+
+  it("indicateur ↓ visible après deuxième clic sur Nom", () => {
+    render(<GroupCard group={sortGroup} selected={new Set()} onToggle={vi.fn()} />);
+    fireEvent.click(screen.getByTestId("sort-name"));
+    fireEvent.click(screen.getByTestId("sort-name"));
+    expect(screen.getByText("↓")).toBeInTheDocument();
+  });
+
+  it("indicateur absent après troisième clic (tri annulé)", () => {
+    render(<GroupCard group={sortGroup} selected={new Set()} onToggle={vi.fn()} />);
+    fireEvent.click(screen.getByTestId("sort-name"));
+    fireEvent.click(screen.getByTestId("sort-name"));
+    fireEvent.click(screen.getByTestId("sort-name"));
+    expect(screen.queryByText("↑")).not.toBeInTheDocument();
+    expect(screen.queryByText("↓")).not.toBeInTheDocument();
+  });
+
+  it("clic sur Modifié trie par date croissante (bravo, le plus ancien, en premier)", () => {
+    const onToggle = vi.fn();
+    render(<GroupCard group={sortGroup} selected={new Set()} onToggle={onToggle} />);
+    fireEvent.click(screen.getByTestId("sort-modified"));
+    fireEvent.click(within(screen.getByTestId("group-files")).getAllByRole("checkbox")[0]);
+    expect(onToggle).toHaveBeenCalledWith("/c/bravo.txt");
+  });
+});
+
+// ---- L : SessionCard ----
+const makeSession = (overrides = {}) => ({
+  id: String(Date.now()),
+  folder: "/home/test",
+  total_wasted_bytes: 2048,
+  total_groups: 1,
+  scanned_files: 10,
+  duration_ms: 50,
+  by_folder: false,
+  total_folders: 0,
+  partial: false,
+  ...overrides,
+});
+
+function renderSession(overrides = {}) {
+  return renderWithLang(
+    <SessionCard
+      session={makeSession(overrides)}
+      active={false}
+      resuming={false}
+      onResume={vi.fn()}
+      onDelete={vi.fn()}
+    />
+  );
+}
+
+describe("L - SessionCard", () => {
+  it("relativeDate : affiche 'à l'instant' si la session vient d'être créée", () => {
+    renderSession({ id: String(Date.now()) });
+    expect(screen.getByText("à l'instant")).toBeInTheDocument();
+  });
+
+  it("relativeDate : affiche 'il y a N min' pour une session de 5 minutes", () => {
+    renderSession({ id: String(Date.now() - 5 * 60 * 1000) });
+    expect(screen.getByText("il y a 5 min")).toBeInTheDocument();
+  });
+
+  it("relativeDate : affiche 'il y a N h' pour une session de 3 heures", () => {
+    renderSession({ id: String(Date.now() - 3 * 3_600_000) });
+    expect(screen.getByText("il y a 3 h")).toBeInTheDocument();
+  });
+
+  it("relativeDate : affiche 'il y a N j' pour une session de 2 jours", () => {
+    renderSession({ id: String(Date.now() - 2 * 86_400_000) });
+    expect(screen.getByText("il y a 2 j")).toBeInTheDocument();
+  });
+
+  it("sessionTags : tag 'doublons exacts' quand aucune similarité n'est activée", () => {
+    renderSession();
+    expect(screen.getByText("doublons exacts")).toBeInTheDocument();
+  });
+
+  it("sessionTags : tag 'par dossier' quand by_folder est vrai", () => {
+    renderSession({ by_folder: true });
+    expect(screen.getByText("par dossier")).toBeInTheDocument();
+  });
+
+  it("sessionTags : tag 'récursif' quand recursive est vrai et by_folder faux", () => {
+    renderSession({ recursive: true, by_folder: false });
+    expect(screen.getByText("récursif")).toBeInTheDocument();
+  });
+
+  it("sessionTags : tag 'dossier plat' quand ni by_folder ni recursive", () => {
+    renderSession({ recursive: false, by_folder: false });
+    expect(screen.getByText("dossier plat")).toBeInTheDocument();
+  });
+
+  it("sessionTags : tags images + vidéos + audio cumulables", () => {
+    renderSession({ find_similar: true, find_similar_videos: true, find_similar_audio: true });
+    expect(screen.getByText("similarité images")).toBeInTheDocument();
+    expect(screen.getByText("similarité vidéos")).toBeInTheDocument();
+    expect(screen.getByText("similarité audio")).toBeInTheDocument();
+    expect(screen.queryByText("doublons exacts")).not.toBeInTheDocument();
+  });
+
+  it("bouton Reprendre désactivé quand active=true, affiche 'En cours'", () => {
+    renderWithLang(
+      <SessionCard
+        session={makeSession()}
+        active={true}
+        resuming={false}
+        onResume={vi.fn()}
+        onDelete={vi.fn()}
+      />
+    );
+    expect(screen.getByText("En cours")).toBeInTheDocument();
+    expect(screen.getByText("En cours").closest("button")).toBeDisabled();
+  });
+
+  it("bouton Reprendre désactivé et spinner visible quand resuming=true", () => {
+    renderWithLang(
+      <SessionCard
+        session={makeSession()}
+        active={false}
+        resuming={true}
+        onResume={vi.fn()}
+        onDelete={vi.fn()}
+      />
+    );
+    expect(screen.getByText("Chargement…")).toBeInTheDocument();
+    expect(screen.getByText("Chargement…").closest("button")).toBeDisabled();
   });
 });
