@@ -306,18 +306,20 @@
 
 ---
 
-## Phase 15 - Liste d'ignorés
+## Phase 15 - Liste d'ignorés ✅
 
 **Objectif : ne plus voir resurgir des groupes que l'utilisateur a décidé de laisser en place**
 
-- [ ] `ignore_list.rs` : persistance JSON dans `~/.local/share/deduplicateur/ignore_list.json`, clé = paire de hashes canoniques (ordre trié pour éviter les doublons A-B / B-A)
-- [ ] Commande Tauri `ignore_group(group_id)` : ajoute la paire de hashes du groupe à la liste
-- [ ] Commande Tauri `get_ignore_list()` / `clear_ignore_entry(key)` / `clear_all_ignored()`
-- [ ] `scanner.rs` : filtrage post-scan - les groupes dont tous les fichiers sont dans la liste d'ignorés sont exclus des résultats
-- [ ] UI : bouton "Ignorer ce groupe" sur chaque `GroupCard` (à côté du bouton de suppression)
-- [ ] UI : panneau "Ignorés" accessible depuis les paramètres - liste les paires ignorées avec chemin, bouton "Retirer" par entrée et bouton "Tout effacer"
-- [ ] Tests Rust : ajout, filtrage, suppression d'entrée, round-trip JSON
-- [ ] Tests TypeScript : bouton ignorer, rendu panneau ignorés, suppression d'entrée
+- [x] `ignore_list.rs` : persistance JSON dans `~/.local/share/deduplicateur/ignore_list.json`, clé = chemins triés et joints par `|` (stable et canonique même pour groupes pHash/vidéo/audio)
+- [x] Commande Tauri `ignore_group(group_id)` : ajoute la paire de chemins du groupe à la liste, avec `display_names` et timestamp
+- [x] Commande Tauri `get_ignore_list()` / `clear_ignore_entry(key)` / `clear_all_ignored()`
+- [x] `scanner.rs` : filtrage post-scan - les groupes dont la clé est dans `ignored_keys` (HashSet chargé au début du scan) sont exclus des résultats
+- [x] UI : bouton "✕" sur chaque `GroupCard` (à côté du bouton Comparer), visible dans tous les modes
+- [x] UI : panneau `IgnoredPanel` affiché sous la barre de filtre dans la vue résultats - liste les entrées ignorées avec noms, date, bouton "Retirer" par entrée et bouton "Tout effacer"
+- [x] `FolderSection` : prop `onIgnore` transmise aux `GroupCard` imbriquées
+- [x] Tests Rust : 8 tests dans `ignore_list.rs` (canonicité, add/contains, remove, clear, round-trip JSON, tri par date) + 3 tests scanner (groupe exclu, autres groupes conservés, hashset vide ne filtre rien)
+- [x] Tests TypeScript : 11 tests `IgnoredPanel.test.tsx` (badge, dropdown fermé/ouvert, Retirer, Tout effacer, entrées multiples) + 7 tests section N `App.test.tsx` (bouton visible, appels invoke, groupe disparaît, panneau dans header, entrées affichées, Retirer, Tout effacer) + 3 tests `FolderSection.test.tsx` (bouton absent sans prop, bouton présent, onIgnore transmis avec le bon id)
+- [x] 145 tests Rust / 148 tests TypeScript - tous au vert
 
 **Critère de validation : ignorer un groupe, relancer le scan, le groupe n'apparait plus ; aller dans les paramètres et le "désignorer"**
 

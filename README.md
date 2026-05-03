@@ -47,6 +47,7 @@ Outil de détection et suppression de fichiers en double - rapide, local, sans c
 - **Recherche élargie des outils** - ffmpeg et fpcalc sont recherchés à côté de l'exécutable (binaire bundlé), dans les chemins système courants (Chocolatey, Scoop, Homebrew, paquets système), puis dans le PATH
 - **Bannière d'installation guidée** - si ffmpeg ou fpcalc est absent, l'app affiche un bandeau avec instructions d'installation OS-spécifiques, lien de téléchargement officiel, et bouton "Vérifier à nouveau" pour détecter l'installation sans relancer l'app
 - **Règles de sélection par métadonnées** - dropdown dans la barre d'actions pour choisir automatiquement quel fichier garder dans chaque groupe : plus haute résolution (images via en-tête, vidéos via métadonnées), plus grand fichier (audio/vidéo), dossier prioritaire (chemin configurable - si aucun fichier ne s'y trouve, le groupe est laissé sans sélection), plus récent, plus ancien
+- **Liste d'ignorés** - bouton "✕" sur chaque groupe pour l'exclure des prochains scans ; panneau dédié sous la barre de filtre pour voir, retirer ou effacer toutes les entrées ignorées ; persisté dans `ignore_list.json`
 
 ---
 
@@ -163,8 +164,8 @@ Chaque scan produit un fichier JSON dans `~/.local/share/deduplicateur/sessions/
 | Bundler | Vite + Tauri CLI | Dev HMR + build natif |
 | CI/CD | GitHub Actions | Build Windows automatique sur push |
 | Similarité audio | fpcalc/chromaprint (subprocess) | Empreinte acoustique, distance de Hamming sur vecteurs i32, cache inter-scans |
-| Tests Rust | cargo test + tempfile | 134 tests unitaires sur le moteur |
-| Tests TS | Vitest + jsdom + React Testing Library | 127 tests (utilitaires + i18n + App + ImageComparator + MissingToolBanner + FileThumbnail + AdvancedPanelWrapper) |
+| Tests Rust | cargo test + tempfile | 145 tests unitaires sur le moteur |
+| Tests TS | Vitest + jsdom + React Testing Library | 148 tests (utilitaires + i18n + App + ImageComparator + MissingToolBanner + FileThumbnail + AdvancedPanelWrapper + IgnoredPanel + FolderSection) |
 
 ---
 
@@ -229,10 +230,10 @@ npm run tauri build    # produit un binaire dans src-tauri/target/release/
 ### Tests
 
 ```bash
-# Moteur Rust (123 tests)
+# Moteur Rust (145 tests)
 cargo test --manifest-path src-tauri/Cargo.toml
 
-# TypeScript - utilitaires + i18n + composants React (118 tests)
+# TypeScript - utilitaires + i18n + composants React (148 tests)
 npm test
 ```
 
@@ -258,7 +259,7 @@ npm test
 | 12 | Similarité audio (fpcalc, empreinte acoustique, cache) | ✅ |
 | 13 | Bundle fpcalc, recherche élargie des outils, bannière d'installation guidée | ✅ |
 | 14 | Règles de sélection par métadonnées (résolution, bitrate, dossier prioritaire) | ✅ |
-| 15 | Liste d'ignorés (persistante, gérable depuis l'UI) | - |
+| 15 | Liste d'ignorés (persistante, gérable depuis l'UI) | ✅ |
 | 16 | Notifications système (Windows, macOS, Linux) en fin de scan long | - |
 | 17 | Comparateur vidéo côte à côte avec lecture synchronisée | - |
 | 18 | Scan multi-dossiers et mode "comparer avec le dossier X" | - |

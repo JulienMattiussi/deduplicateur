@@ -5,11 +5,12 @@ import "./App.css";
 import { formatSize } from "./utils";
 import { useLang } from "./LangContext";
 import { interp, type Translations } from "./i18n";
-import type { DuplicateGroup, FolderSummary, ScanProfile, ScanSummary } from "./types";
+import type { DuplicateGroup, FolderSummary, IgnoreEntry, ScanProfile, ScanSummary } from "./types";
 import { useScanConfig } from "./hooks/useScanConfig";
 import { useScanExecution } from "./hooks/useScanExecution";
 import { useResults } from "./hooks/useResults";
 import { useSelectionState, type SmartMode } from "./hooks/useSelectionState";
+import { IgnoredPanel } from "./components/IgnoredPanel";
 import { useProfiles } from "./hooks/useProfiles";
 import { ImageComparator } from "./ImageComparator";
 import { SessionCard } from "./components/SessionCard";
@@ -54,6 +55,7 @@ export default function App() {
   const [resumingId, setResumingId] = useState<string | null>(null);
   const [smartRule, setSmartRule] = useState<SmartMode>("newest");
   const [priorityFolder, setPriorityFolder] = useState("");
+  const [ignoredEntries, setIgnoredEntries] = useState<IgnoreEntry[]>([]);
 
   const config = useScanConfig();
   const results = useResults(setError);
@@ -114,10 +116,20 @@ export default function App() {
     return () => window.removeEventListener("keydown", handleKey);
   }, [summary, selection, scanExec.scanning, comparatorIdx]);
 
+  async function loadIgnoredEntries() {
+    try {
+      const entries = await invoke<IgnoreEntry[]>("get_ignore_list");
+      setIgnoredEntries(entries);
+    } catch {
+      // non-fatal
+    }
+  }
+
   useEffect(() => {
     invoke<ScanSummary[]>("list_sessions")
       .then((s) => startTransition(() => setSessions(s)))
       .catch(() => {});
+    loadIgnoredEntries();
   }, []);
 
   function resetResults() {
@@ -203,6 +215,22 @@ export default function App() {
       minFileSizeKb: config.minFileSizeKb,
       maxFileSizeKb: config.maxFileSizeKb,
     });
+  }
+
+  async function handleIgnoreGroup(groupId: string) {
+    const group = results.groups.find((g) => g.id === groupId);
+    if (!group) return;
+    const wasted = group.size * (group.files.length - 1);
+    startTransition(() => {
+      results.setGroups(results.groups.filter((g) => g.id !== groupId));
+      setSummary((s) => s ? { ...s, total_groups: s.total_groups - 1, total_wasted_bytes: s.total_wasted_bytes - wasted } : null);
+    });
+    try {
+      await invoke("ignore_group", { groupId });
+      await loadIgnoredEntries();
+    } catch (e) {
+      setError(String(e));
+    }
   }
 
   async function handleExport(format: "csv" | "html") {
@@ -337,6 +365,11 @@ export default function App() {
               <button className={`lang-btn${lang === "fr" ? " lang-btn--active" : ""}`} onClick={() => setLang("fr")}>FR</button>
               <button className={`lang-btn${lang === "en" ? " lang-btn--active" : ""}`} onClick={() => setLang("en")}>EN</button>
             </div>
+            <IgnoredPanel
+              entries={ignoredEntries}
+              onRemove={async (key) => { await invoke("clear_ignore_entry", { key }); await loadIgnoredEntries(); }}
+              onClearAll={async () => { await invoke("clear_all_ignored"); await loadIgnoredEntries(); }}
+            />
             <ProfilesPanel
               profiles={profilesHook.profiles}
               currentFolder={config.folder}
@@ -569,6 +602,7 @@ export default function App() {
                     onToggle={selection.toggleFile}
                     onExpand={() => results.loadFolderPage(fs.folder_key)}
                     onLoadMore={() => results.loadFolderPage(fs.folder_key)}
+                    onIgnore={handleIgnoreGroup}
                   />
                 ))
               )
@@ -586,6 +620,7 @@ export default function App() {
                         selected={selection.selected}
                         onToggle={selection.toggleFile}
                         onCompare={imgIdx >= 0 ? () => setComparatorIdx(imgIdx) : undefined}
+                        onIgnore={() => handleIgnoreGroup(group.id)}
                       />
                     );
                   })

@@ -95,6 +95,12 @@ export interface GroupsPage {
   has_more: boolean;
 }
 
+export interface IgnoreEntry {
+  key: string;
+  display_names: string[];
+  ignored_at: number;
+}
+
 export interface ScanProfile {
   id: string;
   name: string;

@@ -4,6 +4,7 @@ mod audio_hash;
 mod cache_io;
 mod exact_cache;
 mod filters;
+mod ignore_list;
 mod phash_cache;
 mod phash_config;
 mod phash_perf;
@@ -15,6 +16,7 @@ mod video_config;
 mod video_hash;
 
 use audio_config::AudioConfig;
+use ignore_list::{group_ignore_key, IgnoreEntry, IgnoreList};
 use phash_config::{load_config, save_config, PHashConfig};
 use video_config::VideoConfig;
 use scanner::{scan_folder as do_scan, DuplicateFile, DuplicateGroup, ScanParams};
@@ -146,6 +148,9 @@ async fn scan_folder(
     let audio_cfg = data_dir_str.as_deref()
         .map(|d| audio_config::load_config(std::path::Path::new(d)))
         .unwrap_or_default();
+    let ignored_keys = data_dir_str.as_deref()
+        .map(|d| IgnoreList::load(std::path::Path::new(d)).keys_set())
+        .unwrap_or_default();
 
     // Shared progress state written by rayon threads, read by the async emitter task.
     // Never call window.emit() from rayon threads directly - it deadlocks the GTK main loop.
@@ -194,6 +199,7 @@ async fn scan_folder(
             audio_sim_threshold,
             audio_cache_enabled: audio_cache_enabled && audio_cfg.cache_enabled,
             audio_duration_tolerance,
+            ignored_keys,
         };
         do_scan(params, cancelled, move |current, total, total_files, file: &str| {
             *progress_for_scan.lock().unwrap() = Some((current, total, total_files, file.to_string()));
@@ -1016,6 +1022,69 @@ async fn check_tools() -> serde_json::Value {
     })
 }
 
+#[tauri::command]
+async fn ignore_group(app: tauri::AppHandle, group_id: String) -> Result<(), String> {
+    let (key, display_names) = {
+        let cache = app.state::<ScanCache>();
+        let guard = cache.0.lock().unwrap();
+        let loaded = guard.as_ref().ok_or("Aucune session chargée")?;
+        let group = loaded
+            .groups
+            .iter()
+            .find(|g| g.id == group_id)
+            .ok_or("Groupe introuvable")?;
+        let paths: Vec<String> = group.files.iter().map(|f| f.path.clone()).collect();
+        let names: Vec<String> = group.files.iter().map(|f| f.name.clone()).collect();
+        (group_ignore_key(&paths), names)
+    };
+    let dir = app_data_dir(&app).ok_or("Impossible d'acceder au dossier de donnees")?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut list = IgnoreList::load(&dir);
+        let ignored_at = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        list.add(IgnoreEntry { key, display_names, ignored_at });
+        list.save(&dir).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn get_ignore_list(app: tauri::AppHandle) -> Result<Vec<IgnoreEntry>, String> {
+    let dir = app_data_dir(&app).ok_or("Impossible d'acceder au dossier de donnees")?;
+    tauri::async_runtime::spawn_blocking(move || {
+        Ok(IgnoreList::load(&dir).entries_sorted())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn clear_ignore_entry(app: tauri::AppHandle, key: String) -> Result<(), String> {
+    let dir = app_data_dir(&app).ok_or("Impossible d'acceder au dossier de donnees")?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut list = IgnoreList::load(&dir);
+        list.remove(&key);
+        list.save(&dir).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn clear_all_ignored(app: tauri::AppHandle) -> Result<(), String> {
+    let dir = app_data_dir(&app).ok_or("Impossible d'acceder au dossier de donnees")?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut list = IgnoreList::load(&dir);
+        list.clear();
+        list.save(&dir).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -1062,6 +1131,10 @@ pub fn run() {
             save_profile,
             delete_profile,
             check_tools,
+            ignore_group,
+            get_ignore_list,
+            clear_ignore_entry,
+            clear_all_ignored,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -93,6 +93,7 @@ function makeDefaultMock(overrides: Record<string, unknown> = {}) {
     if (cmd === "get_video_config") return Promise.resolve(defaultVideoConfig);
     if (cmd === "get_audio_config") return Promise.resolve(defaultAudioConfig);
     if (cmd === "list_profiles") return Promise.resolve([]);
+    if (cmd === "get_ignore_list") return Promise.resolve([]);
     return Promise.resolve(null);
   };
 }
@@ -1020,5 +1021,96 @@ describe("M - règles de sélection", () => {
     await waitFor(() =>
       expect(screen.getByText(/Supprimer 1 fichier/)).toBeInTheDocument()
     );
+  });
+});
+
+describe("N - liste d'ignorés", () => {
+  async function renderWithResults(overrides: Record<string, unknown> = {}) {
+    const user = userEvent.setup();
+    mockInvoke.mockImplementation(
+      makeDefaultMock({
+        scan_folder: baseSummary,
+        get_groups_page: { groups: [baseGroup], offset: 0, total: 1, has_more: false },
+        ignore_group: null,
+        get_ignore_list: [],
+        clear_ignore_entry: null,
+        clear_all_ignored: null,
+        ...overrides,
+      })
+    );
+    mockDialogOpen.mockResolvedValue("/home/test");
+
+    render(<App />);
+    await user.click(screen.getByText(/Cliquer pour choisir un dossier/));
+    await waitFor(() => expect(screen.getByText("/home/test")).toBeInTheDocument());
+    await user.click(screen.getByText("Analyser"));
+    await waitFor(() => expect(screen.getByText(/fichiers identiques/)).toBeInTheDocument());
+    return user;
+  }
+
+  it("le bouton ignorer est visible sur chaque GroupCard", async () => {
+    await renderWithResults();
+    expect(screen.getByTestId("ignore-group-btn")).toBeInTheDocument();
+  });
+
+  it("cliquer ignorer appelle invoke ignore_group avec le bon id", async () => {
+    const user = await renderWithResults();
+    await user.click(screen.getByTestId("ignore-group-btn"));
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("ignore_group", { groupId: "g1" });
+    });
+  });
+
+  it("après ignore, le groupe disparaît de la liste", async () => {
+    const user = await renderWithResults();
+    expect(screen.getByText("file1.txt")).toBeInTheDocument();
+    await user.click(screen.getByTestId("ignore-group-btn"));
+    await waitFor(() => {
+      expect(screen.queryByText("file1.txt")).not.toBeInTheDocument();
+    });
+  });
+
+  it("le bouton du panneau ignorés est visible même sans résultats", async () => {
+    render(<App />);
+    expect(screen.getByTestId("ignored-panel")).toBeInTheDocument();
+  });
+
+  it("le panneau affiche les entrées après ouverture du dropdown", async () => {
+    const user = await renderWithResults({
+      get_ignore_list: [
+        { key: "k1", display_names: ["photo.jpg", "photo_copy.jpg"], ignored_at: 1700000000 },
+      ],
+    });
+    await waitFor(() => expect(screen.getByText("1")).toBeInTheDocument());
+    await user.click(screen.getByTestId("ignored-panel").querySelector("button")!);
+    expect(screen.getByText(/photo\.jpg/)).toBeInTheDocument();
+  });
+
+  it("cliquer Retirer appelle clear_ignore_entry avec la bonne clé", async () => {
+    const user = await renderWithResults({
+      get_ignore_list: [
+        { key: "k1", display_names: ["photo.jpg", "photo_copy.jpg"], ignored_at: 1700000000 },
+      ],
+    });
+    await waitFor(() => expect(screen.getByText("1")).toBeInTheDocument());
+    await user.click(screen.getByTestId("ignored-panel").querySelector("button")!);
+    await user.click(screen.getByTestId("remove-ignored"));
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("clear_ignore_entry", { key: "k1" });
+    });
+  });
+
+  it("cliquer Tout effacer appelle clear_all_ignored", async () => {
+    const user = await renderWithResults({
+      get_ignore_list: [
+        { key: "k1", display_names: ["photo.jpg"], ignored_at: 1700000000 },
+      ],
+    });
+    await waitFor(() => expect(screen.getByText("1")).toBeInTheDocument());
+    await user.click(screen.getByTestId("ignored-panel").querySelector("button")!);
+    await user.click(screen.getByTestId("clear-all-ignored"));
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("clear_all_ignored");
+    });
   });
 });

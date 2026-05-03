@@ -109,6 +109,8 @@ pub struct ScanParams {
     pub audio_cache_enabled: bool,
     /// Tolerance de duree pour le filtre de paires (0.0-1.0). Defaut : 0.20.
     pub audio_duration_tolerance: f64,
+    /// Cles canoniques des groupes a ignorer (chemins tries, joints par |).
+    pub ignored_keys: HashSet<String>,
 }
 
 impl ScanParams {
@@ -138,6 +140,7 @@ impl ScanParams {
             audio_sim_threshold: 20,
             audio_cache_enabled: true,
             audio_duration_tolerance: 0.20,
+            ignored_keys: HashSet::new(),
         }
     }
 }
@@ -1184,6 +1187,15 @@ where
         });
     }
 
+    if !params.ignored_keys.is_empty() {
+        groups.retain(|g| {
+            let mut paths: Vec<&str> = g.files.iter().map(|f| f.path.as_str()).collect();
+            paths.sort_unstable();
+            let key = paths.join("|");
+            !params.ignored_keys.contains(&key)
+        });
+    }
+
     let total_wasted_bytes = groups
         .iter()
         .map(|g| g.size * (g.files.len() as u64 - 1))
@@ -2046,6 +2058,67 @@ mod tests {
         ).unwrap();
         assert_eq!(r.scanned_files, 0);
         assert_eq!(r.groups.len(), 0);
+    }
+
+    // --- Tests groupes ignorés ---
+
+    #[test]
+    fn ignored_keys_exclut_un_groupe() {
+        let dir = TempDir::new().unwrap();
+        write_file(dir.path(), "a.txt", b"contenu duplique");
+        write_file(dir.path(), "b.txt", b"contenu duplique");
+        let path_a = dir.path().join("a.txt").to_string_lossy().to_string();
+        let path_b = dir.path().join("b.txt").to_string_lossy().to_string();
+        let mut sorted = [path_a.as_str(), path_b.as_str()];
+        sorted.sort_unstable();
+        let key = sorted.join("|");
+
+        let mut ignored = std::collections::HashSet::new();
+        ignored.insert(key);
+
+        let path = dir.path().to_str().unwrap();
+        let r = scan_folder(
+            ScanParams { ignored_keys: ignored, ..ScanParams::new(path) },
+            no_cancel(),
+            no_progress,
+        ).unwrap();
+        assert_eq!(r.groups.len(), 0);
+    }
+
+    #[test]
+    fn ignored_keys_garde_les_autres_groupes() {
+        let dir = TempDir::new().unwrap();
+        write_file(dir.path(), "a1.txt", b"groupe un!!!!!");
+        write_file(dir.path(), "a2.txt", b"groupe un!!!!!");
+        write_file(dir.path(), "b1.txt", b"groupe deux!!!!");
+        write_file(dir.path(), "b2.txt", b"groupe deux!!!!");
+        let path_a1 = dir.path().join("a1.txt").to_string_lossy().to_string();
+        let path_a2 = dir.path().join("a2.txt").to_string_lossy().to_string();
+        let mut sorted = [path_a1.as_str(), path_a2.as_str()];
+        sorted.sort_unstable();
+        let key = sorted.join("|");
+
+        let mut ignored = std::collections::HashSet::new();
+        ignored.insert(key);
+
+        let path = dir.path().to_str().unwrap();
+        let r = scan_folder(
+            ScanParams { ignored_keys: ignored, ..ScanParams::new(path) },
+            no_cancel(),
+            no_progress,
+        ).unwrap();
+        assert_eq!(r.groups.len(), 1);
+        assert!(r.groups[0].files.iter().any(|f| f.name == "b1.txt" || f.name == "b2.txt"));
+    }
+
+    #[test]
+    fn ignored_keys_vide_ne_filtre_rien() {
+        let dir = TempDir::new().unwrap();
+        write_file(dir.path(), "a.txt", b"contenu duplique");
+        write_file(dir.path(), "b.txt", b"contenu duplique");
+        let path = dir.path().to_str().unwrap();
+        let r = scan_folder(ScanParams::new(path), no_cancel(), no_progress).unwrap();
+        assert_eq!(r.groups.len(), 1);
     }
 
     // --- Tests cache exact ---

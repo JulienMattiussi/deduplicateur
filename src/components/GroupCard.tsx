@@ -12,11 +12,13 @@ export function GroupCard({
   selected,
   onToggle,
   onCompare,
+  onIgnore,
 }: {
   group: DuplicateGroup;
   selected: Set<string>;
   onToggle: (path: string) => void;
   onCompare?: () => void;
+  onIgnore?: () => void;
 }) {
   const { t } = useLang();
   const [expanded, setExpanded] = useState(true);
@@ -81,6 +83,16 @@ export function GroupCard({
             onClick={(e) => { e.stopPropagation(); onCompare(); }}
           >
             {t.compare}
+          </button>
+        )}
+        {onIgnore && (
+          <button
+            data-testid="ignore-group-btn"
+            className="btn-ignore"
+            title={t.ignoreGroup}
+            onClick={(e) => { e.stopPropagation(); onIgnore(); }}
+          >
+            ✕
           </button>
         )}
         <span className="group-waste">
