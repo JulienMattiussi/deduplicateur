@@ -155,6 +155,10 @@ const fr = {
   profileLoad: "Charger",
   profileLaunch: "Lancer",
   noProfiles: "Aucun profil sauvegardé",
+  helpOpen: "Aide",
+  helpTitle: "Aide",
+  helpSearch: "Rechercher…",
+  helpNoResults: "Aucun résultat",
 };
 
 const en: typeof fr = {
@@ -312,6 +316,10 @@ const en: typeof fr = {
   profileLoad: "Load",
   profileLaunch: "Launch",
   noProfiles: "No saved profiles",
+  helpOpen: "Help",
+  helpTitle: "Help",
+  helpSearch: "Search…",
+  helpNoResults: "No results",
 };
 
 export const translations: Record<Lang, typeof fr> = { fr, en };

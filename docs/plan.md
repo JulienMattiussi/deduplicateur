@@ -325,7 +325,26 @@
 
 ---
 
-## Phase 16 - Notifications système
+## Phase 16 - Documentation intégrée (aide F1) ✅
+
+**Objectif : permettre à l'utilisateur de comprendre chaque fonctionnalité sans quitter l'application**
+
+- [x] `src/help/content.ts` : 12 sections, 29 articles bilingues (FR/EN) couvrant la totalité des fonctionnalités
+- [x] Structure `HelpArticle` : champs `id`, `sectionId`, `title`, `keywords`, `body` en FR et EN
+- [x] `HelpPanel.tsx` : drawer fixe côté droit avec overlay, sidebar nav par sections, rendu d'article avec `**gras**`, \`code\`, `- bullets`, `\n\n` paragraphes
+- [x] Recherche temps réel dans `title`, `keywords` et `body` - résultats en liste plate, navigation par sections quand vide
+- [x] Déclenchement : touche F1 ou bouton "?" dans le header (à côté des profils)
+- [x] Fermeture : touche Escape ou clic sur l'overlay
+- [x] i18n : 4 nouvelles clés `helpOpen`, `helpTitle`, `helpSearch`, `helpNoResults`
+- [x] Tests TypeScript : 8 tests `HelpPanel.test.tsx` (rendu, nav, recherche, aucun résultat, fermeture ✕, Escape, overlay) + 5 tests section O `App.test.tsx` (bouton visible, clic ouvre, F1 ouvre, Escape ferme, ✕ ferme)
+- [x] 145 tests Rust / 162 tests TypeScript - tous au vert
+- [x] Règle AGENTS.md ajoutée : mettre à jour `src/help/content.ts` avec chaque feature visible
+
+**Critère de validation : appuyer F1, chercher "ignorer", trouver l'article dédié ; chercher "xyz", voir "Aucun résultat" ; Escape ferme le panneau**
+
+---
+
+## Phase 17 - Notifications système
 
 **Objectif : prévenir l'utilisateur quand un scan long se termine, même si l'app est en arrière-plan**
 

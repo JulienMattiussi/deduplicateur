@@ -1114,3 +1114,41 @@ describe("N - liste d'ignorés", () => {
     });
   });
 });
+
+describe("O - aide intégrée", () => {
+  it("le bouton ? est présent dans le header", () => {
+    render(<App />);
+    expect(screen.getByTestId("help-open-btn")).toBeInTheDocument();
+  });
+
+  it("cliquer le bouton ? ouvre le panneau d'aide", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByTestId("help-open-btn"));
+    expect(screen.getByTestId("help-panel")).toBeInTheDocument();
+  });
+
+  it("F1 ouvre le panneau d'aide", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.keyboard("{F1}");
+    expect(screen.getByTestId("help-panel")).toBeInTheDocument();
+  });
+
+  it("le panneau d'aide se ferme avec Escape", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByTestId("help-open-btn"));
+    expect(screen.getByTestId("help-panel")).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByTestId("help-panel")).not.toBeInTheDocument();
+  });
+
+  it("le panneau d'aide se ferme avec le bouton ✕", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByTestId("help-open-btn"));
+    await user.click(screen.getByRole("button", { name: /fermer/i }));
+    expect(screen.queryByTestId("help-panel")).not.toBeInTheDocument();
+  });
+});

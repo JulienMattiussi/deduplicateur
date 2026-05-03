@@ -48,6 +48,7 @@ Outil de détection et suppression de fichiers en double - rapide, local, sans c
 - **Bannière d'installation guidée** - si ffmpeg ou fpcalc est absent, l'app affiche un bandeau avec instructions d'installation OS-spécifiques, lien de téléchargement officiel, et bouton "Vérifier à nouveau" pour détecter l'installation sans relancer l'app
 - **Règles de sélection par métadonnées** - dropdown dans la barre d'actions pour choisir automatiquement quel fichier garder dans chaque groupe : plus haute résolution (images via en-tête, vidéos via métadonnées), plus grand fichier (audio/vidéo), dossier prioritaire (chemin configurable - si aucun fichier ne s'y trouve, le groupe est laissé sans sélection), plus récent, plus ancien
 - **Liste d'ignorés** - bouton "✕" sur chaque groupe pour l'exclure des prochains scans ; panneau dédié sous la barre de filtre pour voir, retirer ou effacer toutes les entrées ignorées ; persisté dans `ignore_list.json`
+- **Aide intégrée** - touche F1 ou bouton "?" dans le header ; drawer latéral avec 29 articles bilingues (FR/EN) organisés en 12 sections ; recherche plein texte dans titres, mots-clés et corps des articles
 
 ---
 
@@ -165,7 +166,7 @@ Chaque scan produit un fichier JSON dans `~/.local/share/deduplicateur/sessions/
 | CI/CD | GitHub Actions | Build Windows automatique sur push |
 | Similarité audio | fpcalc/chromaprint (subprocess) | Empreinte acoustique, distance de Hamming sur vecteurs i32, cache inter-scans |
 | Tests Rust | cargo test + tempfile | 145 tests unitaires sur le moteur |
-| Tests TS | Vitest + jsdom + React Testing Library | 148 tests (utilitaires + i18n + App + ImageComparator + MissingToolBanner + FileThumbnail + AdvancedPanelWrapper + IgnoredPanel + FolderSection) |
+| Tests TS | Vitest + jsdom + React Testing Library | 162 tests (utilitaires + i18n + App + ImageComparator + MissingToolBanner + FileThumbnail + AdvancedPanelWrapper + IgnoredPanel + FolderSection + HelpPanel) |
 
 ---
 
@@ -233,7 +234,7 @@ npm run tauri build    # produit un binaire dans src-tauri/target/release/
 # Moteur Rust (145 tests)
 cargo test --manifest-path src-tauri/Cargo.toml
 
-# TypeScript - utilitaires + i18n + composants React (148 tests)
+# TypeScript - utilitaires + i18n + composants React (162 tests)
 npm test
 ```
 

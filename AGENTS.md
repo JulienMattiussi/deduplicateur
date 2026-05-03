@@ -35,6 +35,14 @@ Parcourir chaque point dans l'ordre, même si la réponse est "rien à faire ici
 - [ ] Si le count de tests a changé : mettre à jour le tableau **Stack technique** et la section **Tests**
 - [ ] Si une dépendance a été ajoutée : mettre à jour le tableau **Stack technique**
 
+### 3bis. Documentation d'aide intégrée (`src/help/content.ts`)
+
+**Toute feature visible par l'utilisateur doit être documentée dans `src/help/content.ts` en même temps qu'elle est implémentée.**
+
+- [ ] Si un nouveau bouton, panneau, option ou comportement est ajouté : vérifier s'il est couvert par un article existant et le mettre à jour, ou créer un nouvel article.
+- [ ] Les articles utilisent le format : `**gras**`, \`code\`, `- bullets`, `\n\n` comme séparateur de blocs. Les backticks dans les template literals doivent être échappés (`\\\``).
+- [ ] Tout article nouveau ou modifié doit avoir ses champs `title`, `keywords` et `body` en FR et EN.
+
 ### 4. AGENTS.md (ce fichier)
 
 Mettre à jour si l'un de ces cas s'applique :

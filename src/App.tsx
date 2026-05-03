@@ -11,6 +11,7 @@ import { useScanExecution } from "./hooks/useScanExecution";
 import { useResults } from "./hooks/useResults";
 import { useSelectionState, type SmartMode } from "./hooks/useSelectionState";
 import { IgnoredPanel } from "./components/IgnoredPanel";
+import { HelpPanel } from "./components/HelpPanel";
 import { useProfiles } from "./hooks/useProfiles";
 import { ImageComparator } from "./ImageComparator";
 import { SessionCard } from "./components/SessionCard";
@@ -56,6 +57,7 @@ export default function App() {
   const [smartRule, setSmartRule] = useState<SmartMode>("newest");
   const [priorityFolder, setPriorityFolder] = useState("");
   const [ignoredEntries, setIgnoredEntries] = useState<IgnoreEntry[]>([]);
+  const [helpOpen, setHelpOpen] = useState(false);
 
   const config = useScanConfig();
   const results = useResults(setError);
@@ -93,6 +95,11 @@ export default function App() {
 
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
+      if (e.key === "F1") {
+        e.preventDefault();
+        setHelpOpen((v) => !v);
+        return;
+      }
       if (comparatorIdx !== null) return;
       const target = e.target as HTMLElement;
       const inInput = target.tagName === "INPUT" || target.tagName === "TEXTAREA";
@@ -379,6 +386,14 @@ export default function App() {
               onDelete={profilesHook.deleteProfile}
               disabled={scanExec.scanning}
             />
+            <button
+              className="btn-ghost help-btn"
+              onClick={() => setHelpOpen(true)}
+              title={t.helpOpen}
+              data-testid="help-open-btn"
+            >
+              ?
+            </button>
             {summary && (
               <button className="btn-ghost" onClick={resetResults}>{t.backToSessions}</button>
             )}
@@ -707,6 +722,8 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {helpOpen && <HelpPanel onClose={() => setHelpOpen(false)} />}
     </div>
   );
 }

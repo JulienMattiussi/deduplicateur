@@ -47,6 +47,7 @@ impl IgnoreList {
         removed
     }
 
+    #[allow(dead_code)]
     pub fn contains(&self, key: &str) -> bool {
         self.entries.contains_key(key)
     }
@@ -64,6 +65,7 @@ impl IgnoreList {
         }
     }
 
+    #[allow(dead_code)]
     pub fn len(&self) -> usize {
         self.entries.len()
     }
