@@ -17,6 +17,10 @@
   --bg-badge: #1a2a1a;
   --bg-error: #2d1010;
   --bg-warning: #2a1f00;
+  --bg-danger: #3a1a1a;
+  --text-danger: #f08080;
+  --border-danger: #5a2a2a;
+  --bg-danger-hover: #4a2020;
 
   --border: #1e1e1e;
   --border-2: #2a2a2a;
@@ -65,6 +69,10 @@
   --bg-badge: #e8f5e9;
   --bg-error: #fef2f2;
   --bg-warning: #fffbeb;
+  --bg-danger: #fef2f2;
+  --text-danger: #c0392b;
+  --border-danger: #f5c6cb;
+  --bg-danger-hover: #fde8e8;
 
   --border: #e0e0e0;
   --border-2: #cccccc;
@@ -160,9 +168,9 @@
 }
 
 .btn-cancel {
-  background: #3a1a1a;
-  color: #f08080;
-  border: 1px solid #5a2a2a;
+  background: var(--bg-danger);
+  color: var(--text-danger);
+  border: 1px solid var(--border-danger);
   border-radius: 8px;
   padding: 10px 20px;
   font-size: 14px;
@@ -173,7 +181,7 @@
 }
 
 .btn-cancel:hover:not(:disabled) {
-  background: #4a2020;
+  background: var(--bg-danger-hover);
 }
 
 .btn-cancel:disabled {
@@ -185,8 +193,8 @@
   display: inline-block;
   width: 12px;
   height: 12px;
-  border: 2px solid #f0808055;
-  border-top-color: #f08080;
+  border: 2px solid color-mix(in srgb, var(--text-danger) 33%, transparent);
+  border-top-color: var(--text-danger);
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
   vertical-align: middle;
@@ -276,7 +284,7 @@
 }
 
 .chip-remove:hover:not(:disabled) {
-  color: #f08080;
+  color: var(--text-danger);
 }
 
 .exclusions-add {
@@ -1124,9 +1132,9 @@
 }
 
 .btn-session-delete:hover {
-  color: #f08080;
-  border-color: #5a2a2a;
-  background: #2a1a1a;
+  color: var(--text-danger);
+  border-color: var(--border-danger);
+  background: var(--bg-danger);
 }
 
 /* ===== Toolbar loader ===== */
@@ -1998,7 +2006,7 @@
 
 /* Video comparator extras */
 .comparator-video-area {
-  background: #000;
+  background: var(--bg-app);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2074,7 +2082,7 @@
   justify-content: space-between;
   gap: 8px;
   padding: 6px 10px;
-  background: var(--card-bg);
+  background: var(--bg-card);
   border-radius: 6px;
   border: 1px solid var(--border);
 }
@@ -2248,7 +2256,7 @@
   align-items: center;
   gap: 8px;
   padding: 6px 8px;
-  background: var(--card-bg);
+  background: var(--bg-card);
   border-radius: 6px;
   border: 1px solid var(--border);
 }

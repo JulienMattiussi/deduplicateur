@@ -48,7 +48,7 @@ Outil de détection et suppression de fichiers en double - rapide, local, sans c
 - **Bannière d'installation guidée** - si ffmpeg ou fpcalc est absent, l'app affiche un bandeau avec instructions d'installation OS-spécifiques, lien de téléchargement officiel, et bouton "Vérifier à nouveau" pour détecter l'installation sans relancer l'app
 - **Règles de sélection par métadonnées** - dropdown dans la barre d'actions pour choisir automatiquement quel fichier garder dans chaque groupe : plus haute résolution (images via en-tête, vidéos via métadonnées), plus grand fichier (audio/vidéo), dossier prioritaire (chemin configurable - si aucun fichier ne s'y trouve, le groupe est laissé sans sélection), plus récent, plus ancien
 - **Liste d'ignorés** - bouton "✕" sur chaque groupe pour l'exclure des prochains scans ; panneau dédié sous la barre de filtre pour voir, retirer ou effacer toutes les entrées ignorées ; persisté dans `ignore_list.json`
-- **Aide intégrée** - touche F1 ou bouton "?" dans le header ; drawer latéral avec 30 articles bilingues (FR/EN) organisés en 13 sections ; recherche plein texte dans titres, mots-clés et corps des articles
+- **Aide intégrée** - touche F1 ou bouton "?" dans le header ; drawer latéral avec 34 articles bilingues (FR/EN) organisés en 13 sections ; recherche plein texte dans titres, mots-clés et corps des articles
 - **Notifications système** - en fin de scan long (>10s), notification OS native (Windows Action Center, macOS, libnotify Linux) avec le nombre de groupes trouvés et l'espace récupérable ; pas de notification pour les scans rapides
 - **Comparateur de vidéos** - vue plein écran côte à côte pour les groupes de vidéos : deux lecteurs natifs synchronisés (play/pause/seek), barre de scrubbing commune, métadonnées complètes (résolution, durée, codec, taille), navigation entre groupes au clavier (← →, Échap), bouton "Garder celui-ci"
 - **Mode "Comparer avec un autre dossier"** - 3e mode de scan : compare un dossier source S avec un dossier de référence R et ne signale que les fichiers présents dans les deux ; les doublons internes à S ou à R sont ignorés ; les fichiers du dossier de référence affichent un badge "Réf." dans les résultats
@@ -265,10 +265,10 @@ npm test
 | 13 | Bundle fpcalc, recherche élargie des outils, bannière d'installation guidée | ✅ |
 | 14 | Règles de sélection par métadonnées (résolution, bitrate, dossier prioritaire) | ✅ |
 | 15 | Liste d'ignorés (persistante, gérable depuis l'UI) | ✅ |
-| 16 | Documentation intégrée (aide F1, 29 articles bilingues, recherche) | ✅ |
+| 16 | Documentation intégrée (aide F1, 34 articles bilingues, recherche) | ✅ |
 | 17 | Notifications système (Windows, macOS, Linux) en fin de scan long | ✅ |
-| 18 | Comparateur vidéo côte à côte avec lecture synchronisée | - |
-| 19 | Scan multi-dossiers et mode "comparer avec le dossier X" | - |
+| 18 | Comparateur vidéo côte à côte avec lecture synchronisée | ✅ |
+| 19 | Scan multi-dossiers et mode "comparer avec le dossier X" | ✅ |
 
 ---
 

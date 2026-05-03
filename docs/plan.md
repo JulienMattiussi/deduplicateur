@@ -50,7 +50,7 @@
 
 ---
 
-## Phase 4 - Sous-dossiers
+## Phase 4 - Sous-dossiers ✅
 **Objectif : traiter une arborescence entière, dossier par dossier**
 
 - [x] Parcours récursif de l'arborescence (walkdir)

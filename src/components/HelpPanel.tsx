@@ -105,7 +105,7 @@ export function HelpPanel({ onClose }: Props) {
             onChange={(e) => setSearch(e.target.value)}
             data-testid="help-search"
           />
-          <button className="help-close" onClick={onClose} aria-label="Fermer">
+          <button className="help-close" onClick={onClose} aria-label={t.helpClose}>
             ✕
           </button>
         </div>

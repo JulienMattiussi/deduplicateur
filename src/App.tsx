@@ -29,6 +29,10 @@ import { MissingToolBanner } from "./components/MissingToolBanner";
 // Nombre de bits dans le hash Hamming (grille 8x8)
 const HAMMING_BITS = 64;
 
+function toHammingThreshold(pct: number): number {
+  return Math.round((1 - pct / 100) * HAMMING_BITS);
+}
+
 function formatDuration(ms: number, t: Translations): string {
   if (ms < 1000) return `${ms} ${t.durationMs}`;
   const s = Math.round(ms / 1000);
@@ -211,9 +215,9 @@ export default function App() {
       excluded: config.excluded,
       byFolder: config.scanMode === "by_folder",
       findSimilar: config.detectionMode === "images",
-      simThreshold: Math.round((1 - config.simSimilarity / 100) * HAMMING_BITS),
+      simThreshold: toHammingThreshold(config.simSimilarity),
       findSimilarVideos: config.detectionMode === "videos",
-      videoSimThreshold: Math.round((1 - config.videoSimilarity / 100) * HAMMING_BITS),
+      videoSimThreshold: toHammingThreshold(config.videoSimilarity),
       findSimilarAudio: config.detectionMode === "audio",
       audioSimThreshold: 100 - config.audioSimilarity,
       audioCacheEnabled: config.audioConfig.cache_enabled,
@@ -305,9 +309,9 @@ export default function App() {
       excluded: profile.excluded,
       byFolder: profile.scan_mode === "by_folder",
       findSimilar: profile.detection_mode === "images",
-      simThreshold: Math.round((1 - profile.sim_similarity / 100) * HAMMING_BITS),
+      simThreshold: toHammingThreshold(profile.sim_similarity),
       findSimilarVideos: profile.detection_mode === "videos",
-      videoSimThreshold: Math.round((1 - profile.video_similarity / 100) * HAMMING_BITS),
+      videoSimThreshold: toHammingThreshold(profile.video_similarity),
       findSimilarAudio: profile.detection_mode === "audio",
       audioSimThreshold: 100 - (profile.audio_similarity ?? 80),
       audioCacheEnabled: config.audioConfig.cache_enabled,

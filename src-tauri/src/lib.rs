@@ -722,7 +722,6 @@ mod tests {
     }
 
     #[test]
-    #[test]
     fn test_select_empty_group_returns_empty() {
         let groups = vec![make_group(vec![])];
         let result = select_files_to_delete(&groups, "largest_size", None);
