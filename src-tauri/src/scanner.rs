@@ -838,11 +838,12 @@ where
             }
             let files: Vec<DuplicateFile> =
                 indices.iter().map(|&i| images[i].file.clone()).collect();
+            let folder_key = group_folder_key(&files, Path::new(&params.folder), params.by_folder);
             let g = DuplicateGroup {
                 id: uuid::Uuid::new_v4().to_string(),
                 hash: "phash".to_string(),
                 size: files[0].size,
-                folder_key: None,
+                folder_key,
                 similar: true,
                 video_similar: false,
                 audio_similar: false,
@@ -1077,11 +1078,12 @@ where
             }
             let files: Vec<DuplicateFile> =
                 indices.iter().map(|&i| video_data[i].file.clone()).collect();
+            let folder_key = group_folder_key(&files, Path::new(&params.folder), params.by_folder);
             let g = DuplicateGroup {
                 id: uuid::Uuid::new_v4().to_string(),
                 hash: "video".to_string(),
                 size: files[0].size,
-                folder_key: None,
+                folder_key,
                 similar: false,
                 video_similar: true,
                 audio_similar: false,
@@ -1226,11 +1228,12 @@ where
         for (_, indices) in group_map {
             if indices.len() < 2 { continue; }
             let files: Vec<DuplicateFile> = indices.iter().map(|&i| audio_data[i].file.clone()).collect();
+            let folder_key = group_folder_key(&files, Path::new(&params.folder), params.by_folder);
             let g = DuplicateGroup {
                 id: uuid::Uuid::new_v4().to_string(),
                 hash: "audio".to_string(),
                 size: files[0].size,
-                folder_key: None,
+                folder_key,
                 similar: false,
                 video_similar: false,
                 audio_similar: true,
@@ -1283,6 +1286,22 @@ where
         ffmpeg_missing,
         fpcalc_missing,
     })
+}
+
+fn group_folder_key(files: &[DuplicateFile], root: &Path, by_folder: bool) -> Option<String> {
+    if !by_folder {
+        return None;
+    }
+    let mut key: Option<String> = None;
+    for f in files {
+        let k = first_level_subdir(root, Path::new(&f.path));
+        match &key {
+            None => key = Some(k),
+            Some(prev) if prev != &k => return Some(String::new()),
+            _ => {}
+        }
+    }
+    key.or_else(|| Some(String::new()))
 }
 
 fn first_level_subdir(root: &Path, file_path: &Path) -> String {
@@ -1745,6 +1764,52 @@ mod tests {
         ).unwrap();
         assert_eq!(r.groups.len(), 1);
         assert_eq!(r.groups[0].folder_key.as_deref(), Some(""));
+    }
+
+    #[test]
+    fn by_folder_phash_attribue_folder_key() {
+        let dir = TempDir::new().unwrap();
+        std::fs::create_dir(dir.path().join("A")).unwrap();
+        // Tailles differentes : similaires mais pas doublons exacts → pas exclus du pHash
+        write_solid_png(&dir.path().join("A"), "img1.png", [0, 128, 255], 40);
+        write_solid_png(&dir.path().join("A"), "img2.png", [0, 128, 255], 80);
+
+        let r = scan_folder(
+            ScanParams {
+                find_similar: true,
+                by_folder: true,
+                recursive: true,
+                ..ScanParams::new(dir.path().to_str().unwrap())
+            },
+            no_cancel(), no_progress,
+        ).unwrap();
+        let similar: Vec<_> = r.groups.iter().filter(|g| g.similar).collect();
+        assert_eq!(similar.len(), 1);
+        assert_eq!(similar[0].folder_key.as_deref(), Some("A"));
+    }
+
+    #[test]
+    fn by_folder_phash_groupe_multi_dossiers_cle_vide() {
+        let dir = TempDir::new().unwrap();
+        std::fs::create_dir(dir.path().join("A")).unwrap();
+        std::fs::create_dir(dir.path().join("B")).unwrap();
+        // Couleur unie : meme pHash (gradient nul), tailles diff pour eviter doublon exact
+        // Un fichier dans A, un dans B → le groupe s'etend sur deux dossiers → cle vide
+        write_solid_png(&dir.path().join("A"), "img1.png", [0, 128, 255], 40);
+        write_solid_png(&dir.path().join("B"), "img2.png", [0, 128, 255], 80);
+
+        let r = scan_folder(
+            ScanParams {
+                find_similar: true,
+                by_folder: true,
+                recursive: true,
+                ..ScanParams::new(dir.path().to_str().unwrap())
+            },
+            no_cancel(), no_progress,
+        ).unwrap();
+        let similar: Vec<_> = r.groups.iter().filter(|g| g.similar).collect();
+        assert_eq!(similar.len(), 1);
+        assert_eq!(similar[0].folder_key.as_deref(), Some(""));
     }
 
     // --- Tests pHash ---
