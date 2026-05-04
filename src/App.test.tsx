@@ -90,6 +90,7 @@ function makeDefaultMock(overrides: Record<string, unknown> = {}) {
     }
     if (cmd === "list_sessions") return Promise.resolve([]);
     if (cmd === "get_cache_size") return Promise.resolve(0);
+    if (cmd === "check_tools") return Promise.resolve({ ffmpeg_available: true, fpcalc_available: true });
     if (cmd === "get_phash_config") return Promise.resolve(defaultPhashConfig);
     if (cmd === "get_video_config") return Promise.resolve(defaultVideoConfig);
     if (cmd === "get_audio_config") return Promise.resolve(defaultAudioConfig);

@@ -1,4 +1,5 @@
 use std::process::Command;
+use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 use crate::tool_finder;
 
 trait NoWindowExt {
@@ -84,7 +85,7 @@ pub fn get_video_metadata(path: &str) -> Option<VideoMetadata> {
 
 /// Extrait n_frames hashes perceptuels (mean hash 8x8 = 64 bits) uniformement
 /// repartis entre 10% et 90% de la duree pour eviter les frames noires de debut/fin.
-pub fn extract_frame_hashes(path: &str, n_frames: usize, duration: f64) -> Option<Vec<u64>> {
+pub fn extract_frame_hashes(path: &str, n_frames: usize, duration: f64, cancelled: &Arc<AtomicBool>) -> Option<Vec<u64>> {
     if duration <= 0.0 || n_frames == 0 {
         return None;
     }
@@ -95,6 +96,9 @@ pub fn extract_frame_hashes(path: &str, n_frames: usize, duration: f64) -> Optio
         .unwrap_or_else(|| "ffmpeg".to_string());
 
     for i in 0..n_frames {
+        if cancelled.load(Ordering::Relaxed) {
+            return None;
+        }
         let t = duration * (0.1 + 0.8 * (i as f64 + 0.5) / n_frames as f64);
 
         let output = Command::new(&ffmpeg)

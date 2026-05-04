@@ -132,6 +132,7 @@ export default function App() {
   const [ignoredEntries, setIgnoredEntries] = useState<IgnoreEntry[]>([]);
   const [helpOpen, setHelpOpen] = useState(false);
   const [cacheBytes, setCacheBytes] = useState<number | null>(null);
+  const [preScanToolMissing, setPreScanToolMissing] = useState<"ffmpeg" | "fpcalc" | null>(null);
   const [purgeConfirm, setPurgeConfirm] = useState(false);
 
   const config = useScanConfig();
@@ -287,7 +288,19 @@ export default function App() {
     });
   }
 
-  function handleScan() {
+  async function handleScan() {
+    if (config.detectionMode === "videos" || config.detectionMode === "audio") {
+      const tools = await invoke<{ ffmpeg_available: boolean; fpcalc_available: boolean }>("check_tools");
+      if (config.detectionMode === "videos" && !tools.ffmpeg_available) {
+        setPreScanToolMissing("ffmpeg");
+        return;
+      }
+      if (config.detectionMode === "audio" && !tools.fpcalc_available) {
+        setPreScanToolMissing("fpcalc");
+        return;
+      }
+    }
+    setPreScanToolMissing(null);
     resetResults();
     const effectiveRecursive = (config.scanMode === "by_folder" || config.scanMode === "compare_folder") ? true : config.recursive;
     return scanExec.scan({
@@ -510,7 +523,7 @@ export default function App() {
             <option value="by_folder">{t.scanByFolder}</option>
             <option value="compare_folder">{t.scanCompareFolder}</option>
           </select>
-          <label className="toggle-recursive" style={{ visibility: (config.scanMode === "by_folder" || config.scanMode === "compare_folder") ? "hidden" : "visible" }}>
+          <label className="toggle-recursive" title={t.tipRecursive} style={{ visibility: (config.scanMode === "by_folder" || config.scanMode === "compare_folder") ? "hidden" : "visible" }}>
             <input type="checkbox" checked={config.recursive}
               onChange={(e) => config.setRecursive(e.target.checked)}
               disabled={scanExec.scanning || config.scanMode === "by_folder" || config.scanMode === "compare_folder"} />
@@ -545,7 +558,9 @@ export default function App() {
             {(["files", "images", "videos", "audio"] as const).map((mode) => (
               <button key={mode}
                 className={`detection-mode-btn${config.detectionMode === mode ? " detection-mode-btn--active" : ""}`}
-                onClick={() => config.setDetectionMode(mode)} disabled={scanExec.scanning}>
+                onClick={() => { config.setDetectionMode(mode); setPreScanToolMissing(null); }}
+                disabled={scanExec.scanning}
+                title={mode === "files" ? t.tipModeFiles : mode === "images" ? t.tipModeImages : mode === "videos" ? t.tipModeVideos : t.tipModeAudio}>
                 {mode === "files" ? t.modeFiles : mode === "images" ? t.modeImages : mode === "videos" ? t.modeVideos : t.modeAudio}
               </button>
             ))}
@@ -618,6 +633,12 @@ export default function App() {
       </header>
 
       {error && <div className="error-banner">{error}</div>}
+      {preScanToolMissing && (
+        <MissingToolBanner
+          tool={preScanToolMissing}
+          onAvailable={() => setPreScanToolMissing(null)}
+        />
+      )}
       {summary?.partial && <div className="partial-banner">{t.partialResults}</div>}
       {summary?.ffmpeg_missing && (
         <MissingToolBanner

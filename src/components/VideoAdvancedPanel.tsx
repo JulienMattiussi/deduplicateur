@@ -21,7 +21,7 @@ export function VideoAdvancedPanel({
   return (
     <AdvancedPanelWrapper onReset={() => onChange(DEFAULT_VIDEO_CONFIG)} disabled={disabled} configKey={JSON.stringify(config)}>
       <div className="adv-section">
-        <span className="adv-section-title">{t.extractionLabel}</span>
+        <span className="adv-section-title" title={t.tipFramesPerVideo}>{t.extractionLabel}</span>
         <label className="adv-row">
           <span>{t.framesPerVideo}</span>
           <input type="number" min={2} max={30} className="adv-input" defaultValue={config.n_frames}
@@ -29,7 +29,7 @@ export function VideoAdvancedPanel({
         </label>
       </div>
       <div className="adv-section">
-        <span className="adv-section-title">{t.durationFilter}</span>
+        <span className="adv-section-title" title={t.tipDurationFilterVideo}>{t.durationFilter}</span>
         <label className="adv-row">
           <span>{t.tolerance}</span>
           <input type="number" min={0} max={100} className="adv-input"
@@ -38,7 +38,7 @@ export function VideoAdvancedPanel({
         </label>
       </div>
       <div className="adv-section">
-        <span className="adv-section-title">{t.cacheLabel}</span>
+        <span className="adv-section-title" title={t.tipCacheVideo}>{t.cacheLabel}</span>
         <label className="adv-row">
           <span>{t.enable}</span>
           <input type="checkbox" checked={config.cache_enabled}
@@ -46,7 +46,7 @@ export function VideoAdvancedPanel({
         </label>
       </div>
       <div className="adv-section">
-        <span className="adv-section-title">{t.temporalAlign}</span>
+        <span className="adv-section-title" title={t.tipDTW}>{t.temporalAlign}</span>
         <label className="adv-row">
           <span>DTW <span className="adv-hint">{t.dtwHint}</span></span>
           <input type="checkbox" checked={config.use_dtw}

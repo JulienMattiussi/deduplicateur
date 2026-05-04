@@ -133,7 +133,7 @@ export function FiltersPanel({
             <span className="adv-hint" style={{ gridColumn: "1 / -1" }}>{t.noSizeLimit}</span>
           </div>
           <div className="adv-section">
-            <label className="adv-row">
+            <label className="adv-row" title={t.tipExactCache}>
               <span>{t.exactCacheLabel}</span>
               <input type="checkbox" checked={exactCacheEnabled}
                 onChange={(e) => onChangeCache(e.target.checked)} disabled={disabled} />

@@ -978,6 +978,7 @@ where
                     &candidates[i].path,
                     params.video_frames,
                     meta.duration_secs,
+                    &cancelled,
                 );
                 let n = video_done_for_extract.fetch_add(1, Ordering::Relaxed) + 1;
                 on_progress(offset + n, total_work, scanned_files, &candidates[i].name, n, video_estimate, "videos");

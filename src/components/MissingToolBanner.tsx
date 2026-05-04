@@ -91,7 +91,7 @@ export function MissingToolBanner({ tool, onAvailable }: Props) {
       </div>
       <div className="missing-tool-banner__instructions">
         {os === "windows" && (
-          <span>{interp(t.toolInstallWindows, { tool })}</span>
+          <span>{tool === "ffmpeg" ? t.toolInstallWindowsFfmpeg : t.toolInstallWindowsFpcalc}</span>
         )}
         {os === "mac" && (
           <span>{interp(t.toolInstallMac, { tool })}</span>

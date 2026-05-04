@@ -21,7 +21,7 @@ export function AdvancedPanel({
   return (
     <AdvancedPanelWrapper onReset={() => onChange(DEFAULT_PHASH_CONFIG)} disabled={disabled}>
       <div className="adv-section">
-        <span className="adv-section-title">{t.sizeFilter}</span>
+        <span className="adv-section-title" title={t.tipSizeFilter}>{t.sizeFilter}</span>
         <label className="adv-row">
           <span>{t.minSizeKb}</span>
           <input type="number" min={0} className="adv-input"
@@ -35,7 +35,7 @@ export function AdvancedPanel({
         </label>
       </div>
       <div className="adv-section">
-        <span className="adv-section-title">{t.aspectFilter}</span>
+        <span className="adv-section-title" title={t.tipAspectFilter}>{t.aspectFilter}</span>
         <label className="adv-row">
           <span>{t.tolerance}</span>
           <input type="number" min={0} max={100} className="adv-input"
@@ -49,7 +49,7 @@ export function AdvancedPanel({
         </label>
       </div>
       <div className="adv-section">
-        <span className="adv-section-title">{t.twoPassHash}</span>
+        <span className="adv-section-title" title={t.tipTwoPassHash}>{t.twoPassHash}</span>
         <label className="adv-row">
           <span>{t.enable}</span>
           <input type="checkbox" checked={config.two_pass_enabled}
@@ -68,7 +68,7 @@ export function AdvancedPanel({
         </label>
       </div>
       <div className="adv-section">
-        <span className="adv-section-title">{t.cacheLabel}</span>
+        <span className="adv-section-title" title={t.tipCacheImages}>{t.cacheLabel}</span>
         <label className="adv-row">
           <span>{t.enable}</span>
           <input type="checkbox" checked={config.cache_enabled}
@@ -76,7 +76,7 @@ export function AdvancedPanel({
         </label>
       </div>
       <div className="adv-section">
-        <span className="adv-section-title">{t.parallelCompare}</span>
+        <span className="adv-section-title" title={t.tipParallelCompare}>{t.parallelCompare}</span>
         <label className="adv-row">
           <span>{t.enable}</span>
           <input type="checkbox" checked={config.parallel_compare_enabled}
