@@ -1,11 +1,11 @@
-import { useState, startTransition, useEffect, useMemo } from "react";
+import React, { useState, startTransition, useEffect, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { save as dialogSave } from "@tauri-apps/plugin-dialog";
 import "./App.css";
 import { formatSize, VIDEO_EXTS } from "./utils";
 import { useLang } from "./LangContext";
 import { interp, type Translations } from "./i18n";
-import type { DuplicateGroup, FolderSummary, IgnoreEntry, ScanProfile, ScanSummary } from "./types";
+import type { DuplicateGroup, FolderSummary, IgnoreEntry, ScanProfile, ScanSummary, ScanProgress, ScanPhase } from "./types";
 import { useScanConfig } from "./hooks/useScanConfig";
 import { useScanExecution } from "./hooks/useScanExecution";
 import { useResults } from "./hooks/useResults";
@@ -43,6 +43,73 @@ function formatDuration(ms: number, t: Translations): string {
   const h = Math.floor(m / 60);
   const remMin = m % 60;
   return remMin > 0 ? `${h} ${t.durationH} ${remMin} ${t.durationMin}` : `${h} ${t.durationH}`;
+}
+
+// ----- Progression du scan -----
+
+const PHASE_ORDER: ScanPhase[] = ["reading", "exact", "images", "videos", "audio"];
+
+function ScanProgressView({
+  progress,
+  detectionMode,
+  historyRef,
+  scanStartRef,
+  t,
+}: {
+  progress: ScanProgress | null;
+  detectionMode: "files" | "images" | "videos" | "audio";
+  historyRef: React.MutableRefObject<{ time: number; current: number }[]>;
+  scanStartRef: React.MutableRefObject<number>;
+  t: Translations;
+}) {
+  const phase = progress?.phase;
+
+  const phaseNames: Record<ScanPhase, string> = {
+    reading: t.phaseReading,
+    exact: t.phaseExact,
+    images: t.phaseImages,
+    videos: t.phaseVideos,
+    audio: t.phaseAudio,
+  };
+
+  const totalPhases = detectionMode === "files" ? 2 : 3;
+  const phaseNum = phase ? (PHASE_ORDER.indexOf(phase) + 1) : 1;
+  const phaseName = phase ? phaseNames[phase] : t.phaseReading;
+
+  const lastPhase: ScanPhase = detectionMode === "files" ? "exact"
+    : detectionMode === "images" ? "images"
+    : detectionMode === "videos" ? "videos"
+    : "audio";
+  const isLastPhase = phase === lastPhase;
+
+  const isReading = !phase || phase === "reading";
+  const showBar = !isReading && progress && progress.total > 0;
+  const pct = showBar ? Math.round((progress.current / progress.total) * 100) : 0;
+
+  return (
+    <div className="progress-container">
+      <p className="progress-phase-name">{phaseName}</p>
+      <p className="progress-phase-counter">{interp(t.phaseCounter, { n: phaseNum, total: totalPhases })}</p>
+      {isReading ? (
+        <div className="spinner" />
+      ) : showBar ? (
+        <>
+          <div className="progress-track">
+            <div className="progress-bar" style={{ width: `${pct}%` }} />
+          </div>
+          <p className="progress-pct">{pct} %</p>
+          {progress.file && <p className="progress-filename">{progress.file}</p>}
+        </>
+      ) : null}
+      <ProgressETA
+        historyRef={historyRef}
+        scanStartRef={scanStartRef}
+        isLastPhase={isLastPhase}
+        progress={{ current: progress?.current ?? 0, total: progress?.total ?? 0 }}
+        t={t}
+      />
+    </div>
+  );
 }
 
 // ----- Composant principal -----
@@ -738,31 +805,13 @@ export default function App() {
 
       {scanExec.scanning && (
         <div className="empty-state">
-          {scanExec.progress ? (
-            <div className="progress-container">
-              <p className="progress-label">
-                {interp(t.scanProgress, {
-                  n: scanExec.progress.phase_current ?? scanExec.progress.current,
-                  m: scanExec.progress.phase_total ?? (scanExec.progress.total_files ?? scanExec.progress.total),
-                  type: config.detectionMode === "images" ? t.typeImages : config.detectionMode === "videos" ? t.typeVideos : config.detectionMode === "audio" ? t.typeAudio : t.typeFiles,
-                })}
-              </p>
-              <div className="progress-track">
-                <div className="progress-bar"
-                  style={{ width: `${Math.round((scanExec.progress.current / scanExec.progress.total) * 100)}%` }} />
-              </div>
-              <p className="progress-pct">
-                {Math.round((scanExec.progress.current / scanExec.progress.total) * 100)} %
-                <ProgressETA progress={scanExec.progress} historyRef={scanExec.progressHistoryRef} t={t} />
-              </p>
-              {scanExec.progress.file && <p className="progress-filename">{scanExec.progress.file}</p>}
-            </div>
-          ) : (
-            <>
-              <div className="spinner" />
-              <p>{t.collectingFiles}</p>
-            </>
-          )}
+          <ScanProgressView
+            progress={scanExec.progress}
+            detectionMode={config.detectionMode}
+            historyRef={scanExec.progressHistoryRef}
+            scanStartRef={scanExec.scanStartRef}
+            t={t}
+          />
         </div>
       )}
 

@@ -1,3 +1,15 @@
+export type ScanPhase = "reading" | "exact" | "images" | "videos" | "audio";
+
+export interface ScanProgress {
+  current: number;
+  total: number;
+  total_files?: number;
+  file?: string;
+  phase_current?: number;
+  phase_total?: number;
+  phase?: ScanPhase;
+}
+
 export interface VideoMetadata {
   duration_secs: number;
   width: number;

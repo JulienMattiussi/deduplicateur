@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { ScanSummary } from "../types";
+import { ScanSummary, ScanProgress } from "../types";
 
 export interface ScanInvokeArgs {
   [key: string]: unknown;
@@ -28,19 +28,29 @@ export function useScanExecution(
 ) {
   const [scanning, setScanning] = useState(false);
   const [cancelling, setCancelling] = useState(false);
-  const [progress, setProgress] = useState<{ current: number; total: number; total_files?: number; file?: string; phase_current?: number; phase_total?: number } | null>(null);
+  const [progress, setProgress] = useState<ScanProgress | null>(null);
   const progressHistoryRef = useRef<{ time: number; current: number }[]>([]);
+  const prevPhaseRef = useRef<string | undefined>(undefined);
+  const scanStartRef = useRef<number>(Date.now());
 
   async function scan(args: ScanInvokeArgs) {
     setScanning(true);
     setProgress(null);
     progressHistoryRef.current = [];
+    prevPhaseRef.current = undefined;
+    scanStartRef.current = Date.now();
 
-    const unlisten = await listen<{ current: number; total: number; total_files?: number; file?: string; phase_current?: number; phase_total?: number }>(
+    const unlisten = await listen<ScanProgress>(
       "scan:progress",
       (event) => {
         const p = event.payload;
-        progressHistoryRef.current.push({ time: Date.now(), current: p.current });
+        if (p.phase !== "reading") {
+          if (p.phase !== prevPhaseRef.current) {
+            progressHistoryRef.current = [];
+            prevPhaseRef.current = p.phase;
+          }
+          progressHistoryRef.current.push({ time: Date.now(), current: p.current });
+        }
         setProgress(p);
       }
     );
@@ -63,5 +73,5 @@ export function useScanExecution(
     await invoke("cancel_scan");
   }
 
-  return { scanning, cancelling, progress, progressHistoryRef, scan, cancelScan };
+  return { scanning, cancelling, progress, progressHistoryRef, scanStartRef, scan, cancelScan };
 }
