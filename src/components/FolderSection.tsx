@@ -43,7 +43,7 @@ export function FolderSection({
           📁 {summary.folder_key === "" ? t.rootFolder : summary.folder_key}
         </span>
         <span className="folder-section-stats">
-          {summary.group_count} {t.groups} · {formatSize(summary.total_wasted_bytes)} {t.duplicate}
+          {summary.group_count} {summary.group_count > 1 ? t.groups : t.group} · {formatSize(summary.total_wasted_bytes)} {t.duplicate}
         </span>
       </button>
       {expanded && (

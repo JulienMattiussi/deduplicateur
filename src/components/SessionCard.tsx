@@ -50,7 +50,7 @@ export function SessionCard({
         {sessionTags(session, t).map((tag) => <span key={tag} className="session-tag">{tag}</span>)}
       </div>
       <div className="session-stats">
-        <span>{session.total_groups} {t.groups}</span>
+        <span>{session.total_groups} {session.total_groups > 1 ? t.groups : t.group}</span>
         <span className="session-waste">{formatSize(session.total_wasted_bytes)} {t.recoverable}</span>
         <span>{session.scanned_files} {t.filesScanned}</span>
       </div>

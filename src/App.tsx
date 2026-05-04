@@ -539,7 +539,7 @@ export default function App() {
             {summary.by_folder && (
               <span className="stat"><strong>{summary.total_folders}</strong> {summary.total_folders > 1 ? t.folders : t.folder}</span>
             )}
-            <span className="stat"><strong>{summary.total_groups}</strong> {t.groups}</span>
+            <span className="stat"><strong>{summary.total_groups}</strong> {summary.total_groups > 1 ? t.groups : t.group}</span>
             <span className="stat waste"><strong>{formatSize(summary.total_wasted_bytes)}</strong> {t.recoverable}</span>
             <span className="stat duration">en {formatDuration(summary.duration_ms, t)}</span>
             <span className="stat-export">
