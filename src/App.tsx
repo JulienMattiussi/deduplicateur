@@ -140,6 +140,7 @@ export default function App() {
   const [ignoredEntries, setIgnoredEntries] = useState<IgnoreEntry[]>([]);
   const [helpOpen, setHelpOpen] = useState(false);
   const [cacheBytes, setCacheBytes] = useState<number | null>(null);
+  const [panelResetKey, setPanelResetKey] = useState(0);
   const [preScanToolMissing, setPreScanToolMissing] = useState<"ffmpeg" | "fpcalc" | null>(null);
   const [purgeConfirm, setPurgeConfirm] = useState(false);
 
@@ -255,13 +256,45 @@ export default function App() {
   }
 
   function handleDeleteComplete(deletedPaths: Set<string>) {
+    const oldLoadedWasted = results.groups.reduce((acc, g) => acc + g.size * (g.files.length - 1), 0);
     const updatedGroups = results.groups
       .map((g) => ({ ...g, files: g.files.filter((f) => !deletedPaths.has(f.path)) }))
       .filter((g) => g.files.length > 1);
-    const newWasted = updatedGroups.reduce((acc, g) => acc + g.size * (g.files.length - 1), 0);
+    const removedCount = results.groups.length - updatedGroups.length;
+    const newLoadedWasted = updatedGroups.reduce((acc, g) => acc + g.size * (g.files.length - 1), 0);
+
     startTransition(() => {
       results.setGroups(updatedGroups);
-      setSummary((s) => s ? { ...s, total_groups: updatedGroups.length, total_wasted_bytes: newWasted } : null);
+      if (summary?.by_folder && removedCount > 0) {
+        const updatedById = new Map(updatedGroups.map((g) => [g.id, g]));
+        const folderDelta = new Map<string, { groups: number; wasted: number }>();
+        for (const g of results.groups) {
+          const updated = updatedById.get(g.id);
+          const key = g.folder_key ?? "";
+          const oldW = g.size * (g.files.length - 1);
+          const newW = updated ? updated.size * (updated.files.length - 1) : 0;
+          if (!updated || oldW !== newW) {
+            const d = folderDelta.get(key) ?? { groups: 0, wasted: 0 };
+            if (!updated) d.groups += 1;
+            d.wasted += oldW - newW;
+            folderDelta.set(key, d);
+          }
+        }
+        results.setFolderSummaries((prev) =>
+          prev
+            .map((fs) => {
+              const d = folderDelta.get(fs.folder_key);
+              if (!d) return fs;
+              return { ...fs, group_count: fs.group_count - d.groups, total_wasted_bytes: fs.total_wasted_bytes - d.wasted };
+            })
+            .filter((fs) => fs.group_count > 0)
+        );
+      }
+      setSummary((s) => s ? {
+        ...s,
+        total_groups: s.total_groups - removedCount,
+        total_wasted_bytes: s.total_wasted_bytes - (oldLoadedWasted - newLoadedWasted),
+      } : null);
     });
   }
 
@@ -309,6 +342,7 @@ export default function App() {
       }
     }
     setPreScanToolMissing(null);
+    setPanelResetKey(k => k + 1);
     resetResults();
     const effectiveRecursive = (config.scanMode === "by_folder" || config.scanMode === "compare_folder") ? true : config.recursive;
     return scanExec.scan({
@@ -403,6 +437,7 @@ export default function App() {
 
   function handleProfileLaunch(profile: ScanProfile) {
     handleProfileLoad(profile);
+    setPanelResetKey(k => k + 1);
     resetResults();
     const effectiveRecursive = profile.scan_mode === "by_folder" ? true : profile.recursive;
     scanExec.scan({
@@ -439,18 +474,20 @@ export default function App() {
 
   const imageGroups = useMemo(() => {
     const IMAGE_EXTS_LOCAL = new Set(["jpg","jpeg","png","webp","bmp","gif","tiff","tif","avif"]);
-    return filteredGroups.filter((g) => {
+    const base = summary?.by_folder ? results.groups : filteredGroups;
+    return base.filter((g) => {
       const ext = g.files[0]?.path.split(".").pop()?.toLowerCase() ?? "";
       return g.similar || (!g.video_similar && IMAGE_EXTS_LOCAL.has(ext));
     });
-  }, [filteredGroups]);
+  }, [filteredGroups, results.groups, summary?.by_folder]);
 
   const videoGroups = useMemo(() => {
-    return filteredGroups.filter((g) => {
+    const base = summary?.by_folder ? results.groups : filteredGroups;
+    return base.filter((g) => {
       const ext = g.files[0]?.path.split(".").pop()?.toLowerCase() ?? "";
       return g.video_similar || VIDEO_EXTS.has(ext);
     });
-  }, [filteredGroups]);
+  }, [filteredGroups, results.groups, summary?.by_folder]);
 
   function handleSelectPaths(toAdd: string[], toRemove: string[]) {
     const next = new Set(selection.selected);
@@ -496,6 +533,7 @@ export default function App() {
               onClearAll={async () => { await invoke("clear_all_ignored"); await loadIgnoredEntries(); }}
             />
             <ProfilesPanel
+              key={panelResetKey}
               profiles={profilesHook.profiles}
               currentFolder={config.folder}
               onSave={handleSaveProfile}
@@ -602,15 +640,16 @@ export default function App() {
         </div>
 
         {config.detectionMode === "images" && (
-          <AdvancedPanel config={config.phashConfig} onChange={config.updatePhashConfig} disabled={scanExec.scanning} />
+          <AdvancedPanel key={panelResetKey} config={config.phashConfig} onChange={config.updatePhashConfig} disabled={scanExec.scanning} />
         )}
         {config.detectionMode === "videos" && (
-          <VideoAdvancedPanel config={config.videoConfig} onChange={config.updateVideoConfig} disabled={scanExec.scanning} />
+          <VideoAdvancedPanel key={panelResetKey} config={config.videoConfig} onChange={config.updateVideoConfig} disabled={scanExec.scanning} />
         )}
         {config.detectionMode === "audio" && (
-          <AudioAdvancedPanel config={config.audioConfig} onChange={config.updateAudioConfig} disabled={scanExec.scanning} />
+          <AudioAdvancedPanel key={panelResetKey} config={config.audioConfig} onChange={config.updateAudioConfig} disabled={scanExec.scanning} />
         )}
         <FiltersPanel
+          key={panelResetKey}
           excluded={config.excluded}
           onChangeExcluded={config.setExcluded}
           excludeExtensions={config.excludeExtensions}
@@ -782,6 +821,8 @@ export default function App() {
                     onExpand={() => results.loadFolderPage(fs.folder_key)}
                     onLoadMore={() => results.loadFolderPage(fs.folder_key)}
                     onIgnore={handleIgnoreGroup}
+                    onCompare={(group) => { const idx = imageGroups.indexOf(group); if (idx >= 0) setComparatorIdx(idx); }}
+                    onCompareVideo={(group) => { const idx = videoGroups.indexOf(group); if (idx >= 0) setVideoComparatorIdx(idx); }}
                   />
                 ))
               )

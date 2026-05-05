@@ -1,0 +1,180 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen, fireEvent, within } from "@testing-library/react";
+import { GroupCard } from "./GroupCard";
+import { LangProvider } from "../LangContext";
+
+vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
+
+const baseGroup = {
+  id: "g1",
+  hash: "abc",
+  size: 1024,
+  files: [
+    { path: "/a/file1.txt", size: 1024, name: "file1.txt", modified: 1700000000 },
+    { path: "/b/file2.txt", size: 1024, name: "file2.txt", modified: 1700001000 },
+  ],
+};
+
+const sortGroup = {
+  id: "g-sort",
+  hash: "abc",
+  size: 1024,
+  files: [
+    { path: "/a/charlie.txt", size: 1024, name: "charlie.txt", modified: 1700002000 },
+    { path: "/b/alpha.txt",   size: 2048, name: "alpha.txt",   modified: 1700001000 },
+    { path: "/c/bravo.txt",   size: 512,  name: "bravo.txt",   modified: 1700000000 },
+  ],
+};
+
+// ---- B : selection toggle d'un fichier ----
+describe("B - toggle de selection d'un fichier", () => {
+  it("appelle onToggle avec le bon path quand on clique sur la checkbox", () => {
+    const onToggle = vi.fn();
+    render(<GroupCard group={baseGroup} selected={new Set()} onToggle={onToggle} />);
+    fireEvent.click(screen.getAllByRole("checkbox")[0]);
+    expect(onToggle).toHaveBeenCalledWith("/a/file1.txt");
+  });
+
+  it("appelle onToggle avec le second path quand on clique sur la deuxieme checkbox", () => {
+    const onToggle = vi.fn();
+    render(<GroupCard group={baseGroup} selected={new Set()} onToggle={onToggle} />);
+    fireEvent.click(screen.getAllByRole("checkbox")[1]);
+    expect(onToggle).toHaveBeenCalledWith("/b/file2.txt");
+  });
+});
+
+// ---- K : tri des colonnes dans GroupCard ----
+describe("K - tri des colonnes GroupCard", () => {
+  it("clic sur Nom trie par nom croissant (alpha en premier)", () => {
+    const onToggle = vi.fn();
+    render(<GroupCard group={sortGroup} selected={new Set()} onToggle={onToggle} />);
+    fireEvent.click(screen.getByTestId("sort-name"));
+    fireEvent.click(within(screen.getByTestId("group-files")).getAllByRole("checkbox")[0]);
+    expect(onToggle).toHaveBeenCalledWith("/b/alpha.txt");
+  });
+
+  it("deuxieme clic sur Nom trie par nom decroissant (charlie en premier)", () => {
+    const onToggle = vi.fn();
+    render(<GroupCard group={sortGroup} selected={new Set()} onToggle={onToggle} />);
+    fireEvent.click(screen.getByTestId("sort-name"));
+    fireEvent.click(screen.getByTestId("sort-name"));
+    fireEvent.click(within(screen.getByTestId("group-files")).getAllByRole("checkbox")[0]);
+    expect(onToggle).toHaveBeenCalledWith("/a/charlie.txt");
+  });
+
+  it("troisieme clic sur Nom remet l'ordre original (charlie en premier)", () => {
+    const onToggle = vi.fn();
+    render(<GroupCard group={sortGroup} selected={new Set()} onToggle={onToggle} />);
+    fireEvent.click(screen.getByTestId("sort-name"));
+    fireEvent.click(screen.getByTestId("sort-name"));
+    fireEvent.click(screen.getByTestId("sort-name"));
+    fireEvent.click(within(screen.getByTestId("group-files")).getAllByRole("checkbox")[0]);
+    expect(onToggle).toHaveBeenCalledWith("/a/charlie.txt");
+  });
+
+  it("indicateur visible apres premier clic sur Nom", () => {
+    render(<GroupCard group={sortGroup} selected={new Set()} onToggle={vi.fn()} />);
+    fireEvent.click(screen.getByTestId("sort-name"));
+    expect(screen.getByText("↑")).toBeInTheDocument();
+  });
+
+  it("indicateur visible apres deuxieme clic sur Nom", () => {
+    render(<GroupCard group={sortGroup} selected={new Set()} onToggle={vi.fn()} />);
+    fireEvent.click(screen.getByTestId("sort-name"));
+    fireEvent.click(screen.getByTestId("sort-name"));
+    expect(screen.getByText("↓")).toBeInTheDocument();
+  });
+
+  it("indicateur absent apres troisieme clic (tri annule)", () => {
+    render(<GroupCard group={sortGroup} selected={new Set()} onToggle={vi.fn()} />);
+    fireEvent.click(screen.getByTestId("sort-name"));
+    fireEvent.click(screen.getByTestId("sort-name"));
+    fireEvent.click(screen.getByTestId("sort-name"));
+    expect(screen.queryByText("↑")).not.toBeInTheDocument();
+    expect(screen.queryByText("↓")).not.toBeInTheDocument();
+  });
+
+  it("clic sur Modifie trie par date croissante (bravo, le plus ancien, en premier)", () => {
+    const onToggle = vi.fn();
+    render(<GroupCard group={sortGroup} selected={new Set()} onToggle={onToggle} />);
+    fireEvent.click(screen.getByTestId("sort-modified"));
+    fireEvent.click(within(screen.getByTestId("group-files")).getAllByRole("checkbox")[0]);
+    expect(onToggle).toHaveBeenCalledWith("/c/bravo.txt");
+  });
+});
+
+// ---- Q2 : badge "Ref." dans GroupCard ----
+describe("Q2 - badge source dans GroupCard", () => {
+  it("badge 'Ref.' visible sur le fichier secondaire", () => {
+    const groupWithSource = {
+      ...baseGroup,
+      files: [
+        { path: "/src/file1.txt", size: 1024, name: "file1.txt", modified: 1700000000, source: "primary" as const },
+        { path: "/ref/file2.txt", size: 1024, name: "file2.txt", modified: 1700001000, source: "secondary" as const },
+      ],
+    };
+    render(<GroupCard group={groupWithSource} selected={new Set()} onToggle={() => {}} />);
+    expect(screen.getByTestId("badge-reference")).toBeInTheDocument();
+  });
+
+  it("badge 'Ref.' absent quand aucun fichier n'a source='secondary'", () => {
+    render(<GroupCard group={baseGroup} selected={new Set()} onToggle={() => {}} />);
+    expect(screen.queryByTestId("badge-reference")).not.toBeInTheDocument();
+  });
+
+  it("badge 'original' absent quand les fichiers ont un champ source", () => {
+    const groupWithSource = {
+      ...baseGroup,
+      files: [
+        { path: "/src/file1.txt", size: 1024, name: "file1.txt", modified: 1700000000, source: "primary" as const },
+        { path: "/ref/file2.txt", size: 1024, name: "file2.txt", modified: 1700001000, source: "secondary" as const },
+      ],
+    };
+    render(<GroupCard group={groupWithSource} selected={new Set()} onToggle={() => {}} />);
+    expect(screen.queryByText("original")).not.toBeInTheDocument();
+  });
+});
+
+// ---- J test 6 : GroupCard affiche l'icone et la duree pour un groupe audio_similar ----
+describe("J - mode audio (GroupCard)", () => {
+  it("GroupCard affiche l'icone et la duree pour un groupe audio_similar", () => {
+    const audioGroup = {
+      id: "ga1",
+      hash: "audio",
+      size: 5000000,
+      audio_similar: true,
+      files: [
+        {
+          path: "/music/track1.mp3",
+          size: 5000000,
+          name: "track1.mp3",
+          modified: 1700000000,
+          audio_metadata: { duration_secs: 183 },
+        },
+        {
+          path: "/music/track2.mp3",
+          size: 5000000,
+          name: "track2.mp3",
+          modified: 1700001000,
+          audio_metadata: { duration_secs: 183 },
+        },
+      ],
+    };
+
+    const onToggle = vi.fn();
+    render(
+      <LangProvider>
+        <GroupCard group={audioGroup} selected={new Set()} onToggle={onToggle} />
+      </LangProvider>
+    );
+
+    expect(screen.getAllByText(/🎵/).length).toBeGreaterThan(0);
+    // formatDurationSecs(183) = "3:03"
+    const durations = screen.getAllByText("3:03");
+    expect(durations.length).toBeGreaterThan(0);
+  });
+});

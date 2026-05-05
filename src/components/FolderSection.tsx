@@ -15,6 +15,8 @@ export function FolderSection({
   onExpand,
   onLoadMore,
   onIgnore,
+  onCompare,
+  onCompareVideo,
 }: {
   summary: FolderSummary;
   groups: DuplicateGroup[];
@@ -25,6 +27,8 @@ export function FolderSection({
   onExpand: () => void;
   onLoadMore: () => void;
   onIgnore?: (groupId: string) => void;
+  onCompare?: (group: DuplicateGroup) => void;
+  onCompareVideo?: (group: DuplicateGroup) => void;
 }) {
   const { t } = useLang();
   const [expanded, setExpanded] = useState(false);
@@ -55,7 +59,15 @@ export function FolderSection({
             </div>
           )}
           {groups.map((group) => (
-            <GroupCard key={group.id} group={group} selected={selected} onToggle={onToggle} onIgnore={onIgnore ? () => onIgnore(group.id) : undefined} />
+            <GroupCard
+              key={group.id}
+              group={group}
+              selected={selected}
+              onToggle={onToggle}
+              onCompare={onCompare ? () => onCompare(group) : undefined}
+              onCompareVideo={onCompareVideo ? () => onCompareVideo(group) : undefined}
+              onIgnore={onIgnore ? () => onIgnore(group.id) : undefined}
+            />
           ))}
           {hasMore && !loading && groups.length > 0 && (
             <button className="btn-load-more" onClick={onLoadMore}>
