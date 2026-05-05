@@ -22,13 +22,13 @@ export function AdvancedPanel({
     <AdvancedPanelWrapper onReset={() => onChange(DEFAULT_PHASH_CONFIG)} disabled={disabled}>
       <div className="adv-section">
         <span className="adv-section-title" title={t.tipSizeFilter}>{t.sizeFilter}</span>
-        <label className="adv-row">
+        <label className="adv-row" title={t.tipMinSizeImages}>
           <span>{t.minSizeKb}</span>
           <input type="number" min={0} className="adv-input"
             defaultValue={Math.round(config.min_file_size_bytes / 1024)}
             onBlur={(e) => set("min_file_size_bytes", Number(e.target.value) * 1024)} disabled={disabled} />
         </label>
-        <label className="adv-row">
+        <label className="adv-row" title={t.tipEnableIfN}>
           <span>{t.enableIfN}</span>
           <input type="number" min={1} className="adv-input" defaultValue={config.min_images_size_filter}
             onBlur={(e) => set("min_images_size_filter", Number(e.target.value))} disabled={disabled} />
@@ -36,13 +36,13 @@ export function AdvancedPanel({
       </div>
       <div className="adv-section">
         <span className="adv-section-title" title={t.tipAspectFilter}>{t.aspectFilter}</span>
-        <label className="adv-row">
+        <label className="adv-row" title={t.tipAspectTolerance}>
           <span>{t.tolerance}</span>
           <input type="number" min={0} max={100} className="adv-input"
             defaultValue={Math.round(config.aspect_ratio_tolerance * 100)}
             onBlur={(e) => set("aspect_ratio_tolerance", Number(e.target.value) / 100)} disabled={disabled} />
         </label>
-        <label className="adv-row">
+        <label className="adv-row" title={t.tipEnableIfN}>
           <span>{t.enableIfN}</span>
           <input type="number" min={1} className="adv-input" defaultValue={config.min_images_aspect_filter}
             onBlur={(e) => set("min_images_aspect_filter", Number(e.target.value))} disabled={disabled} />
@@ -55,12 +55,12 @@ export function AdvancedPanel({
           <input type="checkbox" checked={config.two_pass_enabled}
             onChange={(e) => set("two_pass_enabled", e.target.checked)} disabled={disabled} />
         </label>
-        <label className="adv-row">
+        <label className="adv-row" title={t.tipEnableIfN}>
           <span>{t.enableIfN}</span>
           <input type="number" min={1} className="adv-input" defaultValue={config.min_images_two_pass}
             onBlur={(e) => set("min_images_two_pass", Number(e.target.value))} disabled={disabled} />
         </label>
-        <label className="adv-row">
+        <label className="adv-row" title={t.tipCoarseMultiplier}>
           <span>{t.coarseMultiplier}</span>
           <input type="number" min={1} step={0.1} className="adv-input"
             defaultValue={config.coarse_threshold_multiplier}
@@ -82,7 +82,7 @@ export function AdvancedPanel({
           <input type="checkbox" checked={config.parallel_compare_enabled}
             onChange={(e) => set("parallel_compare_enabled", e.target.checked)} disabled={disabled} />
         </label>
-        <label className="adv-row">
+        <label className="adv-row" title={t.tipEnableIfN}>
           <span>{t.enableIfN}</span>
           <input type="number" min={1} className="adv-input" defaultValue={config.min_images_parallel_compare}
             onBlur={(e) => set("min_images_parallel_compare", Number(e.target.value))} disabled={disabled} />

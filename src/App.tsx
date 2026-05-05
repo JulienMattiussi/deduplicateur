@@ -86,10 +86,18 @@ function ScanProgressView({
   const showBar = !isReading && progress && progress.total > 0;
   const pct = showBar ? Math.round((progress.current / progress.total) * 100) : 0;
 
+  const fileType = phase === "exact" ? t.typeFiles
+    : phase === "images" ? t.typeImages
+    : phase === "videos" ? t.typeVideos
+    : t.typeAudio;
+
   return (
     <div className="progress-container">
       <p className="progress-phase-name">{phaseName}</p>
       <p className="progress-phase-counter">{interp(t.phaseCounter, { n: phaseNum, total: totalPhases })}</p>
+      {!isReading && progress?.phase_current != null && (progress.phase_total ?? 0) > 0 && (
+        <p className="progress-label">{interp(t.scanProgress, { n: progress.phase_current, m: progress.phase_total!, type: fileType })}</p>
+      )}
       {isReading ? (
         <div className="spinner" />
       ) : showBar ? (
@@ -517,7 +525,7 @@ export default function App() {
             <span className="folder-icon">📁</span>
             <span className="folder-path">{config.folder || t.pickFolder}</span>
           </div>
-          <select className="select-mode" value={config.scanMode}
+          <select className="select-mode" title={t.tipScanMode} value={config.scanMode}
             onChange={(e) => config.setScanMode(e.target.value as "all" | "by_folder" | "compare_folder")} disabled={scanExec.scanning}>
             <option value="all">{t.scanAll}</option>
             <option value="by_folder">{t.scanByFolder}</option>
@@ -566,7 +574,7 @@ export default function App() {
             ))}
           </div>
           {config.detectionMode === "images" && (
-            <label className="slider-threshold">
+            <label className="slider-threshold" title={t.tipSimilarityThreshold}>
               {t.minSimilarity}&nbsp;: <strong>{config.simSimilarity}&nbsp;%</strong>
               <input type="range" min={60} max={100} step={1} value={config.simSimilarity}
                 onChange={(e) => config.setSimSimilarity(Number(e.target.value))}
@@ -574,7 +582,7 @@ export default function App() {
             </label>
           )}
           {config.detectionMode === "videos" && (
-            <label className="slider-threshold">
+            <label className="slider-threshold" title={t.tipSimilarityThreshold}>
               {t.minSimilarity}&nbsp;: <strong>{config.videoSimilarity}&nbsp;%</strong>
               <input type="range" min={60} max={100} step={1} value={config.videoSimilarity}
                 onChange={(e) => config.setVideoSimilarity(Number(e.target.value))}
@@ -582,7 +590,7 @@ export default function App() {
             </label>
           )}
           {config.detectionMode === "audio" && (
-            <label className="slider-threshold">
+            <label className="slider-threshold" title={t.tipSimilarityThreshold}>
               {t.minSimilarity}&nbsp;: <strong>{config.audioSimilarity}&nbsp;%</strong>
               <input type="range" min={60} max={100} step={1} value={config.audioSimilarity}
                 onChange={(e) => config.setAudioSimilarity(Number(e.target.value))}
