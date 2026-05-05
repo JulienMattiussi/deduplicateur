@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLang } from "../LangContext";
 
 export function AdvancedPanelWrapper({
@@ -14,6 +14,10 @@ export function AdvancedPanelWrapper({
 }) {
   const { t } = useLang();
   const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (disabled) setOpen(false);
+  }, [disabled]);
 
   return (
     <div className="advanced-panel">

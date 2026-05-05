@@ -128,19 +128,19 @@ describe("VideoAdvancedPanel", () => {
     expect(screen.getByText(/Param/).closest("button")).toBeDisabled();
   });
 
-  it("disabled=true : les inputs sont desactives quand le panneau est ouvert", () => {
+  it("se referme automatiquement quand disabled passe a true (demarrage d'un scan)", () => {
     const { rerender } = render(
       <LangProvider>
         <VideoAdvancedPanel config={DEFAULT_VIDEO_CONFIG} onChange={vi.fn()} disabled={false} />
       </LangProvider>
     );
     fireEvent.click(screen.getByText(/Param/));
+    expect(screen.getAllByRole("spinbutton").length).toBeGreaterThan(0);
     rerender(
       <LangProvider>
         <VideoAdvancedPanel config={DEFAULT_VIDEO_CONFIG} onChange={vi.fn()} disabled={true} />
       </LangProvider>
     );
-    const inputs = screen.getAllByRole("spinbutton");
-    expect(inputs[0]).toBeDisabled();
+    expect(screen.queryAllByRole("spinbutton")).toHaveLength(0);
   });
 });

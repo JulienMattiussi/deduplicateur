@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { AdvancedPanelWrapper } from "./AdvancedPanelWrapper";
 
 function renderWrapper(props: { disabled?: boolean; onReset?: () => void } = {}) {
@@ -51,19 +51,37 @@ describe("AdvancedPanelWrapper", () => {
     expect(screen.getByText(/Param/).closest("button")).toBeDisabled();
   });
 
-  it("disabled=true : le bouton reset est désactivé quand le panneau est ouvert", () => {
+  it("se referme automatiquement quand disabled passe à true (démarrage d'un scan)", async () => {
     const onReset = vi.fn();
     const { rerender } = render(
       <AdvancedPanelWrapper onReset={onReset} disabled={false}>
-        <span>contenu</span>
+        <span data-testid="inner">contenu</span>
       </AdvancedPanelWrapper>
     );
     fireEvent.click(screen.getByText(/Param/));
+    expect(screen.getByTestId("inner")).toBeInTheDocument();
     rerender(
       <AdvancedPanelWrapper onReset={onReset} disabled={true}>
-        <span>contenu</span>
+        <span data-testid="inner">contenu</span>
       </AdvancedPanelWrapper>
     );
-    expect(screen.getByText("Réinitialiser")).toBeDisabled();
+    await waitFor(() => {
+      expect(screen.queryByTestId("inner")).not.toBeInTheDocument();
+    });
+  });
+
+  it("reste ferme quand disabled repasse à false apres un scan", async () => {
+    const onReset = vi.fn();
+    const { rerender } = render(
+      <AdvancedPanelWrapper onReset={onReset} disabled={false}>
+        <span data-testid="inner">contenu</span>
+      </AdvancedPanelWrapper>
+    );
+    fireEvent.click(screen.getByText(/Param/));
+    rerender(<AdvancedPanelWrapper onReset={onReset} disabled={true}><span data-testid="inner">contenu</span></AdvancedPanelWrapper>);
+    rerender(<AdvancedPanelWrapper onReset={onReset} disabled={false}><span data-testid="inner">contenu</span></AdvancedPanelWrapper>);
+    await waitFor(() => {
+      expect(screen.queryByTestId("inner")).not.toBeInTheDocument();
+    });
   });
 });

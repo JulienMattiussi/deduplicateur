@@ -640,16 +640,16 @@ export default function App() {
         </div>
 
         {config.detectionMode === "images" && (
-          <AdvancedPanel key={panelResetKey} config={config.phashConfig} onChange={config.updatePhashConfig} disabled={scanExec.scanning} />
+          <AdvancedPanel key={`adv-images-${panelResetKey}`} config={config.phashConfig} onChange={config.updatePhashConfig} disabled={scanExec.scanning} />
         )}
         {config.detectionMode === "videos" && (
-          <VideoAdvancedPanel key={panelResetKey} config={config.videoConfig} onChange={config.updateVideoConfig} disabled={scanExec.scanning} />
+          <VideoAdvancedPanel key={`adv-videos-${panelResetKey}`} config={config.videoConfig} onChange={config.updateVideoConfig} disabled={scanExec.scanning} />
         )}
         {config.detectionMode === "audio" && (
-          <AudioAdvancedPanel key={panelResetKey} config={config.audioConfig} onChange={config.updateAudioConfig} disabled={scanExec.scanning} />
+          <AudioAdvancedPanel key={`adv-audio-${panelResetKey}`} config={config.audioConfig} onChange={config.updateAudioConfig} disabled={scanExec.scanning} />
         )}
         <FiltersPanel
-          key={panelResetKey}
+          key={`filters-${panelResetKey}`}
           excluded={config.excluded}
           onChangeExcluded={config.setExcluded}
           excludeExtensions={config.excludeExtensions}

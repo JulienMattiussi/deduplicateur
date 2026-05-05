@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { FiltersPanel } from "./FiltersPanel";
 import { LangProvider } from "../LangContext";
 
+
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 beforeEach(() => {
@@ -107,5 +108,14 @@ describe("F - FiltersPanel", () => {
     const cacheCheckbox = screen.getByRole("checkbox");
     await user.click(cacheCheckbox);
     expect(onChangeCache).toHaveBeenCalledWith(false);
+  });
+
+  it("se referme automatiquement quand disabled passe a true (demarrage d'un scan)", async () => {
+    const { rerender } = renderWithLang(<FiltersPanel {...makeProps({ disabled: false })} />);
+    await userEvent.setup().click(screen.getByText(/Filtres/));
+    expect(screen.getByText("Extensions exclues")).toBeInTheDocument();
+    rerender(<LangProvider><FiltersPanel {...makeProps({ disabled: true })} /></LangProvider>);
+    await screen.findByText(/Filtres/);
+    expect(screen.queryByText("Extensions exclues")).not.toBeInTheDocument();
   });
 });

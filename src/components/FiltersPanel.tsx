@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLang } from "../LangContext";
 
 export function FiltersPanel({
@@ -33,6 +33,10 @@ export function FiltersPanel({
   const { t } = useLang();
   const [open, setOpen] = useState(false);
   const [folderInput, setFolderInput] = useState("");
+
+  useEffect(() => {
+    if (disabled) setOpen(false);
+  }, [disabled]);
   const [excludeInput, setExcludeInput] = useState("");
   const [includeInput, setIncludeInput] = useState("");
 
