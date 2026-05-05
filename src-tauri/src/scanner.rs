@@ -379,6 +379,9 @@ where
         all_files
     };
 
+    // Nombre total de fichiers du type analysé - affiché comme dénominateur stable dans toutes les phases.
+    let analysis_total = files.len();
+
     // Collect image candidates before partitioning (avoids a second collect_files in pHash phase).
     let phash_candidates_all: Vec<DuplicateFile> = if params.find_similar {
         files.iter().filter(|f| is_image(&f.path)).cloned().collect()
@@ -465,13 +468,13 @@ where
                     if let Some(entry) = exact_cache.get(&file.path, file.modified, file.size) {
                         if let Some(ph) = &entry.partial_hash {
                             let n = hashed.fetch_add(1, Ordering::Relaxed) + 1;
-                            on_progress(n, total_work, scanned_files, &file.name, n, total_to_hash, "exact");
+                            on_progress(n, total_work, scanned_files, &file.name, n, analysis_total, "exact");
                             return Some((ph.clone(), file, None));
                         }
                     }
                     let h = hash_partial(&file.path).ok()?;
                     let n = hashed.fetch_add(1, Ordering::Relaxed) + 1;
-                    on_progress(n, total_work, scanned_files, &file.name, n, total_to_hash, "exact");
+                    on_progress(n, total_work, scanned_files, &file.name, n, analysis_total, "exact");
                     let ins = (file.path.clone(), file.modified, file.size, h.clone());
                     Some((h, file, Some(ins)))
                 })
@@ -649,7 +652,7 @@ where
                     });
                 if result.is_some() {
                     let n = phash_done.fetch_add(1, Ordering::Relaxed) + 1;
-                    on_progress(total_to_hash + n, total_work, scanned_files, &f.name, n, phash_estimate, "images");
+                    on_progress(total_to_hash + n, total_work, scanned_files, &f.name, n, analysis_total, "images");
                 }
                 result
             })
@@ -677,7 +680,7 @@ where
                     cfg.fine_hash_size,
                 );
                 let n = phash_done_for_decode.fetch_add(1, Ordering::Relaxed) + 1;
-                on_progress(total_to_hash + n, total_work, scanned_files, &candidates[i].name, n, phash_estimate, "images");
+                on_progress(total_to_hash + n, total_work, scanned_files, &candidates[i].name, n, analysis_total, "images");
                 (i, hash)
             })
             .collect();
@@ -947,14 +950,14 @@ where
             .map(|(f, meta_opt)| {
                 if meta_opt.is_none() {
                     let n = video_done.fetch_add(1, Ordering::Relaxed) + 1;
-                    on_progress(offset + n, total_work, scanned_files, &f.name, n, video_estimate, "videos");
+                    on_progress(offset + n, total_work, scanned_files, &f.name, n, analysis_total, "videos");
                     return None;
                 }
                 let cached = vcache.get(&f.path, f.modified, f.size, params.video_frames)
                     .map(|h| h.to_vec());
                 if cached.is_some() {
                     let n = video_done.fetch_add(1, Ordering::Relaxed) + 1;
-                    on_progress(offset + n, total_work, scanned_files, &f.name, n, video_estimate, "videos");
+                    on_progress(offset + n, total_work, scanned_files, &f.name, n, analysis_total, "videos");
                 }
                 cached
             })
@@ -981,7 +984,7 @@ where
                     &cancelled,
                 );
                 let n = video_done_for_extract.fetch_add(1, Ordering::Relaxed) + 1;
-                on_progress(offset + n, total_work, scanned_files, &candidates[i].name, n, video_estimate, "videos");
+                on_progress(offset + n, total_work, scanned_files, &candidates[i].name, n, analysis_total, "videos");
                 (i, hashes)
             })
             .collect();
@@ -1130,7 +1133,7 @@ where
                 let cached = acache.get(&f.path, f.modified, f.size);
                 if cached.is_some() {
                     let n = audio_done.fetch_add(1, Ordering::Relaxed) + 1;
-                    on_progress(offset + n, total_work, scanned_files, &f.name, n, audio_estimate, "audio");
+                    on_progress(offset + n, total_work, scanned_files, &f.name, n, analysis_total, "audio");
                 }
                 cached
             })
@@ -1146,7 +1149,7 @@ where
                 if cancelled.load(Ordering::Relaxed) { return (i, None); }
                 let result = compute_fingerprint(&candidates[i].path);
                 let n = audio_done_for_extract.fetch_add(1, Ordering::Relaxed) + 1;
-                on_progress(offset + n, total_work, scanned_files, &candidates[i].name, n, audio_estimate, "audio");
+                on_progress(offset + n, total_work, scanned_files, &candidates[i].name, n, analysis_total, "audio");
                 (i, result)
             })
             .collect();

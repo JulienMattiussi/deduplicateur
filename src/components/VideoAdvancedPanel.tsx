@@ -22,7 +22,7 @@ export function VideoAdvancedPanel({
     <AdvancedPanelWrapper onReset={() => onChange(DEFAULT_VIDEO_CONFIG)} disabled={disabled} configKey={JSON.stringify(config)}>
       <div className="adv-section">
         <span className="adv-section-title" title={t.tipFramesPerVideo}>{t.extractionLabel}</span>
-        <label className="adv-row">
+        <label className="adv-row" title={t.tipFramesPerVideo}>
           <span>{t.framesPerVideo}</span>
           <input type="number" min={2} max={30} className="adv-input" defaultValue={config.n_frames}
             onBlur={(e) => set("n_frames", Math.max(2, Math.min(30, Number(e.target.value))))} disabled={disabled} />
@@ -30,7 +30,7 @@ export function VideoAdvancedPanel({
       </div>
       <div className="adv-section">
         <span className="adv-section-title" title={t.tipDurationFilterVideo}>{t.durationFilter}</span>
-        <label className="adv-row">
+        <label className="adv-row" title={t.tipDurationFilterVideo}>
           <span>{t.tolerance}</span>
           <input type="number" min={0} max={100} className="adv-input"
             defaultValue={Math.round(config.duration_tolerance * 100)}
@@ -39,7 +39,7 @@ export function VideoAdvancedPanel({
       </div>
       <div className="adv-section">
         <span className="adv-section-title" title={t.tipCacheVideo}>{t.cacheLabel}</span>
-        <label className="adv-row">
+        <label className="adv-row" title={t.tipCacheVideo}>
           <span>{t.enable}</span>
           <input type="checkbox" checked={config.cache_enabled}
             onChange={(e) => set("cache_enabled", e.target.checked)} disabled={disabled} />
@@ -47,7 +47,7 @@ export function VideoAdvancedPanel({
       </div>
       <div className="adv-section">
         <span className="adv-section-title" title={t.tipDTW}>{t.temporalAlign}</span>
-        <label className="adv-row">
+        <label className="adv-row" title={t.tipDTW}>
           <span>DTW <span className="adv-hint">{t.dtwHint}</span></span>
           <input type="checkbox" checked={config.use_dtw}
             onChange={(e) => set("use_dtw", e.target.checked)} disabled={disabled} />

@@ -525,7 +525,9 @@ export default function App() {
             <span className="folder-icon">📁</span>
             <span className="folder-path">{config.folder || t.pickFolder}</span>
           </div>
-          <select className="select-mode" title={t.tipScanMode} value={config.scanMode}
+          <select className="select-mode"
+            title={config.scanMode === "all" ? t.tipScanModeAll : config.scanMode === "by_folder" ? t.tipScanModeByFolder : t.tipScanModeCompare}
+            value={config.scanMode}
             onChange={(e) => config.setScanMode(e.target.value as "all" | "by_folder" | "compare_folder")} disabled={scanExec.scanning}>
             <option value="all">{t.scanAll}</option>
             <option value="by_folder">{t.scanByFolder}</option>

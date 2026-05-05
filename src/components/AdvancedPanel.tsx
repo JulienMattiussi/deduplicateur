@@ -28,7 +28,7 @@ export function AdvancedPanel({
             defaultValue={Math.round(config.min_file_size_bytes / 1024)}
             onBlur={(e) => set("min_file_size_bytes", Number(e.target.value) * 1024)} disabled={disabled} />
         </label>
-        <label className="adv-row" title={t.tipEnableIfN}>
+        <label className="adv-row" title={t.tipEnableIfNSize}>
           <span>{t.enableIfN}</span>
           <input type="number" min={1} className="adv-input" defaultValue={config.min_images_size_filter}
             onBlur={(e) => set("min_images_size_filter", Number(e.target.value))} disabled={disabled} />
@@ -50,12 +50,12 @@ export function AdvancedPanel({
       </div>
       <div className="adv-section">
         <span className="adv-section-title" title={t.tipTwoPassHash}>{t.twoPassHash}</span>
-        <label className="adv-row">
+        <label className="adv-row" title={t.tipTwoPassHash}>
           <span>{t.enable}</span>
           <input type="checkbox" checked={config.two_pass_enabled}
             onChange={(e) => set("two_pass_enabled", e.target.checked)} disabled={disabled} />
         </label>
-        <label className="adv-row" title={t.tipEnableIfN}>
+        <label className="adv-row" title={t.tipEnableIfNTwoPass}>
           <span>{t.enableIfN}</span>
           <input type="number" min={1} className="adv-input" defaultValue={config.min_images_two_pass}
             onBlur={(e) => set("min_images_two_pass", Number(e.target.value))} disabled={disabled} />
@@ -69,7 +69,7 @@ export function AdvancedPanel({
       </div>
       <div className="adv-section">
         <span className="adv-section-title" title={t.tipCacheImages}>{t.cacheLabel}</span>
-        <label className="adv-row">
+        <label className="adv-row" title={t.tipCacheImages}>
           <span>{t.enable}</span>
           <input type="checkbox" checked={config.cache_enabled}
             onChange={(e) => set("cache_enabled", e.target.checked)} disabled={disabled} />
@@ -77,12 +77,12 @@ export function AdvancedPanel({
       </div>
       <div className="adv-section">
         <span className="adv-section-title" title={t.tipParallelCompare}>{t.parallelCompare}</span>
-        <label className="adv-row">
+        <label className="adv-row" title={t.tipParallelCompare}>
           <span>{t.enable}</span>
           <input type="checkbox" checked={config.parallel_compare_enabled}
             onChange={(e) => set("parallel_compare_enabled", e.target.checked)} disabled={disabled} />
         </label>
-        <label className="adv-row" title={t.tipEnableIfN}>
+        <label className="adv-row" title={t.tipEnableIfNParallel}>
           <span>{t.enableIfN}</span>
           <input type="number" min={1} className="adv-input" defaultValue={config.min_images_parallel_compare}
             onBlur={(e) => set("min_images_parallel_compare", Number(e.target.value))} disabled={disabled} />

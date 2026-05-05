@@ -769,11 +769,11 @@ Disable this option if you suspect an issue or want to force a complete scan fro
 
 **Filtre de ratio d'aspect** : exclut rapidement les paires d'images aux proportions très différentes (paysage vs portrait). Lecture d'en-tête uniquement — très rapide.
 
-**Hash en 2 passes** : calcule d'abord un hash grossier (rapide), puis un hash fin seulement pour les paires prometteuses. Réduit le nombre de décodages d'images complets.
+**Hash en 2 passes** : calcule d'abord un hash grossier (empreinte numérique rapide) pour éliminer les paires clairement incompatibles, puis un hash précis seulement sur les candidats restants. Réduit le nombre de décodages d'images complets.
 
-**Cache entre scans** : mémorise les hashes pHash par chemin+mtime. Évite de recalculer à chaque scan.
+**Cache entre scans** : mémorise les hashes (empreintes numériques) pHash par chemin+mtime. Évite de recalculer à chaque scan.
 
-**Comparaison parallèle** : utilise tous les cœurs disponibles pour la phase de comparaison.
+**Comparaison parallèle** : utilise tous les cœurs CPU disponibles pour comparer les hashes (empreintes numériques) en parallèle.
 
 **Mode développeur** : enregistre les timings de chaque phase dans \`phash_perf.jsonl\` pour le débogage de performance.
 
@@ -784,11 +784,11 @@ Disable this option if you suspect an issue or want to force a complete scan fro
 
 **Aspect ratio filter**: quickly excludes image pairs with very different proportions (landscape vs portrait). Header-only read — very fast.
 
-**Two-pass hash**: computes a coarse hash first (fast), then a fine hash only for promising pairs. Reduces the number of full image decodes.
+**Two-pass hash**: computes a coarse hash (quick digital fingerprint) first to eliminate clearly incompatible pairs, then a precise hash only for remaining candidates. Reduces the number of full image decodes.
 
-**Inter-scan cache**: remembers pHash values by path+mtime. Avoids recomputing on each scan.
+**Inter-scan cache**: remembers pHash hashes (digital fingerprints) by path+mtime. Avoids recomputing on each scan.
 
-**Parallel comparison**: uses all available CPU cores for the comparison phase.
+**Parallel comparison**: uses all available CPU cores to compare hashes (digital fingerprints) in parallel.
 
 **Developer mode**: records per-phase timings in \`phash_perf.jsonl\` for performance debugging.
 

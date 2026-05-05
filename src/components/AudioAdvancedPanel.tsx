@@ -22,7 +22,7 @@ export function AudioAdvancedPanel({
     <AdvancedPanelWrapper onReset={() => onChange(DEFAULT_AUDIO_CONFIG)} disabled={disabled} configKey={JSON.stringify(config)}>
       <div className="adv-section">
         <span className="adv-section-title" title={t.tipDurationFilterAudio}>{t.durationFilter}</span>
-        <label className="adv-row">
+        <label className="adv-row" title={t.tipDurationFilterAudio}>
           <span>{t.tolerance}</span>
           <input type="number" min={0} max={100} className="adv-input"
             defaultValue={Math.round(config.duration_tolerance * 100)}
@@ -31,7 +31,7 @@ export function AudioAdvancedPanel({
       </div>
       <div className="adv-section">
         <span className="adv-section-title" title={t.tipCacheAudio}>{t.cacheLabel}</span>
-        <label className="adv-row">
+        <label className="adv-row" title={t.tipCacheAudio}>
           <span>{t.enable}</span>
           <input type="checkbox" checked={config.cache_enabled}
             onChange={(e) => set("cache_enabled", e.target.checked)} disabled={disabled} />
