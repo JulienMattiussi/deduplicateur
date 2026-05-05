@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { DuplicateGroup, DuplicateFile, VideoMetadata } from "./types";
-import { formatSize, formatDurationSecs } from "./utils";
+import { formatSize, formatDurationSecs, dirname } from "./utils";
 import { useLang } from "./LangContext";
 
 function toMediaUrl(path: string, port: number): string {
@@ -17,6 +17,10 @@ function MetaBlock({ file, meta }: { file: DuplicateFile; meta: VideoMetadata | 
       <div className="comparator-meta-row">
         <span className="comparator-meta-label">{t.colName}</span>
         <span className="comparator-meta-value comparator-meta-filename">{file.name}</span>
+      </div>
+      <div className="comparator-meta-row">
+        <span className="comparator-meta-label">{t.colFolder}</span>
+        <span className="comparator-meta-value comparator-meta-path" title={file.path}>{dirname(file.path)}</span>
       </div>
       <div className="comparator-meta-row">
         <span className="comparator-meta-label">{t.colSize}</span>
@@ -195,6 +199,7 @@ export function VideoComparator({
   function keepFile(keepPath: string) {
     const toAdd = group.files.filter((f) => f.path !== keepPath).map((f) => f.path);
     onSelectPaths(toAdd, [keepPath]);
+    onClose();
   }
 
   function isKept(file: DuplicateFile): boolean {

@@ -1970,6 +1970,11 @@
   color: var(--text-2);
 }
 
+.comparator-meta-path {
+  font-size: 11px;
+  color: var(--text-5);
+}
+
 .comparator-divider {
   width: 1px;
   background: var(--border);

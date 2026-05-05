@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { DuplicateGroup, DuplicateFile, ImageMeta } from "./types";
-import { formatSize } from "./utils";
+import { formatSize, dirname } from "./utils";
 import { useLang } from "./LangContext";
 import { openFile } from "./fileActions";
 
@@ -93,6 +93,7 @@ export function ImageComparator({
   function keepFile(keepPath: string) {
     const toAdd = group.files.filter((f) => f.path !== keepPath).map((f) => f.path);
     onSelectPaths(toAdd, [keepPath]);
+    onClose();
   }
 
   function isKept(file: DuplicateFile): boolean {
@@ -124,6 +125,10 @@ export function ImageComparator({
         <div className="comparator-meta-row">
           <span className="comparator-meta-label">{t.colName}</span>
           <span className="comparator-meta-value comparator-meta-filename">{file.name}</span>
+        </div>
+        <div className="comparator-meta-row">
+          <span className="comparator-meta-label">{t.colFolder}</span>
+          <span className="comparator-meta-value comparator-meta-path" title={file.path}>{dirname(file.path)}</span>
         </div>
         <div className="comparator-meta-row">
           <span className="comparator-meta-label">{t.colSize}</span>
