@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -311,6 +311,18 @@ fn is_cross_source_group(group: &DuplicateGroup) -> bool {
     has_primary && has_secondary
 }
 
+fn timing_log(data_dir: Option<&str>, t_start: &Instant, msg: &str) {
+    let Some(dir) = data_dir else { return };
+    let elapsed = t_start.elapsed().as_secs();
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(Path::new(dir).join("timing.log"))
+    {
+        let _ = writeln!(f, "[+{}s] {}", elapsed, msg);
+    }
+}
+
 pub fn scan_folder<F>(
     params: ScanParams,
     cancelled: Arc<AtomicBool>,
@@ -321,6 +333,9 @@ where
 {
     let start = Instant::now();
     let mut was_cancelled = false;
+    if let Some(dir) = params.data_dir.as_deref() {
+        let _ = std::fs::write(Path::new(dir).join("timing.log"), "");
+    }
 
     // Mode "comparer avec un autre dossier" : collecte separee des deux dossiers.
     let compare_mode = params.secondary_folder.is_some();
@@ -440,21 +455,40 @@ where
     let full_hashed = Arc::new(AtomicUsize::new(0));
     let mut groups: Vec<DuplicateGroup> = Vec::new();
 
+    timing_log(params.data_dir.as_deref(), &start, &format!(
+        "scan_start: files={} total_to_hash={} phash_estimate={} total_work={}",
+        analysis_total, total_to_hash, phash_estimate, total_work
+    ));
+
     // Cache inter-scans des hashes exacts. Charge une seule fois avant la boucle.
     let mut exact_cache = if params.exact_cache_enabled {
-        params.data_dir.as_deref()
+        let cache = params.data_dir.as_deref()
             .map(|d| ExactCache::load(Path::new(d)))
-            .unwrap_or_else(ExactCache::empty)
+            .unwrap_or_else(ExactCache::empty);
+        timing_log(params.data_dir.as_deref(), &start, &format!(
+            "exact_cache_loaded: entries={} enabled=true", cache.len()
+        ));
+        cache
     } else {
+        timing_log(params.data_dir.as_deref(), &start, "exact_cache_loaded: enabled=false");
         ExactCache::empty()
     };
 
     // --- Phase 1 : doublons exacts ---
+    timing_log(params.data_dir.as_deref(), &start, &format!(
+        "exact_loop_start: folders={}", partition_candidates.len()
+    ));
     for (folder_key, size_candidates) in partition_candidates {
         if cancelled.load(Ordering::Relaxed) {
             was_cancelled = true;
             break;
         }
+
+        let folder_candidates_count: usize = size_candidates.iter().map(|v| v.len()).sum();
+        timing_log(params.data_dir.as_deref(), &start, &format!(
+            "folder_partial_hash_start: key={:?} candidates={}",
+            folder_key, folder_candidates_count
+        ));
 
         // Chaque tuple : (hash_partiel, fichier, Option<(path, mtime, size, hash)> a inserer en cache)
         let partial_raw: Vec<(String, DuplicateFile, Option<(String, u64, u64, String)>)> =
@@ -502,6 +536,12 @@ where
         }
         let partial_candidates: Vec<Vec<DuplicateFile>> =
             by_partial.into_values().filter(|v| v.len() >= 2).collect();
+
+        let full_hash_count: usize = partial_candidates.iter().map(|v| v.len()).sum();
+        timing_log(params.data_dir.as_deref(), &start, &format!(
+            "folder_full_hash_start: key={:?} candidates={}",
+            folder_key, full_hash_count
+        ));
 
         let full_raw: Vec<(String, DuplicateFile, Option<(String, u64, u64, String)>)> =
             partial_candidates
@@ -570,7 +610,12 @@ where
             partition_groups
         };
         groups.extend(filtered_groups);
+        timing_log(params.data_dir.as_deref(), &start, &format!(
+            "folder_done: key={:?}", folder_key
+        ));
     }
+
+    timing_log(params.data_dir.as_deref(), &start, "exact_loop_done");
 
     // Sauvegarder le cache exact apres la boucle (y compris en cas d'annulation partielle).
     if params.exact_cache_enabled {
@@ -579,7 +624,10 @@ where
         }
     }
 
+    timing_log(params.data_dir.as_deref(), &start, "exact_cache_save_done");
+
     // --- Phase 2 : images similaires (pHash) ---
+    timing_log(params.data_dir.as_deref(), &start, "phash_start");
     if params.find_similar && !was_cancelled && !cancelled.load(Ordering::Relaxed) {
         'phash: {
         let t_phase_start = Instant::now();
