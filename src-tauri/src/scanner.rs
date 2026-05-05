@@ -437,6 +437,7 @@ where
     let total_work = total_to_hash + phash_estimate + video_estimate + audio_estimate;
 
     let hashed = Arc::new(AtomicUsize::new(0));
+    let full_hashed = Arc::new(AtomicUsize::new(0));
     let mut groups: Vec<DuplicateGroup> = Vec::new();
 
     // Cache inter-scans des hashes exacts. Charge une seule fois avant la boucle.
@@ -512,10 +513,14 @@ where
                     }
                     if let Some(entry) = exact_cache.get(&file.path, file.modified, file.size) {
                         if let Some(fh) = &entry.full_hash {
+                            let n = full_hashed.fetch_add(1, Ordering::Relaxed) + 1;
+                            on_progress(total_to_hash, total_work, scanned_files, &file.name, n, analysis_total, "exact");
                             return Some((fh.clone(), file, None));
                         }
                     }
                     let h = hash_full(&file.path).ok()?;
+                    let n = full_hashed.fetch_add(1, Ordering::Relaxed) + 1;
+                    on_progress(total_to_hash, total_work, scanned_files, &file.name, n, analysis_total, "exact");
                     let ins = (file.path.clone(), file.modified, file.size, h.clone());
                     Some((h, file, Some(ins)))
                 })
