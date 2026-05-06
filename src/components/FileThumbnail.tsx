@@ -1,13 +1,30 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { DuplicateFile } from "../types";
 import { openFile } from "../fileActions";
 
+// Marge approximant 2 hauteurs de card (~150px chacune)
+const PRELOAD_MARGIN = "300px";
+
 export function FileThumbnail({ file, mode }: { file: DuplicateFile; mode: "image" | "video" | "audio" }) {
   const [thumb, setThumb] = useState<string | null>(null);
+  const [near, setNear] = useState(false);
+  const placeholderRef = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
     if (mode === "audio") return;
+    const el = placeholderRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) setNear(true); },
+      { rootMargin: `${PRELOAD_MARGIN} 0px` }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [mode]);
+
+  useEffect(() => {
+    if (!near || mode === "audio") return;
     const cmd = mode === "video" ? "get_video_thumbnail" : "get_image_thumbnail";
     const args = mode === "video"
       ? { path: file.path, maxSize: 64, duration: file.video_metadata?.duration_secs ?? null }
@@ -15,7 +32,7 @@ export function FileThumbnail({ file, mode }: { file: DuplicateFile; mode: "imag
     invoke<string>(cmd, args)
       .then(setThumb)
       .catch(() => setThumb("error"));
-  }, [file.path, mode]);
+  }, [near, file.path, mode]);
 
   if (mode === "audio") {
     return (
@@ -46,5 +63,5 @@ export function FileThumbnail({ file, mode }: { file: DuplicateFile; mode: "imag
   if (thumb === "error") {
     return <span className="file-thumb-error">{mode === "video" ? "🎬" : "🖼"}</span>;
   }
-  return <span className="file-thumb-spinner" />;
+  return <span ref={placeholderRef} className="file-thumb-spinner" />;
 }

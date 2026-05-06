@@ -92,6 +92,23 @@ describe("ProgressETA", () => {
     expect(eta.textContent).toContain("écoul");
   });
 
+  it("affiche le temps restant en heures quand >= 2h", () => {
+    const now = Date.now();
+    const history = [
+      { time: now - 60_000, current: 0 },
+      { time: now - 30_000, current: 10 },
+      { time: now - 1_000, current: 19 },
+    ];
+    renderETA({
+      progress: { current: 20, total: 10000 },
+      history,
+      scanStartMs: now - 60_000,
+      isLastPhase: true,
+    });
+    const eta = screen.getByText(/environ/);
+    expect(eta.textContent).toMatch(/\d+[.,]\d\s*h/);
+  });
+
   it("le span a la classe progress-eta", () => {
     renderETA({
       progress: { current: 100, total: 1000 },

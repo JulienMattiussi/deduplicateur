@@ -2,7 +2,10 @@ import { interp, type Translations } from "../i18n";
 
 function formatDuration(ms: number, t: Translations): string {
   const s = Math.round(ms / 1000);
-  return s < 60 ? `${s} ${t.durationS}` : `${Math.round(s / 60)} ${t.durationMin}`;
+  if (s < 60) return `${s} ${t.durationS}`;
+  const min = Math.round(s / 60);
+  if (min < 120) return `${min} ${t.durationMin}`;
+  return `${(ms / 3_600_000).toFixed(1)} ${t.durationH}`;
 }
 
 export function ProgressETA({
