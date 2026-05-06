@@ -104,6 +104,10 @@ pub struct ScanParams {
     /// Dossier secondaire (de reference) pour le mode "comparer avec un autre dossier".
     /// Quand renseigne, seuls les groupes contenant au moins un fichier de chaque dossier sont rapportes.
     pub secondary_folder: Option<String>,
+    /// Timestamp Unix minimum de date de modification (0 = pas de minimum).
+    pub min_modified_timestamp: u64,
+    /// Timestamp Unix maximum de date de modification (0 = pas de maximum).
+    pub max_modified_timestamp: u64,
 }
 
 impl ScanParams {
@@ -135,6 +139,8 @@ impl ScanParams {
             audio_duration_tolerance: 0.20,
             ignored_keys: HashSet::new(),
             secondary_folder: None,
+            min_modified_timestamp: 0,
+            max_modified_timestamp: 0,
         }
     }
 }

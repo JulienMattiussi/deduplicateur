@@ -2,7 +2,7 @@ import React, { useState, startTransition, useEffect, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { save as dialogSave } from "@tauri-apps/plugin-dialog";
 import "./App.css";
-import { formatSize, VIDEO_EXTS } from "./utils";
+import { formatSize, VIDEO_EXTS, AUDIO_EXTS } from "./utils";
 import { useLang } from "./LangContext";
 import { interp, type Translations } from "./i18n";
 import type { DuplicateGroup, FolderSummary, IgnoreEntry, ScanProfile, ScanSummary, ScanProgress, ScanPhase } from "./types";
@@ -15,6 +15,7 @@ import { HelpPanel } from "./components/HelpPanel";
 import { useProfiles } from "./hooks/useProfiles";
 import { ImageComparator } from "./ImageComparator";
 import { VideoComparator } from "./VideoComparator";
+import { AudioComparator } from "./AudioComparator";
 import { SessionCard } from "./components/SessionCard";
 import { GroupCard } from "./components/GroupCard";
 import { FolderSection } from "./components/FolderSection";
@@ -134,6 +135,7 @@ export default function App() {
   const [filterText, setFilterText] = useState("");
   const [comparatorIdx, setComparatorIdx] = useState<number | null>(null);
   const [videoComparatorIdx, setVideoComparatorIdx] = useState<number | null>(null);
+  const [audioComparatorIdx, setAudioComparatorIdx] = useState<number | null>(null);
   const [resumingId, setResumingId] = useState<string | null>(null);
   const [smartRule, setSmartRule] = useState<SmartMode>("newest");
   const [priorityFolder, setPriorityFolder] = useState("");
@@ -185,7 +187,7 @@ export default function App() {
         setHelpOpen((v) => !v);
         return;
       }
-      if (comparatorIdx !== null || videoComparatorIdx !== null) return;
+      if (comparatorIdx !== null || videoComparatorIdx !== null || audioComparatorIdx !== null) return;
       const target = e.target as HTMLElement;
       const inInput = target.tagName === "INPUT" || target.tagName === "TEXTAREA";
 
@@ -206,7 +208,7 @@ export default function App() {
     }
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [summary, selection, scanExec.scanning, comparatorIdx, videoComparatorIdx]);
+  }, [summary, selection, scanExec.scanning, comparatorIdx, videoComparatorIdx, audioComparatorIdx]);
 
   async function loadIgnoredEntries() {
     try {
@@ -345,6 +347,12 @@ export default function App() {
     setPanelResetKey(k => k + 1);
     resetResults();
     const effectiveRecursive = (config.scanMode === "by_folder" || config.scanMode === "compare_folder") ? true : config.recursive;
+    const minModifiedTimestamp = config.minModifiedDate
+      ? Math.floor(new Date(config.minModifiedDate).getTime() / 1000)
+      : 0;
+    const maxModifiedTimestamp = config.maxModifiedDate
+      ? Math.floor(new Date(config.maxModifiedDate + "T23:59:59").getTime() / 1000)
+      : 0;
     return scanExec.scan({
       path: config.folder,
       recursive: effectiveRecursive,
@@ -366,6 +374,8 @@ export default function App() {
       notificationThresholdSecs: 10,
       notificationLang: lang,
       secondaryFolder: config.scanMode === "compare_folder" ? (config.secondaryFolder || null) : null,
+      minModifiedTimestamp: minModifiedTimestamp || undefined,
+      maxModifiedTimestamp: maxModifiedTimestamp || undefined,
     });
   }
 
@@ -492,6 +502,14 @@ export default function App() {
     return base.filter((g) => {
       const ext = g.files[0]?.path.split(".").pop()?.toLowerCase() ?? "";
       return g.video_similar || VIDEO_EXTS.has(ext);
+    });
+  }, [filteredGroups, results.groups, summary?.by_folder]);
+
+  const audioGroups = useMemo(() => {
+    const base = summary?.by_folder ? results.groups : filteredGroups;
+    return base.filter((g) => {
+      const ext = g.files[0]?.path.split(".").pop()?.toLowerCase() ?? "";
+      return g.audio_similar || AUDIO_EXTS.has(ext);
     });
   }, [filteredGroups, results.groups, summary?.by_folder]);
 
@@ -668,6 +686,10 @@ export default function App() {
           onChangeMax={config.setMaxFileSizeKb}
           exactCacheEnabled={config.exactCacheEnabled}
           onChangeCache={config.setExactCacheEnabled}
+          minModifiedDate={config.minModifiedDate}
+          onChangeMinDate={config.setMinModifiedDate}
+          maxModifiedDate={config.maxModifiedDate}
+          onChangeMaxDate={config.setMaxModifiedDate}
           disabled={scanExec.scanning}
         />
         {summary && (
@@ -829,6 +851,7 @@ export default function App() {
                     onIgnore={handleIgnoreGroup}
                     onCompare={(group) => { const idx = imageGroups.indexOf(group); if (idx >= 0) setComparatorIdx(idx); }}
                     onCompareVideo={(group) => { const idx = videoGroups.indexOf(group); if (idx >= 0) setVideoComparatorIdx(idx); }}
+                    onCompareAudio={(group) => { const idx = audioGroups.indexOf(group); if (idx >= 0) setAudioComparatorIdx(idx); }}
                   />
                 ))
               )
@@ -840,6 +863,7 @@ export default function App() {
                   filteredGroups.map((group: DuplicateGroup) => {
                     const imgIdx = imageGroups.indexOf(group);
                     const vidIdx = videoGroups.indexOf(group);
+                    const audIdx = audioGroups.indexOf(group);
                     return (
                       <GroupCard
                         key={group.id}
@@ -848,6 +872,7 @@ export default function App() {
                         onToggle={selection.toggleFile}
                         onCompare={imgIdx >= 0 ? () => setComparatorIdx(imgIdx) : undefined}
                         onCompareVideo={vidIdx >= 0 ? () => setVideoComparatorIdx(vidIdx) : undefined}
+                        onCompareAudio={audIdx >= 0 ? () => setAudioComparatorIdx(audIdx) : undefined}
                         onIgnore={() => handleIgnoreGroup(group.id)}
                       />
                     );
@@ -910,6 +935,16 @@ export default function App() {
           selected={selection.selected}
           onSelectPaths={handleSelectPaths}
           onClose={() => setVideoComparatorIdx(null)}
+        />
+      )}
+
+      {audioComparatorIdx !== null && (
+        <AudioComparator
+          groups={audioGroups}
+          startIdx={audioComparatorIdx}
+          selected={selection.selected}
+          onSelectPaths={handleSelectPaths}
+          onClose={() => setAudioComparatorIdx(null)}
         />
       )}
 

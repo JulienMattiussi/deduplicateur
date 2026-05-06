@@ -17,6 +17,7 @@ export function FolderSection({
   onIgnore,
   onCompare,
   onCompareVideo,
+  onCompareAudio,
 }: {
   summary: FolderSummary;
   groups: DuplicateGroup[];
@@ -29,6 +30,7 @@ export function FolderSection({
   onIgnore?: (groupId: string) => void;
   onCompare?: (group: DuplicateGroup) => void;
   onCompareVideo?: (group: DuplicateGroup) => void;
+  onCompareAudio?: (group: DuplicateGroup) => void;
 }) {
   const { t } = useLang();
   const [expanded, setExpanded] = useState(false);
@@ -66,6 +68,7 @@ export function FolderSection({
               onToggle={onToggle}
               onCompare={onCompare ? () => onCompare(group) : undefined}
               onCompareVideo={onCompareVideo ? () => onCompareVideo(group) : undefined}
+              onCompareAudio={onCompareAudio ? () => onCompareAudio(group) : undefined}
               onIgnore={onIgnore ? () => onIgnore(group.id) : undefined}
             />
           ))}

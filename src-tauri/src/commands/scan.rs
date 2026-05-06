@@ -32,6 +32,8 @@ pub async fn scan_folder(
     notification_threshold_secs: Option<u64>,
     notification_lang: Option<String>,
     secondary_folder: Option<String>,
+    min_modified_timestamp: Option<u64>,
+    max_modified_timestamp: Option<u64>,
 ) -> Result<ScanSummary, String> {
     let app = window.app_handle().clone();
     let cancelled = {
@@ -107,6 +109,8 @@ pub async fn scan_folder(
             audio_duration_tolerance,
             ignored_keys,
             secondary_folder,
+            min_modified_timestamp: min_modified_timestamp.unwrap_or(0),
+            max_modified_timestamp: max_modified_timestamp.unwrap_or(0),
         };
         do_scan(params, cancelled, move |current, total, total_files, file: &str, phase_current, phase_total, phase: &str| {
             *progress_for_scan.lock().unwrap() = Some((current, total, total_files, file.to_string(), phase_current, phase_total, phase.to_string()));

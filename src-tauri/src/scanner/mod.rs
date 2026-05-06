@@ -73,6 +73,8 @@ where
         &params.include_extensions,
         params.min_file_size_kb.saturating_mul(1024),
         params.max_file_size_kb.saturating_mul(1024),
+        params.min_modified_timestamp,
+        params.max_modified_timestamp,
     )?;
 
     let secondary_files_raw: Vec<DuplicateFile> = if let Some(ref sec) = params.secondary_folder {
@@ -85,6 +87,8 @@ where
             &params.include_extensions,
             params.min_file_size_kb.saturating_mul(1024),
             params.max_file_size_kb.saturating_mul(1024),
+            params.min_modified_timestamp,
+            params.max_modified_timestamp,
         )?
     } else {
         vec![]

@@ -466,3 +466,28 @@ En mode "Comparer avec un autre dossier" : dossier source S et dossier de réfé
 - [x] Tests Rust : 8 nouveaux tests dans `scanner/hash.rs` (PNG valide, mauvaise magic, buffer court, JPEG valide, mauvaise magic, SOF absent, SOS avant SOF, format non reconnu)
 - [x] Tests TypeScript : 2 nouveaux tests `FileThumbnail` (invoke absent hors viewport, invoke présent dans viewport)
 - [x] 181 tests Rust / 291 tests TypeScript - tous au vert
+
+---
+
+## Phase 22 - Comparateur audio + bouton dossier + filtre date ✅
+
+**Objectif : comparer deux fichiers audio cote a cote, ouvrir le dossier depuis les comparateurs, filtrer les fichiers par date de modification**
+
+- [x] `AudioComparator.tsx` : composant plein ecran, meme structure que `VideoComparator.tsx` - deux lecteurs `<audio>` cote a cote, synchronisation play/pause/seek (pattern maitre/esclave), bouton "Garder celui-ci"
+- [x] Media server utilise pour les URLs audio (meme serveur HTTP local que les videos - Range support)
+- [x] `AudioMetaBlock` : affiche nom, dossier, taille, duree (depuis `file.audio_metadata.duration_secs`)
+- [x] `comparatorShared.tsx` : bouton 📂 "Ouvrir le dossier" dans `MetaBlockBase` via `revealInFolder()` - present dans les 3 comparateurs (images, videos, audio)
+- [x] `filters.rs` : `passes_filters` etendue avec `modified: u64, min_modified_timestamp: u64, max_modified_timestamp: u64` - 5 nouveaux tests (min exclut, min ok, max exclut, max ok, plage)
+- [x] `scanner/types.rs` : `ScanParams` + `min_modified_timestamp`, `max_modified_timestamp` (default 0)
+- [x] `scanner/fs.rs` : `collect_files` passe `modified` a `passes_filters` (branche recursive et non-recursive)
+- [x] `commands/scan.rs` : 2 nouveaux params optionnels `min_modified_timestamp`, `max_modified_timestamp`
+- [x] `components/FiltersPanel.tsx` : section "Date de modification" avec deux `<input type="date">`, activeCount mis a jour
+- [x] `hooks/useScanConfig.ts` : `minModifiedDate` / `maxModifiedDate` (string ISO, default "")
+- [x] `App.tsx` : conversion date ISO -> timestamp Unix avant invoke, `audioGroups` useMemo, `audioComparatorIdx` state, rendu `<AudioComparator>`, `onCompareAudio` cable dans GroupCard et FolderSection
+- [x] `components/GroupCard.tsx` + `FolderSection.tsx` : prop `onCompareAudio` + bouton "Comparer" sur les groupes audio
+- [x] `i18n.ts` : 5 nouvelles cles (`audioComparator`, `filterModifiedDate`, `minModifiedDate`, `maxModifiedDate`, `revealInFolderBtn`) en FR et EN
+- [x] `src/help/content.ts` : section "audio-comparator" + 2 articles bilingues (ouvrir, garder) + article "filters-date" bilingue
+- [x] Tests TypeScript : `AudioComparator.test.tsx` 8 tests (rendu, audio-left/right, controls maitre/esclave, garder, duree, bouton dossier, groupe vide, Escape) + 3 tests `FiltersPanel` (section date visible, onChangeMinDate, count avec dates)
+- [x] 186 tests Rust (+5 filters.rs date) / 302 tests TypeScript (+11) - tous au vert
+
+**Critere de validation : ouvrir deux fichiers audio similaires, appuyer lecture, les deux jouent en meme temps ; filtrer par "modifie apres 2024-01-01" et relancer le scan ; cliquer 📂 dans un comparateur ouvre le dossier**

@@ -2252,6 +2252,39 @@
   font-size: 13px;
 }
 
+/* Audio comparator extras */
+.comparator-audio-area {
+  background: var(--bg-app);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+}
+
+.comparator-audio-icon {
+  font-size: 64px;
+  opacity: 0.6;
+}
+
+.comparator-audio {
+  width: 100%;
+  max-width: 480px;
+}
+
+/* Reveal-in-folder button in MetaBlockBase */
+.comparator-reveal-btn {
+  margin-left: 4px;
+  padding: 1px 5px;
+  font-size: 12px;
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+
+.comparator-reveal-btn:hover {
+  opacity: 1;
+}
+
 /* Ignored groups dropdown (header top-right) */
 .ignored-container {
   position: relative;

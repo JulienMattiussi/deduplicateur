@@ -33,6 +33,10 @@ describe("F - FiltersPanel", () => {
       onChangeMax: vi.fn(),
       exactCacheEnabled: true,
       onChangeCache: vi.fn(),
+      minModifiedDate: "",
+      onChangeMinDate: vi.fn(),
+      maxModifiedDate: "",
+      onChangeMaxDate: vi.fn(),
       disabled: false,
       ...overrides,
     };
@@ -117,5 +121,32 @@ describe("F - FiltersPanel", () => {
     rerender(<LangProvider><FiltersPanel {...makeProps({ disabled: true })} /></LangProvider>);
     await screen.findByText(/Filtres/);
     expect(screen.queryByText("Extensions exclues")).not.toBeInTheDocument();
+  });
+
+  it("affiche la section date de modification quand le panneau est ouvert", async () => {
+    const user = userEvent.setup();
+    renderWithLang(<FiltersPanel {...makeProps()} />);
+    await user.click(screen.getByText(/Filtres/));
+    expect(screen.getByText("Date de modification")).toBeInTheDocument();
+    expect(screen.getByText("Modifié après")).toBeInTheDocument();
+    expect(screen.getByText("Modifié avant")).toBeInTheDocument();
+  });
+
+  it("appelle onChangeMinDate quand on change la date min", async () => {
+    const user = userEvent.setup();
+    const onChangeMinDate = vi.fn();
+    renderWithLang(<FiltersPanel {...makeProps({ onChangeMinDate })} />);
+    await user.click(screen.getByText(/Filtres/));
+    const dateInputs = screen.getAllByDisplayValue("").filter(
+      (el) => (el as HTMLInputElement).type === "date"
+    );
+    fireEvent.change(dateInputs[0], { target: { value: "2024-01-01" } });
+    expect(onChangeMinDate).toHaveBeenCalledWith("2024-01-01");
+  });
+
+  it("le count de filtres actifs inclut les dates renseignees", () => {
+    // excluded(1) + excludeExt(1) + minDate(1) + maxDate(1) = 4
+    renderWithLang(<FiltersPanel {...makeProps({ minModifiedDate: "2024-01-01", maxModifiedDate: "2024-12-31" })} />);
+    expect(screen.getByText("4")).toBeInTheDocument();
   });
 });

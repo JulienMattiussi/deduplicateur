@@ -56,6 +56,8 @@ export function useScanConfig() {
   const [minFileSizeKb, setMinFileSizeKb] = useState(0);
   const [maxFileSizeKb, setMaxFileSizeKb] = useState(0);
   const [exactCacheEnabled, setExactCacheEnabled] = useState(true);
+  const [minModifiedDate, setMinModifiedDate] = useState("");
+  const [maxModifiedDate, setMaxModifiedDate] = useState("");
 
   useEffect(() => {
     invoke<PHashConfig>("get_phash_config").then(setPhashConfig).catch(() => {});
@@ -119,5 +121,7 @@ export function useScanConfig() {
     minFileSizeKb, setMinFileSizeKb,
     maxFileSizeKb, setMaxFileSizeKb,
     exactCacheEnabled, setExactCacheEnabled,
+    minModifiedDate, setMinModifiedDate,
+    maxModifiedDate, setMaxModifiedDate,
   };
 }

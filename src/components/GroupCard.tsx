@@ -13,6 +13,7 @@ export function GroupCard({
   onToggle,
   onCompare,
   onCompareVideo,
+  onCompareAudio,
   onIgnore,
 }: {
   group: DuplicateGroup;
@@ -20,6 +21,7 @@ export function GroupCard({
   onToggle: (path: string) => void;
   onCompare?: () => void;
   onCompareVideo?: () => void;
+  onCompareAudio?: () => void;
   onIgnore?: () => void;
 }) {
   const { t } = useLang();
@@ -92,6 +94,14 @@ export function GroupCard({
           <button
             className="btn-compare"
             onClick={(e) => { e.stopPropagation(); onCompareVideo(); }}
+          >
+            {t.compare}
+          </button>
+        )}
+        {isAudioGroup && onCompareAudio && (
+          <button
+            className="btn-compare"
+            onClick={(e) => { e.stopPropagation(); onCompareAudio(); }}
           >
             {t.compare}
           </button>

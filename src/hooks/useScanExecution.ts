@@ -20,6 +20,8 @@ export interface ScanInvokeArgs {
   notificationThresholdSecs?: number;
   notificationLang?: string;
   secondaryFolder?: string | null;
+  minModifiedTimestamp?: number;
+  maxModifiedTimestamp?: number;
 }
 
 export function useScanExecution(

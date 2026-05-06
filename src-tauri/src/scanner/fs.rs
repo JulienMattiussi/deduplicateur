@@ -41,6 +41,8 @@ pub fn collect_files(
     include_extensions: &[String],
     min_file_size_bytes: u64,
     max_file_size_bytes: u64,
+    min_modified_timestamp: u64,
+    max_modified_timestamp: u64,
 ) -> Result<Vec<DuplicateFile>, String> {
     if !folder.exists() {
         return Err(format!("Dossier introuvable : {}", folder.display()));
@@ -84,7 +86,7 @@ pub fn collect_files(
                 }
                 Err(_) => continue,
             };
-            if !passes_filters(path, size, exclude_extensions, include_extensions, min_file_size_bytes, max_file_size_bytes) {
+            if !passes_filters(path, size, modified, exclude_extensions, include_extensions, min_file_size_bytes, max_file_size_bytes, min_modified_timestamp, max_modified_timestamp) {
                 continue;
             }
             let name = path
@@ -121,7 +123,7 @@ pub fn collect_files(
                 .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
                 .map(|d| d.as_secs())
                 .unwrap_or(0);
-            if !passes_filters(&path, size, exclude_extensions, include_extensions, min_file_size_bytes, max_file_size_bytes) {
+            if !passes_filters(&path, size, modified, exclude_extensions, include_extensions, min_file_size_bytes, max_file_size_bytes, min_modified_timestamp, max_modified_timestamp) {
                 continue;
             }
             let name = path

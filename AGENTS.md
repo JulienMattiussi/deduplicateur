@@ -39,9 +39,15 @@ Parcourir chaque point dans l'ordre, même si la réponse est "rien à faire ici
 
 **Toute feature visible par l'utilisateur doit être documentée dans `src/help/content.ts` en même temps qu'elle est implémentée.**
 
-- [ ] Si un nouveau bouton, panneau, option ou comportement est ajouté : vérifier s'il est couvert par un article existant et le mettre à jour, ou créer un nouvel article.
-- [ ] Les articles utilisent le format : `**gras**`, \`code\`, `- bullets`, `\n\n` comme séparateur de blocs. Les backticks dans les template literals doivent être échappés (`\\\``).
-- [ ] Tout article nouveau ou modifié doit avoir ses champs `title`, `keywords` et `body` en FR et EN.
+Procéder dans cet ordre :
+
+1. **Articles existants à mettre à jour** - pour chaque composant modifié, lister les articles qui couvrent les features utilisant ce composant et les mettre à jour. Attention aux composants partagés : modifier `MetaBlockBase`, `GroupCard` ou `FiltersPanel` impacte plusieurs articles en même temps. Grep `src/help/content.ts` pour les mots-clés du composant modifié.
+2. **Nouveaux articles** - si le comportement introduit n'est couvert par aucun article existant, en créer un.
+3. **Format** : `**gras**`, \`code\`, `- bullets`, `\n\n` comme séparateur de blocs. Les backticks dans les template literals doivent être échappés (`\\\``).
+4. **Bilingue** : tout article nouveau ou modifié doit avoir ses champs `title`, `keywords` et `body` en FR et EN.
+
+- [ ] Tous les articles couvrant des features affectées par ce changement ont été relus et mis à jour si nécessaire (pas seulement les articles nouveaux).
+- [ ] Les articles nouveaux respectent le format et sont bilingues.
 
 ### 4. AGENTS.md (ce fichier)
 

@@ -14,6 +14,10 @@ export function FiltersPanel({
   onChangeMax,
   exactCacheEnabled,
   onChangeCache,
+  minModifiedDate,
+  onChangeMinDate,
+  maxModifiedDate,
+  onChangeMaxDate,
   disabled,
 }: {
   excluded: string[];
@@ -28,6 +32,10 @@ export function FiltersPanel({
   onChangeMax: (v: number) => void;
   exactCacheEnabled: boolean;
   onChangeCache: (v: boolean) => void;
+  minModifiedDate: string;
+  onChangeMinDate: (v: string) => void;
+  maxModifiedDate: string;
+  onChangeMaxDate: (v: string) => void;
   disabled: boolean;
 }) {
   const { t } = useLang();
@@ -41,7 +49,8 @@ export function FiltersPanel({
   const [includeInput, setIncludeInput] = useState("");
 
   const activeCount = excluded.length + excludeExtensions.length + includeExtensions.length
-    + (minFileSizeKb > 0 ? 1 : 0) + (maxFileSizeKb > 0 ? 1 : 0);
+    + (minFileSizeKb > 0 ? 1 : 0) + (maxFileSizeKb > 0 ? 1 : 0)
+    + (minModifiedDate ? 1 : 0) + (maxModifiedDate ? 1 : 0);
 
   function addFolder() {
     const name = folderInput.trim();
@@ -135,6 +144,21 @@ export function FiltersPanel({
                 disabled={disabled} />
             </label>
             <span className="adv-hint" style={{ gridColumn: "1 / -1" }}>{t.noSizeLimit}</span>
+          </div>
+          <div className="adv-section">
+            <span className="adv-section-title">{t.filterModifiedDate}</span>
+            <label className="adv-row">
+              <span>{t.minModifiedDate}</span>
+              <input type="date" className="adv-input" value={minModifiedDate}
+                onChange={(e) => onChangeMinDate(e.target.value)}
+                disabled={disabled} />
+            </label>
+            <label className="adv-row">
+              <span>{t.maxModifiedDate}</span>
+              <input type="date" className="adv-input" value={maxModifiedDate}
+                onChange={(e) => onChangeMaxDate(e.target.value)}
+                disabled={disabled} />
+            </label>
           </div>
           <div className="adv-section">
             <label className="adv-row" title={t.tipExactCache}>

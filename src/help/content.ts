@@ -18,6 +18,7 @@ export const HELP_SECTIONS: HelpSection[] = [
   { id: "byfolder",   title: { fr: "Mode par sous-dossier",         en: "By-folder mode" } },
   { id: "comparator", title: { fr: "Comparateur d'images",          en: "Image comparator" } },
   { id: "video-comparator", title: { fr: "Comparateur de vidéos",   en: "Video comparator" } },
+  { id: "audio-comparator", title: { fr: "Comparateur audio",         en: "Audio comparator" } },
   { id: "ignored",    title: { fr: "Groupes ignorés",               en: "Ignored groups" } },
   { id: "profiles",   title: { fr: "Profils de scan",               en: "Scan profiles" } },
   { id: "filters",    title: { fr: "Filtres",                       en: "Filters" } },
@@ -497,14 +498,18 @@ This mode is ideal for photo or music libraries organized by folder.`,
 
 **Choisir les images affichées** : des onglets en haut de chaque colonne (Gauche / Droite) permettent de sélectionner quel fichier du groupe s'affiche de chaque côté. Vous pouvez ainsi comparer n'importe quelle paire.
 
-**Garder celui-ci** : bouton sous chaque image. Il sélectionne les autres fichiers du groupe (les "doublons" à supprimer) et désélectionne celui-ci — indiquant que c'est le fichier à conserver.`,
+**Garder celui-ci** : bouton sous chaque image. Il sélectionne les autres fichiers du groupe (les "doublons" à supprimer) et désélectionne celui-ci — indiquant que c'est le fichier à conserver.
+
+Le bouton **📂** à côté du nom de dossier ouvre directement le dossier du fichier dans le gestionnaire de fichiers.`,
       en: `**Side-by-side mode** (default): the two selected images are displayed side by side with full metadata (dimensions, format, EXIF date, size, filename).
 
 **Overlay mode**: click the **⧉** button to switch. A horizontal slider lets you progressively reveal one image over the other — drag to compare transition areas.
 
 **Choose displayed images**: tabs at the top of each column (Left / Right) let you select which file from the group appears on each side. You can compare any pair.
 
-**Keep this one**: button below each image. It checks the other files in the group (the "duplicates" to delete) and unchecks this one — indicating this is the file to keep.`,
+**Keep this one**: button below each image. It checks the other files in the group (the "duplicates" to delete) and unchecks this one — indicating this is the file to keep.
+
+The **📂** button next to the folder name opens the file's folder directly in the file manager.`,
     },
   },
 
@@ -571,10 +576,14 @@ This mode is ideal for photo or music libraries organized by folder.`,
 
 Le bouton affiche **"✓ Garder celui-ci"** quand ce fichier est effectivement conservé (tous les autres sont cochés).
 
+Le bouton **📂** à côté du nom de dossier ouvre directement le dossier du fichier dans le gestionnaire de fichiers.
+
 La suppression effective se fait ensuite depuis la liste principale via le bouton "Supprimer N fichiers". Les fichiers supprimés sont envoyés dans la corbeille - récupérables.`,
       en: `Below each video, the **"Keep this one"** button marks the other files in the group as to be deleted and removes this file from the selection.
 
 The button shows **"✓ Keep this one"** when this file is actually kept (all others are checked).
+
+The **📂** button next to the folder name opens the file's folder directly in the file manager.
 
 The actual deletion is done from the main list via the "Delete N files" button. Deleted files are sent to the trash - recoverable.`,
     },
@@ -582,6 +591,48 @@ The actual deletion is done from the main list via the "Delete N files" button. 
 
   // ── Groupes ignorés ───────────────────────────────────────────────────────
 
+  {
+    id: "audio-comparator-open",
+    sectionId: "audio-comparator",
+    title: { fr: "Ouvrir le comparateur audio", en: "Open the audio comparator" },
+    keywords: {
+      fr: ["comparateur", "audio", "comparer", "écouter", "son", "musique", "mp3", "flac"],
+      en: ["comparator", "audio", "compare", "listen", "sound", "music", "mp3", "flac"],
+    },
+    body: {
+      fr: `Le bouton **Comparer** apparait dans l'en-tete de chaque groupe audio. Il ouvre le comparateur audio en plein ecran.
+
+Le comparateur affiche les deux fichiers cote a cote avec un lecteur audio pour chacun. Le lecteur de gauche est le **maitre** : appuyer sur lecture, pause ou sauter a un instant synchronise automatiquement le lecteur de droite.
+
+Naviguer entre les groupes avec les boutons **◀ ▶** ou les touches **← →** du clavier.`,
+      en: `The **Compare** button appears in the header of each audio group. It opens the audio comparator in full screen.
+
+The comparator shows both files side by side with an audio player for each. The left player is the **master**: pressing play, pause, or seeking automatically synchronises the right player.
+
+Navigate between groups using the **◀ ▶** buttons or the **← →** keyboard shortcuts.`,
+    },
+  },
+  {
+    id: "audio-comparator-keep",
+    sectionId: "audio-comparator",
+    title: { fr: "Garder un fichier depuis le comparateur", en: "Keep a file from the comparator" },
+    keywords: {
+      fr: ["garder", "supprimer", "choisir", "comparateur", "audio", "conserver"],
+      en: ["keep", "delete", "choose", "comparator", "audio", "retain"],
+    },
+    body: {
+      fr: `Cliquer sur **Garder celui-ci** sous le lecteur souhaite : tous les autres fichiers du groupe sont coches pour suppression et le comparateur se ferme.
+
+Les metadonnees sous chaque lecteur (nom du fichier, dossier, taille, duree) permettent de comparer les fichiers avant de choisir.
+
+Le bouton **📂** a cote du dossier ouvre directement le dossier du fichier dans le gestionnaire de fichiers.`,
+      en: `Click **Keep this one** under the desired player: all other files in the group are checked for deletion and the comparator closes.
+
+The metadata below each player (file name, folder, size, duration) lets you compare files before choosing.
+
+The **📂** button next to the folder path opens the file's folder directly in the file manager.`,
+    },
+  },
   {
     id: "ignore-group",
     sectionId: "ignored",
@@ -723,6 +774,32 @@ Pratique pour se concentrer sur les gros fichiers (vidéos, archives) et ignorer
 - **0 = unlimited**: the value 0 disables the corresponding limit.
 
 Useful for focusing on large files (videos, archives) and skipping small config files or thumbnails.`,
+    },
+  },
+
+  {
+    id: "filters-date",
+    sectionId: "filters",
+    title: { fr: "Filtre par date de modification", en: "Modification date filter" },
+    keywords: {
+      fr: ["date", "modification", "modifié", "filtre", "après", "avant", "récent", "ancien", "période"],
+      en: ["date", "modification", "modified", "filter", "after", "before", "recent", "old", "period"],
+    },
+    body: {
+      fr: `Les champs **Modifié après** et **Modifié avant** limitent l'analyse aux fichiers dont la date de dernière modification est dans la plage indiquée.
+
+- **Modifié après = 2023-01-01** : ignore les fichiers modifiés avant 2023.
+- **Modifié avant = 2024-12-31** : ignore les fichiers modifiés après 2024.
+- Laisser un champ vide pour ne pas limiter de ce côté.
+
+Pratique pour analyser uniquement les nouveaux ajouts depuis une date précise, ou pour isoler les fichiers d'une période donnée.`,
+      en: `The **Modified after** and **Modified before** fields restrict the scan to files whose last modification date falls within the given range.
+
+- **Modified after = 2023-01-01**: ignores files modified before 2023.
+- **Modified before = 2024-12-31**: ignores files modified after 2024.
+- Leave a field empty to apply no limit on that side.
+
+Useful for scanning only recent additions since a given date, or for isolating files from a specific time period.`,
     },
   },
 
@@ -1001,8 +1078,8 @@ The notification uses the **active UI language** (FR or EN) at the time the scan
 
 - **Ctrl+A** : sélectionne tous les doublons (équivalent "Tout cocher")
 - **Suppr** : ouvre la confirmation de suppression si des fichiers sont sélectionnés
-- **Échap** : ferme la confirmation de suppression ou le comparateur (images/vidéos)
-- **← →** (dans le comparateur) : navigue entre les groupes d'images ou de vidéos
+- **Échap** : ferme la confirmation de suppression ou le comparateur (images/vidéos/audio)
+- **← →** (dans le comparateur) : navigue entre les groupes d'images, de vidéos ou audio
 - **F1** ou bouton **?** : ouvre cette aide`,
       en: `**Theme**: click **☀** (light mode) or **☽** (dark mode) in the top-right. The choice is remembered across sessions.
 
@@ -1012,8 +1089,8 @@ The notification uses the **active UI language** (FR or EN) at the time the scan
 
 - **Ctrl+A**: selects all duplicates (equivalent to "Select all")
 - **Delete**: opens the deletion confirmation if files are selected
-- **Escape**: closes the deletion confirmation or the image/video comparator
-- **← →** (in comparator): navigate between image or video groups
+- **Escape**: closes the deletion confirmation or the image/video/audio comparator
+- **← →** (in comparator): navigate between image, video or audio groups
 - **F1** or **?** button: opens this help`,
     },
   },

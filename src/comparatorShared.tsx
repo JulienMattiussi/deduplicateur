@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import type { DuplicateGroup, DuplicateFile } from "./types";
 import { formatSize, dirname } from "./utils";
 import { useLang } from "./LangContext";
+import { revealInFolder } from "./fileActions";
 
 export interface ComparatorProps {
   groups: DuplicateGroup[];
@@ -183,6 +184,13 @@ export function MetaBlockBase({
       <div className="comparator-meta-row">
         <span className="comparator-meta-label">{t.colFolder}</span>
         <span className="comparator-meta-value comparator-meta-path" title={file.path}>{dirname(file.path)}</span>
+        <button
+          className="btn-ghost btn-sm comparator-reveal-btn"
+          title={t.revealInFolderBtn}
+          onClick={() => revealInFolder(file.path)}
+        >
+          📂
+        </button>
       </div>
       <div className="comparator-meta-row">
         <span className="comparator-meta-label">{t.colSize}</span>
