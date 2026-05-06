@@ -1,0 +1,181 @@
+use crate::{LoadedSession, ScanCache};
+use crate::{purge_deleted_from_session, recalc_wasted_bytes, save_session};
+use tauri::Manager;
+
+#[derive(Debug, serde::Serialize)]
+pub struct ImageMeta {
+    pub width: u32,
+    pub height: u32,
+    pub format: String,
+    pub exif_date: Option<String>,
+}
+
+fn try_read_exif_date(path: &str) -> Option<String> {
+    let file = std::fs::File::open(path).ok()?;
+    let mut buf = std::io::BufReader::new(file);
+    let exif = exif::Reader::new().read_from_container(&mut buf).ok()?;
+    let field = exif.get_field(exif::Tag::DateTimeOriginal, exif::In::PRIMARY)?;
+    Some(field.display_value().to_string())
+}
+
+#[cfg(target_os = "windows")]
+fn open_in_file_manager(path: &str) -> std::io::Result<()> {
+    use std::os::windows::process::CommandExt;
+    let win_path = path.replace('/', "\\");
+    std::process::Command::new("explorer.exe")
+        .raw_arg(format!("/select,\"{}\"", win_path))
+        .creation_flags(0x08000000)
+        .spawn()
+        .map(|_| ())
+}
+
+#[cfg(target_os = "macos")]
+fn open_in_file_manager(path: &str) -> std::io::Result<()> {
+    std::process::Command::new("open")
+        .args(["-R", path])
+        .spawn()
+        .map(|_| ())
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+fn open_in_file_manager(path: &str) -> std::io::Result<()> {
+    let dir = std::path::Path::new(path)
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new(path));
+    std::process::Command::new("xdg-open")
+        .arg(dir)
+        .spawn()
+        .map(|_| ())
+}
+
+#[cfg(target_os = "windows")]
+fn open_file_default(path: &str) -> std::io::Result<()> {
+    std::process::Command::new("explorer.exe")
+        .arg(path)
+        .spawn()
+        .map(|_| ())
+}
+
+#[cfg(target_os = "macos")]
+fn open_file_default(path: &str) -> std::io::Result<()> {
+    std::process::Command::new("open").arg(path).spawn().map(|_| ())
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+fn open_file_default(path: &str) -> std::io::Result<()> {
+    std::process::Command::new("xdg-open").arg(path).spawn().map(|_| ())
+}
+
+#[tauri::command]
+pub fn delete_files(app: tauri::AppHandle, paths: Vec<String>) -> Result<(), String> {
+    let mut errors: Vec<String> = Vec::new();
+    for path in &paths {
+        if !std::path::Path::new(path).exists() {
+            continue;
+        }
+        if let Err(e) = trash::delete(path) {
+            errors.push(format!("{}: {}", path, e));
+        }
+    }
+    if !errors.is_empty() {
+        return Err(errors.join("\n"));
+    }
+
+    let deleted: std::collections::HashSet<String> = paths.into_iter().collect();
+    let session_to_save = {
+        let cache = app.state::<ScanCache>();
+        let mut guard = cache.0.lock().unwrap();
+        guard.as_mut().map(|loaded| {
+            purge_deleted_from_session(&mut loaded.groups, &deleted);
+            loaded.summary.total_groups = loaded.groups.len();
+            loaded.summary.total_wasted_bytes = recalc_wasted_bytes(&loaded.groups);
+            (loaded.summary.clone(), loaded.groups.clone())
+        })
+    };
+    if let Some((summary, groups)) = session_to_save {
+        save_session(&app, &summary, &groups);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn reveal_in_folder(path: String) -> Result<(), String> {
+    open_in_file_manager(&path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn open_file(path: String) -> Result<(), String> {
+    open_file_default(&path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_image_thumbnail(path: String, max_size: u32) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let img = image::open(&path).map_err(|e| e.to_string())?;
+        let thumb = img.thumbnail(max_size, max_size);
+        let mut buf = Vec::new();
+        thumb
+            .write_to(&mut std::io::Cursor::new(&mut buf), image::ImageOutputFormat::Jpeg(75))
+            .map_err(|e| e.to_string())?;
+        use base64::Engine;
+        let encoded = base64::engine::general_purpose::STANDARD.encode(&buf);
+        Ok(format!("data:image/jpeg;base64,{}", encoded))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn get_video_thumbnail(path: String, max_size: u32, duration: Option<f64>) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let dur = match duration.filter(|&d| d > 0.0) {
+            Some(d) => d,
+            None => crate::video::get_video_metadata(&path)
+                .ok_or_else(|| "impossible de lire les metadonnees video".to_string())?
+                .duration_secs,
+        };
+        crate::video::extract_thumbnail(&path, dur, max_size)
+            .ok_or_else(|| "impossible d'extraire la frame".to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub fn check_path_is_dir(path: String) -> bool {
+    std::path::Path::new(&path).is_dir()
+}
+
+#[tauri::command]
+pub async fn get_video_metadata(path: String) -> Result<crate::video::VideoMetadata, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::video::get_video_metadata(&path)
+            .ok_or_else(|| "impossible de lire les metadonnees video".to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn get_image_meta(path: String) -> Result<ImageMeta, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let (width, height) = image::image_dimensions(&path).map_err(|e| e.to_string())?;
+        let format = image::io::Reader::open(&path)
+            .map_err(|e| e.to_string())?
+            .with_guessed_format()
+            .map_err(|e| e.to_string())?
+            .format()
+            .map(|f| format!("{:?}", f))
+            .unwrap_or_else(|| {
+                std::path::Path::new(&path)
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .map(|e| e.to_uppercase())
+                    .unwrap_or_else(|| "?".to_string())
+            });
+        let exif_date = try_read_exif_date(&path);
+        Ok(ImageMeta { width, height, format, exif_date })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}

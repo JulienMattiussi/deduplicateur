@@ -1,6 +1,6 @@
 use std::path::Path;
 use serde::{Deserialize, Serialize};
-use crate::phash_config::PHashConfig;
+use super::config::PHashConfig;
 
 /// Metriques d'un scan similaire. Annexees en JSONL dans phash_perf.jsonl.
 #[derive(Debug, Serialize, Deserialize, Clone)]

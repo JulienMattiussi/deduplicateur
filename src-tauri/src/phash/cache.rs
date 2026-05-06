@@ -19,6 +19,9 @@ pub struct CacheEntry {
     pub coarse: String,
     /// Hash fin (fine) encode en base64.
     pub fine: String,
+    /// Ratio largeur/hauteur de l'image (w/h). None pour les anciennes entrees de cache.
+    #[serde(default)]
+    pub aspect: Option<f32>,
 }
 
 /// Cache des hashs pHash entre les scans.
@@ -85,6 +88,7 @@ mod tests {
             fine_size: 8,
             coarse: "ABCD".to_string(),
             fine: "ABCDEF0123456789".to_string(),
+            aspect: None,
         }
     }
 
