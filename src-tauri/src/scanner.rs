@@ -647,6 +647,9 @@ where
             .collect();
         let t_collect_ms = t_collect_start.elapsed().as_millis() as u64;
         let total_images = candidates.len();
+        timing_log(params.data_dir.as_deref(), &start, &format!(
+            "phash_after_exact_filter: n={}", total_images
+        ));
 
         // Optimisation 1 : filtre de taille minimale.
         let t_size_start = Instant::now();
@@ -660,6 +663,9 @@ where
         };
         let after_size = candidates.len();
         let t_size_ms = t_size_start.elapsed().as_millis() as u64;
+        timing_log(params.data_dir.as_deref(), &start, &format!(
+            "phash_after_size_filter: n={}", after_size
+        ));
 
         // Optimisation 2 : lecture des dimensions pour le filtre de ratio d'aspect.
         let t_aspect_start = Instant::now();
@@ -673,6 +679,9 @@ where
             vec![None; after_size]
         };
         let t_aspect_ms = t_aspect_start.elapsed().as_millis() as u64;
+        timing_log(params.data_dir.as_deref(), &start, &format!(
+            "phash_after_aspect_filter: use_filter={} n_dims={}", use_aspect_filter, dimensions.iter().filter(|d| d.is_some()).count()
+        ));
 
         if cancelled.load(Ordering::Relaxed) {
             was_cancelled = true;
@@ -712,6 +721,9 @@ where
             .collect();
 
         let cache_hits = cache_results.iter().filter(|r| r.is_some()).count();
+        timing_log(params.data_dir.as_deref(), &start, &format!(
+            "phash_cache_check_done: hits={} misses={}", cache_hits, total_images - cache_hits
+        ));
 
         let miss_indices: Vec<usize> = cache_results
             .iter()
@@ -762,6 +774,9 @@ where
             all_hashes[i] = hash;
         }
         let t_hash_ms = t_hash_start.elapsed().as_millis() as u64;
+        timing_log(params.data_dir.as_deref(), &start, &format!(
+            "phash_decode_done: cache_misses={}", cache_misses
+        ));
 
         let images: Vec<ImageData> = candidates
             .into_iter()
@@ -779,6 +794,9 @@ where
 
         // Optimisation 5 : comparaison O(n^2) parallele ou sequentielle.
         let t_compare_start = Instant::now();
+        timing_log(params.data_dir.as_deref(), &start, &format!(
+            "phash_compare_start: n={} pairs={}", n, (n as u64).saturating_mul(n.saturating_sub(1) as u64) / 2
+        ));
         let use_two_pass = cfg.two_pass_enabled && n >= cfg.min_images_two_pass;
         let use_parallel = cfg.parallel_compare_enabled && n >= cfg.min_images_parallel_compare;
 
@@ -875,6 +893,9 @@ where
         };
         let t_compare_ms = t_compare_start.elapsed().as_millis() as u64;
         let pairs_found = similar_pairs.len();
+        timing_log(params.data_dir.as_deref(), &start, &format!(
+            "phash_compare_done: pairs_found={} duration_ms={}", pairs_found, t_compare_ms
+        ));
 
         // Union-Find pour la detection transitive.
         let mut uf = UnionFind::new(n);
