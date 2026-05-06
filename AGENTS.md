@@ -376,3 +376,27 @@ test: {
   exclude: [".claude/**", "node_modules/**"],
 }
 ```
+
+
+### Lecture des dimensions d'image : parser PNG/JPEG manuellement, pas le crate image
+`image::io::Reader::with_guessed_format().into_dimensions()` peut bloquer indefiniment sur HDD
+(contention de seeks en parallele rayon) ou sur des fichiers corrompus/inhabituels. Utiliser
+`read_png_dimensions` / `read_jpeg_dimensions` qui lisent au plus 64 Ko et parsent les headers
+directement (IHDR pour PNG, scan des marqueurs SOF pour JPEG). Retourne `None` pour les autres
+formats (WebP, TIFF...) - le filtre d'aspect est alors simplement ignore pour ces fichiers.
+Ne jamais remettre le crate `image` dans cette fonction.
+
+### Cache video : stocker les metadonnees pour eviter ffprobe sur les hits
+`get_video_metadata()` lance un subprocess ffprobe par fichier. Sans cache des metadonnees,
+il est appele pour TOUS les candidats meme si leur hash est deja en cache. Stocker
+`duration_secs`, `width`, `height`, `codec` dans `VideoCacheEntry` permet de reconstruire
+`VideoMetadata` directement depuis le cache. Ne lancer ffprobe que pour les cache misses.
+Meme pattern que pour l'aspect ratio dans le cache pHash.
+
+### Lazy loading des thumbnails : IntersectionObserver avec rootMargin
+Rendre toutes les GroupCard simultanement avec `invoke("get_image_thumbnail")` pour chacune
+rame l'UI au chargement d'un gros scan. Utiliser `IntersectionObserver` avec
+`rootMargin: "300px 0px"` (environ 2 cards de buffer) dans `FileThumbnail` : l'invoke n'est
+declenche que quand le placeholder entre dans la zone etendue. En test (jsdom), mocker
+`IntersectionObserver` pour qu'il declenche immediatement `isIntersecting: true` dans
+`src/test-setup.ts` - sinon tous les tests de thumbnails echouent (invoke jamais appele).

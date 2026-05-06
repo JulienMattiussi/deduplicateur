@@ -51,11 +51,40 @@ where
         VideoCache::empty()
     };
 
-    let meta_results: Vec<Option<VideoMetadata>> = candidates
-        .par_iter()
+    // Verification du cache (sequentielle pour acces &mut).
+    // On clone les donnees utiles pour liberer l'emprunt avant les insertions futures.
+    let cache_results: Vec<Option<(Vec<u64>, VideoMetadata)>> = candidates.iter()
         .map(|f| {
-            if cancelled.load(Ordering::Relaxed) { return None; }
-            get_video_metadata(&f.path)
+            vcache.get(&f.path, f.modified, f.size, params.video_frames)
+                .map(|e| (e.hashes.clone(), VideoMetadata {
+                    duration_secs: e.duration_secs,
+                    width: e.width,
+                    height: e.height,
+                    codec: e.codec.clone(),
+                }))
+        })
+        .collect();
+
+    let video_done = Arc::new(AtomicUsize::new(0));
+
+    // Progress pour les cache hits (immediat).
+    for (i, cr) in cache_results.iter().enumerate() {
+        if cr.is_some() {
+            let n = video_done.fetch_add(1, Ordering::Relaxed) + 1;
+            on_progress(offset + n, ctx.total_work, ctx.scanned_files, &candidates[i].name, n, ctx.analysis_total, "videos");
+        }
+    }
+
+    // ffprobe uniquement pour les cache misses.
+    let miss_indices: Vec<usize> = cache_results.iter().enumerate()
+        .filter_map(|(i, r)| if r.is_none() { Some(i) } else { None })
+        .collect();
+
+    let meta_results: Vec<(usize, Option<VideoMetadata>)> = miss_indices
+        .into_par_iter()
+        .map(|i| {
+            if cancelled.load(Ordering::Relaxed) { return (i, None); }
+            (i, get_video_metadata(&candidates[i].path))
         })
         .collect();
 
@@ -63,40 +92,27 @@ where
         return (vec![], true);
     }
 
-    let video_done = Arc::new(AtomicUsize::new(0));
+    let mut all_metas: Vec<Option<VideoMetadata>> = vec![None; candidates.len()];
+    for (i, meta) in meta_results {
+        if meta.is_none() {
+            // ffprobe a echoue : on emet quand meme la progression
+            let n = video_done.fetch_add(1, Ordering::Relaxed) + 1;
+            on_progress(offset + n, ctx.total_work, ctx.scanned_files, &candidates[i].name, n, ctx.analysis_total, "videos");
+        }
+        all_metas[i] = meta;
+    }
+
+    // Extraction des frame hashes pour les misses avec metadata valide.
     let video_done_for_extract = Arc::clone(&video_done);
-
-    let cache_results: Vec<Option<Vec<u64>>> = candidates.iter()
-        .zip(meta_results.iter())
-        .map(|(f, meta_opt)| {
-            if meta_opt.is_none() {
-                let n = video_done.fetch_add(1, Ordering::Relaxed) + 1;
-                on_progress(offset + n, ctx.total_work, ctx.scanned_files, &f.name, n, ctx.analysis_total, "videos");
-                return None;
-            }
-            let cached = vcache.get(&f.path, f.modified, f.size, params.video_frames)
-                .map(|h| h.to_vec());
-            if cached.is_some() {
-                let n = video_done.fetch_add(1, Ordering::Relaxed) + 1;
-                on_progress(offset + n, ctx.total_work, ctx.scanned_files, &f.name, n, ctx.analysis_total, "videos");
-            }
-            cached
-        })
+    let hash_miss_indices: Vec<usize> = (0..candidates.len())
+        .filter(|&i| cache_results[i].is_none() && all_metas[i].is_some())
         .collect();
 
-    let miss_indices: Vec<usize> = cache_results.iter().enumerate()
-        .filter_map(|(i, r)| {
-            if r.is_none() && meta_results[i].is_some() { Some(i) } else { None }
-        })
-        .collect();
-
-    let miss_hashes: Vec<(usize, Option<Vec<u64>>)> = miss_indices
+    let miss_hashes: Vec<(usize, Option<Vec<u64>>)> = hash_miss_indices
         .into_par_iter()
         .map(|i| {
-            if cancelled.load(Ordering::Relaxed) {
-                return (i, None);
-            }
-            let meta = meta_results[i].as_ref().unwrap();
+            if cancelled.load(Ordering::Relaxed) { return (i, None); }
+            let meta = all_metas[i].as_ref().unwrap();
             let hashes = extract_frame_hashes(
                 &candidates[i].path,
                 params.video_frames,
@@ -113,18 +129,27 @@ where
         return (vec![], true);
     }
 
-    let mut all_hashes: Vec<Option<Vec<u64>>> = cache_results;
+    // Fusion des resultats et mise a jour du cache.
+    let mut all_hashes: Vec<Option<Vec<u64>>> = cache_results.iter()
+        .map(|cr| cr.as_ref().map(|(h, _)| h.clone()))
+        .collect();
+
     for (i, hashes) in miss_hashes {
-        if let Some(ref h) = hashes {
+        if let (Some(ref h), Some(ref meta)) = (&hashes, &all_metas[i]) {
             vcache.insert(candidates[i].path.clone(), VideoCacheEntry {
                 mtime: candidates[i].modified,
                 size: candidates[i].size,
                 n_frames: params.video_frames,
                 hashes: h.clone(),
+                duration_secs: meta.duration_secs,
+                width: meta.width,
+                height: meta.height,
+                codec: meta.codec.clone(),
             });
         }
         all_hashes[i] = hashes;
     }
+
     if params.video_cache_enabled {
         if let Some(dir) = params.data_dir.as_deref() {
             let _ = vcache.save(Path::new(dir));
@@ -133,10 +158,12 @@ where
 
     let video_data: Vec<VideoData> = candidates.iter()
         .zip(all_hashes.iter())
-        .zip(meta_results.iter())
-        .filter_map(|((file, hash_opt), meta_opt)| {
+        .enumerate()
+        .filter_map(|(i, (file, hash_opt))| {
             let hashes = hash_opt.as_ref()?.clone();
-            let metadata = meta_opt.as_ref()?.clone();
+            let metadata = cache_results[i].as_ref()
+                .map(|(_, m)| m.clone())
+                .or_else(|| all_metas[i].clone())?;
             let mut file_with_meta = file.clone();
             file_with_meta.video_metadata = Some(metadata.clone());
             Some(VideoData { file: file_with_meta, hashes, metadata })

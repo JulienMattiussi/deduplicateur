@@ -98,6 +98,92 @@ pub fn compute_two_pass_hashes(
     Some((coarse.as_bytes().to_vec(), fine.as_bytes().to_vec()))
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn png_header(w: u32, h: u32) -> Vec<u8> {
+        let mut buf = vec![0u8; 24];
+        buf[0..8].copy_from_slice(b"\x89PNG\r\n\x1a\n");
+        // IHDR length (4 octets) + type "IHDR" (4 octets) = octets 8-15
+        buf[8..12].copy_from_slice(&13u32.to_be_bytes());
+        buf[12..16].copy_from_slice(b"IHDR");
+        buf[16..20].copy_from_slice(&w.to_be_bytes());
+        buf[20..24].copy_from_slice(&h.to_be_bytes());
+        buf
+    }
+
+    fn jpeg_header(w: u16, h: u16) -> Vec<u8> {
+        let mut buf = Vec::new();
+        buf.extend_from_slice(b"\xFF\xD8");           // SOI
+        buf.extend_from_slice(b"\xFF\xE0");           // APP0 marker
+        buf.extend_from_slice(&10u16.to_be_bytes());  // APP0 length = 10
+        buf.extend_from_slice(&[0u8; 8]);             // APP0 payload (8 octets)
+        buf.extend_from_slice(b"\xFF\xC0");           // SOF0 marker
+        buf.extend_from_slice(&11u16.to_be_bytes());  // SOF0 length = 11
+        buf.push(8);                                  // precision
+        buf.extend_from_slice(&h.to_be_bytes());      // height
+        buf.extend_from_slice(&w.to_be_bytes());      // width
+        buf.push(3);                                  // components
+        buf
+    }
+
+    #[test]
+    fn png_dimensions_valides() {
+        assert_eq!(read_png_dimensions(&png_header(1920, 1080)), Some((1920, 1080)));
+        assert_eq!(read_png_dimensions(&png_header(100, 200)), Some((100, 200)));
+    }
+
+    #[test]
+    fn png_mauvaise_magic() {
+        let mut buf = png_header(100, 100);
+        buf[0] = 0x00;
+        assert_eq!(read_png_dimensions(&buf), None);
+    }
+
+    #[test]
+    fn png_buffer_trop_court() {
+        assert_eq!(read_png_dimensions(&[0u8; 23]), None);
+        assert_eq!(read_png_dimensions(&[]), None);
+    }
+
+    #[test]
+    fn jpeg_dimensions_valides() {
+        assert_eq!(read_jpeg_dimensions(&jpeg_header(1280, 720)), Some((1280, 720)));
+        assert_eq!(read_jpeg_dimensions(&jpeg_header(640, 480)), Some((640, 480)));
+    }
+
+    #[test]
+    fn jpeg_mauvais_magic() {
+        let mut buf = jpeg_header(100, 100);
+        buf[0] = 0x00;
+        assert_eq!(read_jpeg_dimensions(&buf), None);
+    }
+
+    #[test]
+    fn jpeg_sof_absent_dans_buffer() {
+        // buffer trop court pour contenir le SOF
+        let buf = b"\xFF\xD8\xFF\xE0\x00\x10";
+        assert_eq!(read_jpeg_dimensions(buf), None);
+    }
+
+    #[test]
+    fn jpeg_stoppe_sur_sos() {
+        let mut buf = jpeg_header(100, 100);
+        // insere un marqueur SOS avant le SOF
+        let sos = b"\xFF\xDA";
+        let mut truncated = vec![0xFFu8, 0xD8];
+        truncated.extend_from_slice(sos);
+        assert_eq!(read_jpeg_dimensions(&truncated), None);
+    }
+
+    #[test]
+    fn format_non_reconnu_retourne_none() {
+        assert_eq!(read_png_dimensions(b"RIFF\x00\x00\x00\x00WEBP"), None);
+        assert_eq!(read_jpeg_dimensions(b"RIFF\x00\x00\x00\x00WEBP"), None);
+    }
+}
+
 pub fn hamming_distance(a: &[u8], b: &[u8]) -> u32 {
     a.iter().zip(b.iter()).map(|(x, y)| (x ^ y).count_ones()).sum()
 }

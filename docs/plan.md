@@ -448,3 +448,21 @@ En mode "Comparer avec un autre dossier" : dossier source S et dossier de réfé
 - [x] Tests Rust : 4 tests unitaires (`get_cache_size` et `purge_cache` sur dossier temp)
 - [x] Tests TypeScript : 7 tests section R (`App.test.tsx`) - vide, titre visible, cache > 0, cache = 0, confirmation, annulation, purge invoquée
 - [x] 171 tests Rust / 268 tests TypeScript - tous au vert
+
+---
+
+## Phase 21 - Performance pHash + stabilité scan ✅
+
+**Objectif : éliminer les scans bloquants et réduire le temps de calcul sur cache froid/chaud**
+
+- [x] `scanner/hash.rs` : `get_image_dimensions` réécrite - lit au plus 64 Ko et parse les headers PNG (IHDR) et JPEG (scan SOF) manuellement, sans décodage image ni subprocess. Retourne `None` pour les formats non reconnus (WebP, TIFF...) - le filtre d'aspect est alors ignoré pour ces fichiers
+- [x] `scanner/phash_phase.rs` : progression émise pendant la passe de hash (cache misses) quand la majorité des fichiers sont des misses (cache froid) - le pourcentage avance en continu même sur un premier scan
+- [x] `video/cache.rs` : `VideoCacheEntry` stocke maintenant `duration_secs`, `width`, `height`, `codec` (métadonnées complètes pour reconstruire `VideoMetadata` sans ffprobe)
+- [x] `scanner/video_phase.rs` : vérification du cache avant ffprobe - ffprobe (subprocess) n'est lancé que pour les misses ; les hits reconstruisent `VideoMetadata` depuis le cache directement
+- [x] `App.tsx` : `get_cache_size` rafraîchi via `useEffect` sur `showSessionPicker` (déclenché à chaque ouverture de "Mes analyses")
+- [x] `components/FileThumbnail.tsx` : lazy loading via `IntersectionObserver` avec marge de 300px (~2 cards) - `invoke` n'est déclenché que quand la card approche du viewport, évite la vague de requêtes au rendu initial
+- [x] `components/ProgressETA.tsx` : formatage en heures (`X.X h`) quand le temps restant dépasse 120 min
+- [x] `src/test-setup.ts` : mock global `IntersectionObserver` (déclenche immédiatement `isIntersecting: true`) pour que les tests existants continuent de fonctionner
+- [x] Tests Rust : 8 nouveaux tests dans `scanner/hash.rs` (PNG valide, mauvaise magic, buffer court, JPEG valide, mauvaise magic, SOF absent, SOS avant SOF, format non reconnu)
+- [x] Tests TypeScript : 2 nouveaux tests `FileThumbnail` (invoke absent hors viewport, invoke présent dans viewport)
+- [x] 181 tests Rust / 291 tests TypeScript - tous au vert

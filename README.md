@@ -172,8 +172,8 @@ Chaque scan produit un fichier JSON dans `~/.local/share/deduplicateur/sessions/
 | Bundler | Vite + Tauri CLI | Dev HMR + build natif |
 | CI/CD | GitHub Actions | Build Windows automatique sur push |
 | Similarité audio | fpcalc/chromaprint (subprocess) | Empreinte acoustique, distance de Hamming sur vecteurs i32, cache inter-scans |
-| Tests Rust | cargo test + tempfile | 171 tests unitaires sur le moteur |
-| Tests TS | Vitest + jsdom + React Testing Library | 268 tests (utilitaires + i18n + App + ImageComparator + VideoComparator + MissingToolBanner + FileThumbnail + AdvancedPanelWrapper + IgnoredPanel + FolderSection + HelpPanel + AdvancedPanel + AudioAdvancedPanel + VideoAdvancedPanel + ProfilesPanel + ProgressETA) |
+| Tests Rust | cargo test + tempfile | 181 tests unitaires sur le moteur |
+| Tests TS | Vitest + jsdom + React Testing Library | 291 tests (utilitaires + i18n + App + ImageComparator + VideoComparator + MissingToolBanner + FileThumbnail + AdvancedPanelWrapper + IgnoredPanel + FolderSection + HelpPanel + AdvancedPanel + AudioAdvancedPanel + VideoAdvancedPanel + ProfilesPanel + ProgressETA) |
 
 ---
 
@@ -238,10 +238,10 @@ npm run tauri build    # produit un binaire dans src-tauri/target/release/
 ### Tests
 
 ```bash
-# Moteur Rust (171 tests)
+# Moteur Rust (181 tests)
 cargo test --manifest-path src-tauri/Cargo.toml
 
-# TypeScript - utilitaires + i18n + composants React (268 tests)
+# TypeScript - utilitaires + i18n + composants React (291 tests)
 npm test
 ```
 

@@ -11,6 +11,10 @@ pub struct VideoCacheEntry {
     pub size: u64,
     pub n_frames: usize,
     pub hashes: Vec<u64>,
+    pub duration_secs: f64,
+    pub width: u32,
+    pub height: u32,
+    pub codec: String,
 }
 
 /// Cache des frame hashes video entre les scans.
@@ -36,11 +40,11 @@ impl VideoCache {
         save_json_map(&self.entries, data_dir, "video_cache.json", &mut self.dirty)
     }
 
-    /// Retourne les hashes si l'entree est valide (mtime, size et n_frames identiques).
-    pub fn get(&self, path: &str, mtime: u64, size: u64, n_frames: usize) -> Option<&[u64]> {
+    /// Retourne l'entree si elle est valide (mtime, size et n_frames identiques).
+    pub fn get(&self, path: &str, mtime: u64, size: u64, n_frames: usize) -> Option<&VideoCacheEntry> {
         self.entries.get(path).filter(|e| {
             e.mtime == mtime && e.size == size && e.n_frames == n_frames
-        }).map(|e| e.hashes.as_slice())
+        })
     }
 
     pub fn insert(&mut self, path: String, entry: VideoCacheEntry) {
@@ -65,7 +69,7 @@ mod tests {
     use tempfile::TempDir;
 
     fn make_entry(mtime: u64, size: u64, n_frames: usize) -> VideoCacheEntry {
-        VideoCacheEntry { mtime, size, n_frames, hashes: vec![0u64, 1u64, 2u64] }
+        VideoCacheEntry { mtime, size, n_frames, hashes: vec![0u64, 1u64, 2u64], duration_secs: 10.0, width: 1920, height: 1080, codec: "h264".into() }
     }
 
     #[test]
@@ -89,7 +93,9 @@ mod tests {
         cache.insert("/video/a.mp4".into(), make_entry(1000, 5000, 8));
         let h = cache.get("/video/a.mp4", 1000, 5000, 8);
         assert!(h.is_some());
-        assert_eq!(h.unwrap(), &[0u64, 1u64, 2u64]);
+        assert_eq!(h.unwrap().hashes, &[0u64, 1u64, 2u64]);
+        assert_eq!(h.unwrap().duration_secs, 10.0);
+        assert_eq!(h.unwrap().width, 1920);
         assert!(cache.dirty);
     }
 

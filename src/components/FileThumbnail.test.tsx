@@ -43,6 +43,30 @@ describe("A - mode audio", () => {
   });
 });
 
+// ---- lazy loading ----
+describe("lazy loading", () => {
+  it("n'appelle pas invoke tant que l'element n'est pas pres du viewport", () => {
+    // Override du mock global : observer qui ne tire jamais le callback
+    const g = globalThis as unknown as Record<string, unknown>;
+    const original = g.IntersectionObserver;
+    g.IntersectionObserver = class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    };
+
+    render(<FileThumbnail file={imageFile} mode="image" />);
+    expect(mockInvoke).not.toHaveBeenCalled();
+
+    g.IntersectionObserver = original;
+  });
+
+  it("appelle invoke une fois que l'element entre dans le viewport", async () => {
+    render(<FileThumbnail file={imageFile} mode="image" />);
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledTimes(1));
+  });
+});
+
 // ---- B : mode image ----
 describe("B - mode image", () => {
   it("appelle get_image_thumbnail avec le bon path", async () => {
