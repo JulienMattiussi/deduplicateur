@@ -221,7 +221,6 @@ export default function App() {
     invoke<ScanSummary[]>("list_sessions")
       .then((s) => startTransition(() => setSessions(s)))
       .catch(() => {});
-    invoke<number>("get_cache_size").then(setCacheBytes).catch(() => {});
     loadIgnoredEntries();
   }, []);
 
@@ -247,6 +246,7 @@ export default function App() {
     setSummary(s);
     setFilterText("");
     startTransition(() => setSessions((prev) => [s, ...prev]));
+    invoke<number>("get_cache_size").then(setCacheBytes).catch(() => {});
     if (s.by_folder) {
       const summaries = await invoke<FolderSummary[]>("list_folder_keys");
       results.setFolderSummaries(summaries);
@@ -462,6 +462,12 @@ export default function App() {
   }
 
   const showSessionPicker = !summary && !scanExec.scanning;
+
+  useEffect(() => {
+    if (showSessionPicker) {
+      invoke<number>("get_cache_size").then(setCacheBytes).catch(() => {});
+    }
+  }, [showSessionPicker]);
   const showResults = summary !== null && summary.total_groups > 0;
 
   const filteredGroups = useMemo(() => {

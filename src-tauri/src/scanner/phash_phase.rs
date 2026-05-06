@@ -125,13 +125,19 @@ where
         return (vec![], true);
     }
 
-    // Calcul des hashs pour les cache misses uniquement (la progression a deja ete emise ci-dessus).
+    // Calcul des hashs pour les cache misses.
+    // Si le cache etait vide (tous les fichiers sont des misses), on emet aussi la progression
+    // ici pour que l'UI avance pendant le decodage (potentiellement long).
     let t_hash_start = Instant::now();
     let miss_indices: Vec<usize> = cache_results
         .iter()
         .enumerate()
         .filter_map(|(i, r)| if r.is_none() { Some(i) } else { None })
         .collect();
+
+    let total_misses = miss_indices.len();
+    let emit_hash_progress = total_misses > cache_hits; // majority are misses -> cache was cold
+    let hash_done = Arc::new(AtomicUsize::new(0));
 
     let miss_hashes: Vec<(usize, Option<(Vec<u8>, Vec<u8>)>)> = miss_indices
         .into_par_iter()
@@ -144,6 +150,11 @@ where
                 cfg.coarse_hash_size,
                 cfg.fine_hash_size,
             );
+            if emit_hash_progress {
+                let n = hash_done.fetch_add(1, Ordering::Relaxed) + 1;
+                // Reporte la progression en ecrasant le compteur de la passe precedente
+                on_progress(ctx.total_to_hash + n, ctx.total_work, ctx.scanned_files, &candidates[i].name, n, ctx.analysis_total, "images");
+            }
             (i, hash)
         })
         .collect();

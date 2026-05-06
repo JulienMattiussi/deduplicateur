@@ -775,7 +775,7 @@ Disable this option if you suspect an issue or want to force a complete scan fro
 
 **Comparaison parallèle** : utilise tous les cœurs CPU disponibles pour comparer les hashes (empreintes numériques) en parallèle.
 
-**Mode développeur** : enregistre les timings de chaque phase dans \`phash_perf.jsonl\` pour le débogage de performance.
+**Mode développeur** : active deux journaux de débogage. \`phash_perf.jsonl\` enregistre les timings et compteurs de chaque scan similaire (une ligne JSON par scan). \`timing.log\` enregistre les horodatages détaillés de chaque étape du scan en cours (réinitialisé à chaque scan). Les fichiers se trouvent dans le dossier de données de l'application : \`%APPDATA%\\com.yavadeus.deduplicateur\\\` sous Windows, \`~/.local/share/com.yavadeus.deduplicateur/\` sous Linux, \`~/Library/Application Support/com.yavadeus.deduplicateur/\` sous macOS.
 
 **Réinitialiser** : remet toutes les valeurs aux paramètres par défaut optimaux.`,
       en: `The advanced panel (accordion below Images mode) exposes 5 pHash pipeline optimizations:
@@ -790,7 +790,7 @@ Disable this option if you suspect an issue or want to force a complete scan fro
 
 **Parallel comparison**: uses all available CPU cores to compare hashes (digital fingerprints) in parallel.
 
-**Developer mode**: records per-phase timings in \`phash_perf.jsonl\` for performance debugging.
+**Developer mode**: enables two debug logs. \`phash_perf.jsonl\` records timings and counters for each similarity scan (one JSON line per scan). \`timing.log\` records detailed timestamps for each step of the current scan (reset on each scan). Files are located in the application data folder: \`%APPDATA%\\com.yavadeus.deduplicateur\\\` on Windows, \`~/.local/share/com.yavadeus.deduplicateur/\` on Linux, \`~/Library/Application Support/com.yavadeus.deduplicateur/\` on macOS.
 
 **Reset**: restores all values to optimal defaults.`,
     },

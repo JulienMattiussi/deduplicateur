@@ -7,8 +7,7 @@ mod video_phase;
 mod audio_phase;
 
 pub use types::{
-    DuplicateFile, DuplicateGroup, FileSource, ScanParams, ScanResult, UnionFind, ImageData,
-    is_cross_source_group,
+    DuplicateFile, DuplicateGroup, FileSource, ScanParams, ScanResult,
 };
 
 use std::collections::HashMap;
@@ -27,7 +26,6 @@ pub(self) struct Ctx {
     pub total_to_hash: usize,
     pub phash_estimate: usize,
     pub video_estimate: usize,
-    pub audio_estimate: usize,
     pub total_work: usize,
     pub analysis_total: usize,
     pub scanned_files: usize,
@@ -167,7 +165,6 @@ where
         total_to_hash,
         phash_estimate,
         video_estimate,
-        audio_estimate,
         total_work,
         analysis_total,
         scanned_files,

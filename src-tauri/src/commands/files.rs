@@ -1,4 +1,4 @@
-use crate::{LoadedSession, ScanCache};
+use crate::ScanCache;
 use crate::{purge_deleted_from_session, recalc_wasted_bytes, save_session};
 use tauri::Manager;
 
