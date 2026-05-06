@@ -130,3 +130,33 @@ describe("C - mode vidéo", () => {
     );
   });
 });
+
+// ---- D : mode other ----
+describe("D - mode other", () => {
+  const pdfFile = { path: "/docs/rapport.pdf", name: "rapport.pdf", size: 200000, modified: 1700000000 };
+  const txtFile = { path: "/notes/readme.txt", name: "readme.txt", size: 1000, modified: 1700000000 };
+  const unknownFile = { path: "/data/archive.xyz", name: "archive.xyz", size: 5000, modified: 1700000000 };
+
+  it("affiche un SVG sans appeler invoke pour un fichier PDF", () => {
+    render(<FileThumbnail file={pdfFile} mode="other" />);
+    expect(document.querySelector("svg")).toBeInTheDocument();
+    expect(mockInvoke).not.toHaveBeenCalled();
+  });
+
+  it("affiche un SVG sans appeler invoke pour un fichier texte", () => {
+    render(<FileThumbnail file={txtFile} mode="other" />);
+    expect(document.querySelector("svg")).toBeInTheDocument();
+    expect(mockInvoke).not.toHaveBeenCalled();
+  });
+
+  it("affiche un SVG sans appeler invoke pour une extension inconnue", () => {
+    render(<FileThumbnail file={unknownFile} mode="other" />);
+    expect(document.querySelector("svg")).toBeInTheDocument();
+    expect(mockInvoke).not.toHaveBeenCalled();
+  });
+
+  it("le container a la classe file-thumb-other", () => {
+    render(<FileThumbnail file={pdfFile} mode="other" />);
+    expect(document.querySelector(".file-thumb-other")).toBeInTheDocument();
+  });
+});

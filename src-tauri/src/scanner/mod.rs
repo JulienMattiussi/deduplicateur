@@ -13,7 +13,7 @@ pub use types::{
 use std::collections::HashMap;
 use std::io::Write;
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -180,6 +180,9 @@ where
         analysis_total, total_to_hash, phash_estimate, total_work
     ));
 
+    let groups_counter = params.groups_counter.clone()
+        .unwrap_or_else(|| Arc::new(AtomicUsize::new(0)));
+
     // --- Phase 1 : doublons exacts ---
     let (mut groups, mut was_cancelled) = exact_phase::run(
         &params,
@@ -189,6 +192,7 @@ where
         &start,
         &cancelled,
         &on_progress,
+        &groups_counter,
     );
 
     // --- Phase 2 : images similaires (pHash) ---
@@ -203,6 +207,7 @@ where
             &start,
             &cancelled,
             &on_progress,
+            &groups_counter,
         );
         groups.extend(new_groups);
         was_cancelled |= wc;
@@ -224,6 +229,7 @@ where
             &start,
             &cancelled,
             &on_progress,
+            &groups_counter,
         );
         groups.extend(new_groups);
         was_cancelled |= wc;
@@ -242,6 +248,7 @@ where
             &start,
             &cancelled,
             &on_progress,
+            &groups_counter,
         );
         groups.extend(new_groups);
         was_cancelled |= wc;

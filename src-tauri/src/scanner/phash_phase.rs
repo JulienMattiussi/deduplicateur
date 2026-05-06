@@ -23,6 +23,7 @@ pub(super) fn run<F>(
     start: &Instant,
     cancelled: &Arc<std::sync::atomic::AtomicBool>,
     on_progress: &F,
+    groups_counter: &Arc<std::sync::atomic::AtomicUsize>,
 ) -> (Vec<DuplicateGroup>, bool)
 where
     F: Fn(usize, usize, usize, &str, usize, usize, &str) + Send + Sync,
@@ -374,5 +375,6 @@ where
         }
     }
 
+    groups_counter.fetch_add(new_groups.len(), Ordering::Relaxed);
     (new_groups, false)
 }

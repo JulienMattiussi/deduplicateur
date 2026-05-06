@@ -30,8 +30,10 @@ Outil de détection et suppression de fichiers en double - rapide, local, sans c
 - **Pipeline vidéo optimisé** - métadonnées en parallèle, cache inter-scans (`video_cache.json`), extraction rayon, filtre de durée configurable, comparaison O(n²) parallèle
 - **DTW vidéo** - option alignement temporel (Dynamic Time Warping) pour détecter les vidéos avec intro ou générique court, via une bande de Sakoe-Chiba
 - **Paramètres avancés vidéo** - panneau configurable dans l'UI (frames par vidéo, tolérance de durée, cache, DTW)
-- **Affichage adapté par type** - les groupes images et vidéos affichent miniatures, taille par fichier et durée ; label et icône adaptés (fichiers / images / vidéos)
+- **Affichage adapté par type** - tous les groupes affichent une icône dans la colonne miniature : vignette cliquable pour images/vidéos, bouton lecture pour l'audio, icône SVG par catégorie pour les autres fichiers (PDF, archive, code, document, tableur, présentation) ; label et icône adaptés dans l'en-tête de groupe
 - **Résultats partiels** - si l'analyse est annulée, les groupes déjà trouvés sont affichés avec un bandeau orange "résultats partiels"
+- **Compteur de doublons en temps réel** - pendant le scan, le nombre de groupes trouvés s'affiche et monte au fil des phases (cumulatif : doublons exacts + images similaires + vidéos + audio)
+- **Chemin tronqué par la gauche** - les chemins longs sont coupés côté gauche pour garder la partie la plus informative (fin du chemin) ; survol pour le chemin complet ; point orange si deux fichiers du même groupe partagent le même dossier
 - **Interface sombre/claire** - bascule dark/light avec persistance ; UI réactive, barre de progression, statistiques en temps réel
 - **Glisser-déposer** - glisser un dossier sur la fenêtre le sélectionne directement (overlay visuel pendant le survol)
 - **Raccourcis clavier** - `Del` pour supprimer la sélection, `Ctrl+A` pour tout cocher, `Esc` pour fermer les modales
@@ -176,7 +178,7 @@ Chaque scan produit un fichier JSON dans `~/.local/share/deduplicateur/sessions/
 | CI/CD | GitHub Actions | Build Windows automatique sur push |
 | Similarité audio | fpcalc/chromaprint (subprocess) | Empreinte acoustique, distance de Hamming sur vecteurs i32, cache inter-scans |
 | Tests Rust | cargo test + tempfile | 186 tests unitaires sur le moteur |
-| Tests TS | Vitest + jsdom + React Testing Library | 302 tests (utilitaires + i18n + App + ImageComparator + VideoComparator + AudioComparator + MissingToolBanner + FileThumbnail + AdvancedPanelWrapper + IgnoredPanel + FolderSection + HelpPanel + AdvancedPanel + AudioAdvancedPanel + VideoAdvancedPanel + ProfilesPanel + ProgressETA) |
+| Tests TS | Vitest + jsdom + React Testing Library | 309 tests (utilitaires + i18n + App + ImageComparator + VideoComparator + AudioComparator + MissingToolBanner + FileThumbnail + AdvancedPanelWrapper + IgnoredPanel + FolderSection + HelpPanel + AdvancedPanel + AudioAdvancedPanel + VideoAdvancedPanel + ProfilesPanel + ProgressETA + GroupCard) |
 
 ---
 
@@ -244,7 +246,7 @@ npm run tauri build    # produit un binaire dans src-tauri/target/release/
 # Moteur Rust (186 tests)
 cargo test --manifest-path src-tauri/Cargo.toml
 
-# TypeScript - utilitaires + i18n + composants React (302 tests)
+# TypeScript - utilitaires + i18n + composants React (309 tests)
 npm test
 ```
 

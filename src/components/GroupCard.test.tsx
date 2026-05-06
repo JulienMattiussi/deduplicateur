@@ -178,3 +178,52 @@ describe("J - mode audio (GroupCard)", () => {
     expect(durations.length).toBeGreaterThan(0);
   });
 });
+
+// ---- S : indicateur même dossier ----
+describe("S - indicateur même dossier", () => {
+  it("affiche le point de signalement quand deux fichiers sont dans le même dossier", () => {
+    const sameDirGroup = {
+      id: "g-samedir",
+      hash: "abc",
+      size: 1024,
+      files: [
+        { path: "/a/file1.txt", size: 1024, name: "file1.txt", modified: 1700000000 },
+        { path: "/a/file2.txt", size: 1024, name: "file2.txt", modified: 1700001000 },
+      ],
+    };
+    render(
+      <LangProvider>
+        <GroupCard group={sameDirGroup} selected={new Set()} onToggle={() => {}} />
+      </LangProvider>
+    );
+    expect(document.querySelectorAll(".shared-dir-dot").length).toBe(2);
+  });
+
+  it("n'affiche pas le point quand les fichiers sont dans des dossiers différents", () => {
+    render(
+      <LangProvider>
+        <GroupCard group={baseGroup} selected={new Set()} onToggle={() => {}} />
+      </LangProvider>
+    );
+    expect(document.querySelector(".shared-dir-dot")).not.toBeInTheDocument();
+  });
+
+  it("n'affiche le point que sur les lignes du dossier partagé (groupe mixte)", () => {
+    const mixedGroup = {
+      id: "g-mixed",
+      hash: "abc",
+      size: 1024,
+      files: [
+        { path: "/a/file1.txt", size: 1024, name: "file1.txt", modified: 1700000000 },
+        { path: "/a/file2.txt", size: 1024, name: "file2.txt", modified: 1700001000 },
+        { path: "/b/file3.txt", size: 1024, name: "file3.txt", modified: 1700002000 },
+      ],
+    };
+    render(
+      <LangProvider>
+        <GroupCard group={mixedGroup} selected={new Set()} onToggle={() => {}} />
+      </LangProvider>
+    );
+    expect(document.querySelectorAll(".shared-dir-dot").length).toBe(2);
+  });
+});

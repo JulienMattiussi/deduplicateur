@@ -61,9 +61,12 @@ pub async fn scan_folder(
     let progress_for_scan = Arc::clone(&progress_state);
     let progress_for_emit = Arc::clone(&progress_state);
 
+    let groups_counter = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let groups_counter_emit = Arc::clone(&groups_counter);
+
     let _ = window.emit(
         "scan:progress",
-        serde_json::json!({ "current": 0, "total": 0, "total_files": 0, "file": "", "phase_current": 0, "phase_total": 0, "phase": "reading" }),
+        serde_json::json!({ "current": 0, "total": 0, "total_files": 0, "file": "", "phase_current": 0, "phase_total": 0, "phase": "reading", "groups_found": 0 }),
     );
 
     let window_emit = window.clone();
@@ -73,9 +76,10 @@ pub async fn scan_folder(
             interval.tick().await;
             let snapshot = progress_for_emit.lock().unwrap().clone();
             if let Some((current, total, total_files, file, phase_current, phase_total, phase)) = snapshot {
+                let groups_found = groups_counter_emit.load(std::sync::atomic::Ordering::Relaxed);
                 let _ = window_emit.emit(
                     "scan:progress",
-                    serde_json::json!({ "current": current, "total": total, "total_files": total_files, "file": file, "phase_current": phase_current, "phase_total": phase_total, "phase": phase }),
+                    serde_json::json!({ "current": current, "total": total, "total_files": total_files, "file": file, "phase_current": phase_current, "phase_total": phase_total, "phase": phase, "groups_found": groups_found }),
                 );
             }
         }
@@ -111,6 +115,7 @@ pub async fn scan_folder(
             secondary_folder,
             min_modified_timestamp: min_modified_timestamp.unwrap_or(0),
             max_modified_timestamp: max_modified_timestamp.unwrap_or(0),
+            groups_counter: Some(Arc::clone(&groups_counter)),
         };
         do_scan(params, cancelled, move |current, total, total_files, file: &str, phase_current, phase_total, phase: &str| {
             *progress_for_scan.lock().unwrap() = Some((current, total, total_files, file.to_string(), phase_current, phase_total, phase.to_string()));

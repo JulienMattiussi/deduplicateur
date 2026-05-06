@@ -8,6 +8,7 @@ export interface ScanProgress {
   phase_current?: number;
   phase_total?: number;
   phase?: ScanPhase;
+  groups_found?: number;
 }
 
 export interface VideoMetadata {

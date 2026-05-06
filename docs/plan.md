@@ -491,3 +491,25 @@ En mode "Comparer avec un autre dossier" : dossier source S et dossier de réfé
 - [x] 186 tests Rust (+5 filters.rs date) / 302 tests TypeScript (+11) - tous au vert
 
 **Critere de validation : ouvrir deux fichiers audio similaires, appuyer lecture, les deux jouent en meme temps ; filtrer par "modifie apres 2024-01-01" et relancer le scan ; cliquer 📂 dans un comparateur ouvre le dossier**
+
+---
+
+## Phase 23 - UX résultats + progression temps réel ✅
+
+**Objectif : enrichir l'affichage des résultats et donner un retour visuel pendant le scan**
+
+- [x] `scanner/types.rs` : `ScanParams` + champ `groups_counter: Option<Arc<AtomicUsize>>` (défaut `None` - zéro impact sur les tests existants)
+- [x] `scanner/mod.rs` : création ou récupération du counter, passé à chaque phase via `&groups_counter`
+- [x] `scanner/{exact,phash,video,audio}_phase.rs` : paramètre `groups_counter: &Arc<AtomicUsize>` ajouté à `run()`, `fetch_add` après chaque `groups.extend()`
+- [x] `commands/scan.rs` : `Arc<AtomicUsize>` créé, injecté dans `ScanParams`, lu dans la tâche d'émission toutes les 100 ms et ajouté au payload `scan:progress` en tant que `groups_found`
+- [x] `types.ts` : champ `groups_found?: number` dans `ScanProgress`
+- [x] `App.tsx` : compteur affiché sur une ligne dédiée en bleu sous la progression, visible uniquement quand `groups_found > 0`
+- [x] `i18n.ts` : clé `groupsFoundSoFar` bilingue ("{n} doublon(s) trouvé(s) au total" / "{n} duplicate(s) found so far")
+- [x] `components/FileThumbnail.tsx` : mode `"other"` + `FileTypeIcon` SVG inline par catégorie (pdf, archive, code, document, tableur, présentation, générique) - pas d'appel invoke ni d'IntersectionObserver
+- [x] `components/GroupCard.tsx` : colonne miniature toujours visible (suppression de la condition media), `thumbMode` déduit du type de groupe, `sharedDirs` useMemo (dirs avec 2+ fichiers du même groupe), `SharedDirDot` (point orange + tooltip) sur les lignes concernées, chemin avec `title` pour infobulle full path, bouton dossier remplacé par `FolderIcon` SVG toujours visible
+- [x] `App.css` : `.btn-reveal` toujours visible (opacity 0.4 au repos), `.file-col-dir-text` avec `direction: rtl` pour troncature par la gauche, `.shared-dir-dot` amber, `.file-thumb-other` + `.file-thumb-icon`, `.progress-groups-found`
+- [x] `i18n.ts` : clé `sameDirTooltip` bilingue
+- [x] `src/help/content.ts` : articles `launch-cancel`, `file-types` et `reveal` mis à jour (compteur doublon, icônes type, chemin RTL, point orange, bouton dossier)
+- [x] Tests TypeScript : 4 tests `FileThumbnail` mode "other" (SVG sans invoke, classe file-thumb-other) + 3 tests `GroupCard` same-dir (point présent/absent/mixte) - total 186 Rust / 309 TypeScript - tous au vert
+
+**Critere de validation : pendant un scan, le compteur de doublons monte en temps réel ; les groupes de fichiers ZIP/PDF affichent une icône adaptée ; les chemins longs sont tronqués par la gauche avec tooltip ; deux fichiers dans le même dossier montrent un point orange**

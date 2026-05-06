@@ -154,20 +154,20 @@ The selected path is shown in the selection area. The scan does not start automa
     sectionId: "start",
     title: { fr: "Lancer et annuler un scan", en: "Launch and cancel a scan" },
     keywords: {
-      fr: ["analyser", "lancer", "démarrer", "annuler", "arrêter", "progression", "barre", "durée", "estimation", "temps", "partiel"],
-      en: ["scan", "launch", "start", "cancel", "stop", "progress", "bar", "duration", "estimate", "time", "partial"],
+      fr: ["analyser", "lancer", "démarrer", "annuler", "arrêter", "progression", "barre", "durée", "estimation", "temps", "partiel", "doublon", "compteur", "total"],
+      en: ["scan", "launch", "start", "cancel", "stop", "progress", "bar", "duration", "estimate", "time", "partial", "duplicate", "counter", "total"],
     },
     body: {
       fr: `Cliquez sur **Analyser** pour démarrer. Le bouton est grisé si aucun dossier n'est sélectionné.
 
-Pendant l'analyse, une barre de progression indique le nombre de fichiers traités et le total. Une estimation du temps restant s'affiche après quelques secondes : "environ 2 min", "presque fini"…
+Pendant l'analyse, une barre de progression indique le nombre de fichiers traités et le total. En dessous s'affiche en bleu le **nombre de doublons trouvés au total** jusqu'à ce stade du scan — ce compteur est cumulatif sur toutes les phases (doublons exacts, images similaires, vidéos, audio). Une estimation du temps restant s'affiche après quelques secondes : "environ 2 min", "presque fini"…
 
 La première phase **"Collecte des fichiers…"** (sans barre de progression) peut durer quelques secondes sur les très grands dossiers.
 
 **Annuler** : cliquez sur le bouton "Annuler" pour interrompre le scan. Les groupes déjà trouvés sont conservés et affichés avec un bandeau orange **"Résultats partiels"**. Vous pouvez supprimer des fichiers même sur des résultats partiels.`,
       en: `Click **Scan** to start. The button is grayed out if no folder is selected.
 
-During the scan, a progress bar shows processed files vs. total. A time estimate appears after a few seconds: "about 2 min", "almost done"…
+During the scan, a progress bar shows processed files vs. total. Below it, a blue counter shows the **total number of duplicate groups found so far** — this counter is cumulative across all phases (exact, similar images, videos, audio). A time estimate appears after a few seconds: "about 2 min", "almost done"…
 
 The initial **"Collecting files…"** phase (no progress bar) can take a few seconds on very large folders.
 
@@ -212,8 +212,8 @@ Click a group header **(▾/▸)** to expand or collapse it.`,
     sectionId: "results",
     title: { fr: "Types de fichiers et similarité", en: "File types and similarity" },
     keywords: {
-      fr: ["icône", "type", "image", "vidéo", "audio", "similaire", "identique", "vignette", "miniature", "durée", "taille"],
-      en: ["icon", "type", "image", "video", "audio", "similar", "identical", "thumbnail", "duration", "size"],
+      fr: ["icône", "type", "image", "vidéo", "audio", "similaire", "identique", "vignette", "miniature", "durée", "taille", "pdf", "archive", "code", "document", "tableur"],
+      en: ["icon", "type", "image", "video", "audio", "similar", "identical", "thumbnail", "duration", "size", "pdf", "archive", "code", "document", "spreadsheet"],
     },
     body: {
       fr: `L'en-tête de chaque groupe affiche une icône et une description selon le type détecté :
@@ -225,7 +225,12 @@ Click a group header **(▾/▸)** to expand or collapse it.`,
 
 **Similaires** signifie que les fichiers ont été rapprochés par empreinte visuelle ou acoustique — pas forcément identiques bit à bit. **Identiques** signifie même contenu exact.
 
-Pour les images, vidéos et fichiers audio, chaque ligne affiche une **miniature** cliquable (ouvre le fichier dans l'application par défaut), la **taille** individuelle et la **durée** (vidéos/audio). Les fichiers génériques n'affichent que le nom, la date et le dossier.`,
+Chaque ligne affiche toujours une **icône de type** dans la première colonne :
+- Images, vidéos : miniature générée (cliquable pour ouvrir dans l'application par défaut)
+- Audio : bouton lecture
+- Autres fichiers : icône selon la catégorie — PDF, archive (zip, rar…), code source, document texte (doc, txt, md…), tableur (xls, csv…), présentation, ou icône générique
+
+Pour les images, vidéos et audio, la ligne affiche aussi la **taille** individuelle et la **durée** (vidéos/audio).`,
       en: `Each group header shows an icon and description based on the detected type:
 
 - 🖼 **X similar / identical images**
@@ -235,7 +240,12 @@ Pour les images, vidéos et fichiers audio, chaque ligne affiche une **miniature
 
 **Similar** means files were matched by visual or acoustic fingerprint — not necessarily bit-for-bit identical. **Identical** means exact same content.
 
-For images, videos, and audio, each row shows a clickable **thumbnail** (opens in the default system app), individual **size**, and **duration** (videos/audio). Generic files only show name, date, and folder.`,
+Every row always shows a **type icon** in the first column:
+- Images, videos: generated thumbnail (click to open in the default app)
+- Audio: play button
+- Other files: icon based on category — PDF, archive (zip, rar…), source code, text document (doc, txt, md…), spreadsheet (xls, csv…), presentation, or generic icon
+
+For images, videos, and audio, the row also shows individual **size** and **duration** (videos/audio).`,
     },
   },
 
@@ -266,16 +276,24 @@ For images, videos, and audio, each row shows a clickable **thumbnail** (opens i
     sectionId: "results",
     title: { fr: "Ouvrir un fichier dans l'explorateur", en: "Reveal a file in explorer" },
     keywords: {
-      fr: ["ouvrir", "explorateur", "gestionnaire", "dossier", "révéler", "↗", "localiser", "finder", "nautilus"],
-      en: ["open", "explorer", "file manager", "folder", "reveal", "↗", "locate", "finder", "nautilus"],
+      fr: ["ouvrir", "explorateur", "gestionnaire", "dossier", "révéler", "localiser", "finder", "nautilus", "chemin", "même dossier", "point orange"],
+      en: ["open", "explorer", "file manager", "folder", "reveal", "locate", "finder", "nautilus", "path", "same folder", "orange dot"],
     },
     body: {
-      fr: `Chaque ligne de fichier affiche un bouton **↗** à droite du chemin de dossier. Cliquez dessus pour ouvrir le dossier contenant ce fichier dans l'explorateur de fichiers de votre système (Finder sur macOS, Nautilus/Dolphin sur Linux, Explorateur sur Windows).
+      fr: `Chaque ligne affiche un **bouton dossier** (icône 📁) à droite du chemin. Cliquez dessus pour ouvrir le dossier contenant ce fichier dans l'explorateur de votre système (Finder sur macOS, Nautilus/Dolphin sur Linux, Explorateur sur Windows).
 
-Cliquer sur la **miniature** d'une image, d'une vidéo ou d'un fichier audio ouvre directement le fichier dans l'application par défaut associée à ce type.`,
-      en: `Each file row shows a **↗** button to the right of the folder path. Click it to open the folder containing the file in your system's file manager (Finder on macOS, Nautilus/Dolphin on Linux, Explorer on Windows).
+**Chemin tronqué** : si le chemin est trop long, il est coupé par la gauche — la partie la plus informative (la fin) reste toujours visible. Survolez le chemin pour afficher le chemin complet dans une infobulle.
 
-Clicking the **thumbnail** of an image, video, or audio file opens it directly in the default application associated with that file type.`,
+**Point orange** : quand deux fichiers ou plus du même groupe sont dans le même dossier, un point orange apparaît devant leur chemin. Survolez le point pour lire l'explication.
+
+Cliquer sur la **miniature** d'une image, d'une vidéo ou d'un fichier audio ouvre directement le fichier dans l'application par défaut.`,
+      en: `Each row shows a **folder button** (📁 icon) to the right of the path. Click it to open the folder containing the file in your system's file manager (Finder on macOS, Nautilus/Dolphin on Linux, Explorer on Windows).
+
+**Truncated path**: if the path is too long, it is clipped from the left — the most informative part (the end) always stays visible. Hover over the path to see the full path in a tooltip.
+
+**Orange dot**: when two or more files in the same group are in the same folder, an orange dot appears before their path. Hover the dot to read the explanation.
+
+Clicking the **thumbnail** of an image, video, or audio file opens it directly in the default application.`,
     },
   },
 

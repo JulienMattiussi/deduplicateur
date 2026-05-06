@@ -97,7 +97,14 @@ function ScanProgressView({
       <p className="progress-phase-name">{phaseName}</p>
       <p className="progress-phase-counter">{interp(t.phaseCounter, { n: phaseNum, total: totalPhases })}</p>
       {!isReading && progress?.phase_current != null && (progress.phase_total ?? 0) > 0 && (
-        <p className="progress-label">{interp(t.scanProgress, { n: progress.phase_current, m: progress.phase_total!, type: fileType })}</p>
+        <p className="progress-label">
+          {interp(t.scanProgress, { n: progress.phase_current, m: progress.phase_total!, type: fileType })}
+        </p>
+      )}
+      {(progress?.groups_found ?? 0) > 0 && (
+        <p className="progress-groups-found">
+          {interp(t.groupsFoundSoFar, { n: progress!.groups_found! })}
+        </p>
       )}
       {isReading ? (
         <div className="spinner" />

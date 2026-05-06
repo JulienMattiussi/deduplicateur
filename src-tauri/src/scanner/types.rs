@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::sync::{Arc, atomic::AtomicUsize};
 use serde::{Deserialize, Serialize};
 use crate::audio::AudioMetadata;
 use crate::phash::PHashConfig;
@@ -108,6 +109,9 @@ pub struct ScanParams {
     pub min_modified_timestamp: u64,
     /// Timestamp Unix maximum de date de modification (0 = pas de maximum).
     pub max_modified_timestamp: u64,
+    /// Compteur de groupes trouves, mis a jour en temps reel pendant le scan.
+    /// None = pas de suivi externe (valeur par defaut dans les tests).
+    pub groups_counter: Option<Arc<AtomicUsize>>,
 }
 
 impl ScanParams {
@@ -141,6 +145,7 @@ impl ScanParams {
             secondary_folder: None,
             min_modified_timestamp: 0,
             max_modified_timestamp: 0,
+            groups_counter: None,
         }
     }
 }

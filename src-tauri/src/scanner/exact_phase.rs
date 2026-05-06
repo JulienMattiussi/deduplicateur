@@ -19,6 +19,7 @@ pub(super) fn run<F>(
     start: &Instant,
     cancelled: &Arc<std::sync::atomic::AtomicBool>,
     on_progress: &F,
+    groups_counter: &Arc<AtomicUsize>,
 ) -> (Vec<DuplicateGroup>, bool)
 where
     F: Fn(usize, usize, usize, &str, usize, usize, &str) + Send + Sync,
@@ -173,7 +174,9 @@ where
         } else {
             partition_groups
         };
+        let n = filtered_groups.len();
         groups.extend(filtered_groups);
+        groups_counter.fetch_add(n, Ordering::Relaxed);
         super::timing_log(timing_enabled, params.data_dir.as_deref(), start, &format!(
             "folder_done: key={:?}", folder_key
         ));

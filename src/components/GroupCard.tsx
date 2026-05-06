@@ -7,6 +7,27 @@ import { FileThumbnail } from "./FileThumbnail";
 
 type SortKey = "name" | "modified" | "size";
 
+function FolderIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path
+        d="M0.75 3C0.75 2.17 1.42 1.5 2.25 1.5H6.25L7.75 3H13.75C14.58 3 15.25 3.67 15.25 4.5V11.5C15.25 12.33 14.58 13 13.75 13H2.25C1.42 13 0.75 12.33 0.75 11.5V3Z"
+        stroke="currentColor" strokeWidth="1.25" fill="none"
+      />
+    </svg>
+  );
+}
+
+function SharedDirDot({ title }: { title: string }) {
+  return (
+    <span className="shared-dir-dot" title={title} aria-label={title}>
+      <svg width="7" height="7" viewBox="0 0 7 7" fill="none">
+        <circle cx="3.5" cy="3.5" r="3" fill="currentColor" />
+      </svg>
+    </span>
+  );
+}
+
 export function GroupCard({
   group,
   selected,
@@ -37,6 +58,16 @@ export function GroupCard({
   const isVideoGroup = isVideoSimilar || VIDEO_EXTS.has(firstExt);
   const isImageGroup = isSimilar || (!isVideoGroup && IMAGE_EXTS.has(firstExt));
   const isAudioGroup = isAudioSimilar || (!isVideoGroup && !isImageGroup && AUDIO_EXTS.has(firstExt));
+  const thumbMode = isVideoGroup ? "video" : isImageGroup ? "image" : isAudioGroup ? "audio" : "other";
+
+  const sharedDirs = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const f of group.files) {
+      const d = dirname(f.path);
+      counts[d] = (counts[d] ?? 0) + 1;
+    }
+    return new Set(Object.entries(counts).filter(([, n]) => n > 1).map(([d]) => d));
+  }, [group.files]);
 
   function handleSortClick(key: SortKey) {
     if (sortKey === key) {
@@ -139,7 +170,7 @@ export function GroupCard({
         <div className="group-files" data-testid="group-files">
           <div className="file-row-header">
             <span className="file-col-cb" />
-            {(isImageGroup || isVideoGroup || isAudioGroup) && <span className="file-col-thumb" />}
+            <span className="file-col-thumb" />
             <SortableHeader col="name" label={t.colName} className="file-col-name" />
             <SortableHeader col="modified" label={t.colModified} className="file-col-date" />
             {(isImageGroup || isVideoGroup || isAudioGroup) && (
@@ -150,54 +181,62 @@ export function GroupCard({
             <span className="file-col-dir">{t.colFolder}</span>
             <span className="file-col-badge" />
           </div>
-          {sortedFiles.map((file: DuplicateFile, idx: number) => (
-            <div
-              key={file.path}
-              className={`file-row ${(isImageGroup || isVideoGroup || isAudioGroup) ? "file-row--media" : ""} ${selected.has(file.path) ? "file-row--checked" : ""}`}
-              onClick={() => onToggle(file.path)}
-            >
-              <span className="file-col-cb">
-                <input
-                  type="checkbox"
-                  checked={selected.has(file.path)}
-                  onChange={() => onToggle(file.path)}
-                  onClick={(e) => e.stopPropagation()}
-                />
-              </span>
-              {(isImageGroup || isVideoGroup || isAudioGroup) && (
+          {sortedFiles.map((file: DuplicateFile, idx: number) => {
+            const fileDir = dirname(file.path);
+            const isSharedDir = sharedDirs.has(fileDir);
+            return (
+              <div
+                key={file.path}
+                className={`file-row ${(isImageGroup || isVideoGroup || isAudioGroup) ? "file-row--media" : ""} ${selected.has(file.path) ? "file-row--checked" : ""}`}
+                onClick={() => onToggle(file.path)}
+              >
+                <span className="file-col-cb">
+                  <input
+                    type="checkbox"
+                    checked={selected.has(file.path)}
+                    onChange={() => onToggle(file.path)}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                </span>
                 <span className="file-col-thumb">
-                  <FileThumbnail file={file} mode={isVideoGroup ? "video" : isAudioGroup ? "audio" : "image"} />
+                  <FileThumbnail file={file} mode={thumbMode} />
                 </span>
-              )}
-              <span className="file-col-name file-name">{file.name}</span>
-              <span className="file-col-date file-meta">{formatDate(file.modified, t.dateLocale)}</span>
-              {(isImageGroup || isVideoGroup || isAudioGroup) && <span className="file-col-size file-meta">{formatSize(file.size)}</span>}
-              {isVideoGroup && (
-                <span className="file-col-video-meta file-meta">
-                  {file.video_metadata ? formatDurationSecs(file.video_metadata.duration_secs) : "-"}
+                <span className="file-col-name file-name">{file.name}</span>
+                <span className="file-col-date file-meta">{formatDate(file.modified, t.dateLocale)}</span>
+                {(isImageGroup || isVideoGroup || isAudioGroup) && <span className="file-col-size file-meta">{formatSize(file.size)}</span>}
+                {isVideoGroup && (
+                  <span className="file-col-video-meta file-meta">
+                    {file.video_metadata ? formatDurationSecs(file.video_metadata.duration_secs) : "-"}
+                  </span>
+                )}
+                {isAudioGroup && (
+                  <span className="file-col-video-meta file-meta">
+                    {file.audio_metadata ? formatDurationSecs(file.audio_metadata.duration_secs) : "-"}
+                  </span>
+                )}
+                <span className={`file-col-dir${isSharedDir ? " file-col-dir--shared" : ""}`}>
+                  {isSharedDir && <SharedDirDot title={t.sameDirTooltip} />}
+                  <span
+                    className="file-col-dir-text file-meta"
+                    title={fileDir}
+                  >
+                    {fileDir}
+                  </span>
+                  <button
+                    className="btn-reveal"
+                    onClick={(e) => { e.stopPropagation(); revealInFolder(file.path); }}
+                    title={t.openInExplorer}
+                  >
+                    <FolderIcon />
+                  </button>
                 </span>
-              )}
-              {isAudioGroup && (
-                <span className="file-col-video-meta file-meta">
-                  {file.audio_metadata ? formatDurationSecs(file.audio_metadata.duration_secs) : "-"}
+                <span className="file-col-badge">
+                  {idx === 0 && !file.source && <span className="badge-original">{t.original}</span>}
+                  {file.source === "secondary" && <span className="badge-reference" data-testid="badge-reference">{t.badgeReference}</span>}
                 </span>
-              )}
-              <span className="file-col-dir">
-                <span className="file-col-dir-text file-meta">{dirname(file.path)}</span>
-                <button
-                  className="btn-reveal"
-                  onClick={(e) => { e.stopPropagation(); revealInFolder(file.path); }}
-                  title={t.openInExplorer}
-                >
-                  ↗
-                </button>
-              </span>
-              <span className="file-col-badge">
-                {idx === 0 && !file.source && <span className="badge-original">{t.original}</span>}
-                {file.source === "secondary" && <span className="badge-reference" data-testid="badge-reference">{t.badgeReference}</span>}
-              </span>
-            </div>
-          ))}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
