@@ -4,6 +4,32 @@ import { formatSize, dirname } from "./utils";
 import { useLang } from "./LangContext";
 import { revealInFolder } from "./fileActions";
 
+/**
+ * Construit une URL pour le serveur media local (audio/video) a partir d'un chemin disque.
+ * Normalise les separateurs Windows et URI-encode chaque segment.
+ */
+export function toMediaUrl(path: string, port: number): string {
+  const normalized = path.replace(/\\/g, "/");
+  const withSlash = normalized.startsWith("/") ? normalized : "/" + normalized;
+  return `http://127.0.0.1:${port}${withSlash.split("/").map(encodeURIComponent).join("/")}`;
+}
+
+/**
+ * Bouton "Garder celui-ci" partage par les comparateurs Image/Video/Audio.
+ * Affiche un coche (✓) prefixe quand le fichier est marque comme garde.
+ */
+export function KeepButton({ kept, onKeep }: { kept: boolean; onKeep: () => void }) {
+  const { t } = useLang();
+  return (
+    <button
+      className={`comparator-keep-btn${kept ? " comparator-keep-btn--kept" : ""}`}
+      onClick={onKeep}
+    >
+      {kept ? "✓ " : ""}{t.keepThis}
+    </button>
+  );
+}
+
 export interface ComparatorProps {
   groups: DuplicateGroup[];
   startIdx: number;

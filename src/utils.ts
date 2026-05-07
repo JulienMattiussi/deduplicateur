@@ -28,6 +28,10 @@ export function formatSize(bytes: number): string {
   return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} Go`;
 }
 
+export function basename(path: string): string {
+  return path.split(/[\\/]/).pop() ?? path;
+}
+
 export function dirname(path: string): string {
   const sep = path.includes("/") ? "/" : "\\";
   if (!path.includes(sep)) return "";

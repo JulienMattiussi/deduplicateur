@@ -1500,6 +1500,13 @@
   color: var(--text-4);
 }
 
+.file-col-video-meta--archive {
+  width: 110px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .file-col-thumb {
   width: 52px;
   flex-shrink: 0;

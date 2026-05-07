@@ -4,7 +4,7 @@ import type { DuplicateFile, ImageMeta } from "./types";
 import { useLang } from "./LangContext";
 import { openFile } from "./fileActions";
 import type { ComparatorProps } from "./comparatorShared";
-import { useComparatorNav, ComparatorShell, MetaBlockBase } from "./comparatorShared";
+import { useComparatorNav, ComparatorShell, MetaBlockBase, KeepButton } from "./comparatorShared";
 
 function ImageMetaBlock({ file, meta }: { file: DuplicateFile; meta: ImageMeta | null }) {
   const { t } = useLang();
@@ -49,7 +49,6 @@ function ImagePanel({
   kept: boolean;
   onKeep: () => void;
 }) {
-  const { t } = useLang();
   return (
     <div className="comparator-panel">
       <div className="comparator-image-area">
@@ -66,12 +65,7 @@ function ImagePanel({
         )}
       </div>
       <div className="comparator-footer">
-        <button
-          className={`comparator-keep-btn${kept ? " comparator-keep-btn--kept" : ""}`}
-          onClick={onKeep}
-        >
-          {kept ? "✓ " : ""}{t.keepThis}
-        </button>
+        <KeepButton kept={kept} onKeep={onKeep} />
         <ImageMetaBlock file={file} meta={meta} />
       </div>
     </div>
@@ -197,21 +191,11 @@ export function ImageComparator({
           </div>
           <div className="comparator-overlay-meta">
             <div className="comparator-overlay-meta-col">
-              <button
-                className={`comparator-keep-btn${isKept(leftFile) ? " comparator-keep-btn--kept" : ""}`}
-                onClick={() => keepFile(leftFile.path)}
-              >
-                {isKept(leftFile) ? "✓ " : ""}{t.keepThis}
-              </button>
+              <KeepButton kept={isKept(leftFile)} onKeep={() => keepFile(leftFile.path)} />
               <ImageMetaBlock file={leftFile} meta={leftMeta} />
             </div>
             <div className="comparator-overlay-meta-col">
-              <button
-                className={`comparator-keep-btn${isKept(rightFile) ? " comparator-keep-btn--kept" : ""}`}
-                onClick={() => keepFile(rightFile.path)}
-              >
-                {isKept(rightFile) ? "✓ " : ""}{t.keepThis}
-              </button>
+              <KeepButton kept={isKept(rightFile)} onKeep={() => keepFile(rightFile.path)} />
               <ImageMetaBlock file={rightFile} meta={rightMeta} />
             </div>
           </div>

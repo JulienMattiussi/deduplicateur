@@ -4,13 +4,7 @@ import type { DuplicateFile, VideoMetadata } from "./types";
 import { formatDurationSecs } from "./utils";
 import { useLang } from "./LangContext";
 import type { ComparatorProps } from "./comparatorShared";
-import { useComparatorNav, ComparatorShell, MetaBlockBase } from "./comparatorShared";
-
-function toMediaUrl(path: string, port: number): string {
-  const normalized = path.replace(/\\/g, "/");
-  const withSlash = normalized.startsWith("/") ? normalized : "/" + normalized;
-  return `http://127.0.0.1:${port}${withSlash.split("/").map(encodeURIComponent).join("/")}`;
-}
+import { useComparatorNav, ComparatorShell, MetaBlockBase, KeepButton, toMediaUrl } from "./comparatorShared";
 
 function VideoMetaBlock({ file, meta }: { file: DuplicateFile; meta: VideoMetadata | null }) {
   const { t } = useLang();
@@ -65,7 +59,6 @@ function VideoPanel({
   onSeeked?: () => void;
   onKeep: () => void;
 }) {
-  const { t } = useLang();
   return (
     <div className="comparator-panel">
       <div className="comparator-image-area comparator-video-area">
@@ -83,12 +76,7 @@ function VideoPanel({
         />
       </div>
       <div className="comparator-footer">
-        <button
-          className={`comparator-keep-btn${kept ? " comparator-keep-btn--kept" : ""}`}
-          onClick={onKeep}
-        >
-          {kept ? "✓ " : ""}{t.keepThis}
-        </button>
+        <KeepButton kept={kept} onKeep={onKeep} />
         <VideoMetaBlock file={file} meta={meta} />
       </div>
     </div>

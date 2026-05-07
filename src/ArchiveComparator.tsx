@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useLang } from "./LangContext";
-import { formatSize, formatDate, dirname } from "./utils";
+import { formatSize, formatDate, dirname, basename } from "./utils";
 import { revealInFolder } from "./fileActions";
 import { FileTypeIcon } from "./components/FileThumbnail";
 import { ComparatorBasicShell } from "./comparatorShared";
@@ -11,10 +11,6 @@ interface Props {
   archiveA: ArchiveInGroup;
   archiveB: ArchiveInGroup;
   onClose: () => void;
-}
-
-function basename(p: string): string {
-  return p.split(/[\\/]/).pop() ?? p;
 }
 
 interface AlignedRow {
@@ -201,7 +197,9 @@ export function ArchiveComparator({ archiveA, archiveB, onClose }: Props) {
                 ))
               )}
             </div>
-            <ArchiveMetaBlock archive={archiveA} />
+            <div className="comparator-footer">
+              <ArchiveMetaBlock archive={archiveA} />
+            </div>
           </div>
           <div className="comparator-divider" />
           <div className="comparator-panel archive-col">
@@ -216,7 +214,9 @@ export function ArchiveComparator({ archiveA, archiveB, onClose }: Props) {
                 ))
               )}
             </div>
-            <ArchiveMetaBlock archive={archiveB} />
+            <div className="comparator-footer">
+              <ArchiveMetaBlock archive={archiveB} />
+            </div>
           </div>
         </div>
       ) : null}

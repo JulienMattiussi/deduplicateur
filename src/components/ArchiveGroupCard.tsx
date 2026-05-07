@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useLang } from "../LangContext";
-import { formatSize, formatDate, dirname } from "../utils";
+import { formatSize, formatDate, dirname, basename } from "../utils";
 import { revealInFolder } from "../fileActions";
 import { FileThumbnail } from "./FileThumbnail";
+import { FolderIcon } from "./icons";
 import type { ArchiveGroupResult, ArchiveInGroup, DuplicateFile } from "../types";
 
 interface Props {
@@ -10,21 +11,6 @@ interface Props {
   selected: Set<string>;
   onToggle: (path: string) => void;
   onCompare: (a: ArchiveInGroup, b: ArchiveInGroup) => void;
-}
-
-function basename(p: string): string {
-  return p.split(/[\\/]/).pop() ?? p;
-}
-
-function FolderIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 16 14" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path
-        d="M0.75 3C0.75 2.17 1.42 1.5 2.25 1.5H6.25L7.75 3H13.75C14.58 3 15.25 3.67 15.25 4.5V11.5C15.25 12.33 14.58 13 13.75 13H2.25C1.42 13 0.75 12.33 0.75 11.5V3Z"
-        stroke="currentColor" strokeWidth="1.25" fill="none"
-      />
-    </svg>
-  );
 }
 
 function archiveAsFile(a: ArchiveInGroup): DuplicateFile {
@@ -76,7 +62,7 @@ export function ArchiveGroupCard({ group, selected, onToggle, onCompare }: Props
             <span className="file-col-name">{t.colName}</span>
             <span className="file-col-date">{t.colModified}</span>
             <span className="file-col-size">{t.colSize}</span>
-            <span className="file-col-video-meta">{t.archiveEntries}</span>
+            <span className="file-col-video-meta file-col-video-meta--archive">{t.archiveEntries}</span>
             <span className="file-col-dir">{t.colFolder}</span>
             <span className="file-col-badge" />
           </div>
@@ -123,7 +109,7 @@ export function ArchiveGroupCard({ group, selected, onToggle, onCompare }: Props
                 <span className="file-col-name file-name">{basename(archive.path)}</span>
                 <span className="file-col-date file-meta">{formatDate(archive.modified, t.dateLocale)}</span>
                 <span className="file-col-size file-meta">{formatSize(archive.size)}</span>
-                <span className="file-col-video-meta file-meta">
+                <span className="file-col-video-meta file-col-video-meta--archive file-meta">
                   {archive.duplicated_entries}/{archive.total_entries} {t.archiveEntries}
                 </span>
                 <span className="file-col-dir">

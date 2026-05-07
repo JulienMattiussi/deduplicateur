@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatSize, dirname, fileExt, formatDate, formatDurationSecs } from "./utils";
+import { formatSize, dirname, basename, fileExt, formatDate, formatDurationSecs } from "./utils";
 
 describe("formatSize", () => {
   it("affiche les octets", () => {
@@ -22,6 +22,25 @@ describe("formatSize", () => {
   it("affiche les Go", () => {
     expect(formatSize(1024 * 1024 * 1024)).toBe("1.00 Go");
     expect(formatSize(1024 * 1024 * 1024 * 2.5)).toBe("2.50 Go");
+  });
+});
+
+describe("basename", () => {
+  it("retourne le nom du fichier (chemin Unix)", () => {
+    expect(basename("/home/user/photo.jpg")).toBe("photo.jpg");
+    expect(basename("/a/b/c.txt")).toBe("c.txt");
+  });
+
+  it("retourne le nom du fichier (chemin Windows)", () => {
+    expect(basename("C:\\Users\\me\\file.zip")).toBe("file.zip");
+  });
+
+  it("retourne tel quel si pas de separateur", () => {
+    expect(basename("file.txt")).toBe("file.txt");
+  });
+
+  it("gere un chemin vide", () => {
+    expect(basename("")).toBe("");
   });
 });
 
