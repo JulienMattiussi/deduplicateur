@@ -179,6 +179,7 @@ pub fn load_session(app: tauri::AppHandle, id: String) -> Result<ScanSummary, St
 
     let mut groups = file.groups;
     let mut summary = file.summary;
+    let mut archive_groups = file.archive_groups;
 
     let before = groups.len();
     for group in groups.iter_mut() {
@@ -186,14 +187,23 @@ pub fn load_session(app: tauri::AppHandle, id: String) -> Result<ScanSummary, St
     }
     groups.retain(|g| g.files.len() >= 2);
 
-    if groups.len() != before {
+    // Filtre defensif sur les archives : retirer celles dont le fichier n'existe plus sur disque
+    let archives_before = archive_groups.len();
+    for ag in archive_groups.iter_mut() {
+        ag.archives.retain(|a| std::path::Path::new(&a.path).exists());
+    }
+    archive_groups.retain(|ag| ag.archives.len() >= 2);
+
+    let dirty = groups.len() != before || archive_groups.len() != archives_before;
+    if dirty {
         summary.total_groups = groups.len();
         summary.total_wasted_bytes = recalc_wasted_bytes(&groups);
-        save_session(&app, &summary, &groups);
+        summary.archive_groups_count = archive_groups.len();
+        save_session(&app, &summary, &groups, &archive_groups);
     }
 
     let result = summary.clone();
-    *app.state::<ScanCache>().0.lock().unwrap() = Some(LoadedSession { summary, groups, archive_groups: vec![] });
+    *app.state::<ScanCache>().0.lock().unwrap() = Some(LoadedSession { summary, groups, archive_groups });
     Ok(result)
 }
 

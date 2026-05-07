@@ -8,6 +8,9 @@ pub struct ArchiveEntryResult {
     pub status: String,
     /// Chemin interne dans l'autre archive si status == "duplicate"
     pub duplicate_in: Option<String>,
+    /// Hash xxh3 de l'entree (en hex), permet l'appariement greedy cote frontend
+    /// quand plusieurs entrees partagent le meme hash dans une meme archive.
+    pub hash: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -593,13 +593,13 @@ En mode "Comparer avec un autre dossier" : dossier source S et dossier de réfé
 
 | Format | Extensions | Crate |
 |---|---|---|
-| ZIP | `.zip` | `zip` |
+| ZIP | `.zip`, `.cbz` (Comic Book ZIP) | `zip` |
 | Tar+gzip | `.tar.gz`, `.tgz` | `tar` + `flate2` |
 | Tar+bzip2 | `.tar.bz2`, `.tbz2` | `tar` + `bzip2` |
 | Tar+xz | `.tar.xz`, `.txz` | `tar` + `xz2` |
 | Tar+zstd | `.tar.zst` | `tar` + `zstd` |
-| 7-Zip | `.7z` | `sevenz-rust` |
-| RAR | `.rar` | **non supporté** (pas de crate libre fiable) - ignoré silencieusement |
+| 7-Zip | `.7z` | `sevenz-rust2` |
+| RAR | `.rar`, `.cbr` (Comic Book RAR) | **non supporté** (pas de crate libre fiable) - ignoré silencieusement |
 
 ---
 

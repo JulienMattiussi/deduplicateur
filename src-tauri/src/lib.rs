@@ -75,6 +75,8 @@ pub struct GroupsPage {
 pub struct SessionFile {
     pub summary: ScanSummary,
     pub groups: Vec<DuplicateGroup>,
+    #[serde(default)]
+    pub archive_groups: Vec<crate::scanner::ArchiveGroupResult>,
 }
 
 // ── Helpers de session ─────────────────────────────────────────────────────
@@ -95,11 +97,17 @@ fn session_path(app: &tauri::AppHandle, id: &str) -> Option<PathBuf> {
     Some(sessions_dir(app)?.join(format!("{}.json", id)))
 }
 
-pub fn save_session(app: &tauri::AppHandle, summary: &ScanSummary, groups: &[DuplicateGroup]) {
+pub fn save_session(
+    app: &tauri::AppHandle,
+    summary: &ScanSummary,
+    groups: &[DuplicateGroup],
+    archive_groups: &[crate::scanner::ArchiveGroupResult],
+) {
     if let Some(path) = session_path(app, &summary.id) {
         if let Ok(json) = serde_json::to_string(&SessionFile {
             summary: summary.clone(),
             groups: groups.to_vec(),
+            archive_groups: archive_groups.to_vec(),
         }) {
             let _ = std::fs::write(&path, json);
         }
@@ -318,8 +326,73 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use scanner::{DuplicateFile, DuplicateGroup};
+    use scanner::{ArchiveGroupResult, ArchiveInGroup, DuplicateFile, DuplicateGroup};
     use video::VideoMetadata;
+
+    // ── Round-trip session serialisation ────────────────────────────────────────
+
+    #[test]
+    fn session_file_roundtrip_avec_archive_groups() {
+        let summary = ScanSummary {
+            id: "abc".to_string(),
+            folder: "/test".to_string(),
+            total_wasted_bytes: 1024,
+            total_groups: 1,
+            scanned_files: 10,
+            duration_ms: 500,
+            by_folder: false,
+            total_folders: 0,
+            partial: false,
+            recursive: true,
+            find_similar: false,
+            find_similar_videos: false,
+            ffmpeg_missing: false,
+            find_similar_audio: false,
+            fpcalc_missing: false,
+            archive_groups_count: 1,
+        };
+        let archive_groups = vec![ArchiveGroupResult {
+            id: "ag1".to_string(),
+            shared_entry_count: 3,
+            archives: vec![
+                ArchiveInGroup {
+                    path: "/a.zip".to_string(),
+                    size: 1024,
+                    modified: 1700000000,
+                    total_entries: 5,
+                    duplicated_entries: 3,
+                    can_delete: false,
+                    wasted_bytes: 0,
+                },
+                ArchiveInGroup {
+                    path: "/b.zip".to_string(),
+                    size: 2048,
+                    modified: 1700001000,
+                    total_entries: 3,
+                    duplicated_entries: 3,
+                    can_delete: true,
+                    wasted_bytes: 512,
+                },
+            ],
+        }];
+        let file = SessionFile { summary, groups: vec![], archive_groups };
+        let json = serde_json::to_string(&file).unwrap();
+        let restored: SessionFile = serde_json::from_str(&json).unwrap();
+        assert_eq!(restored.archive_groups.len(), 1);
+        assert_eq!(restored.archive_groups[0].shared_entry_count, 3);
+        assert_eq!(restored.archive_groups[0].archives.len(), 2);
+        assert_eq!(restored.archive_groups[0].archives[1].size, 2048);
+        assert_eq!(restored.archive_groups[0].archives[1].modified, 1700001000);
+        assert!(restored.archive_groups[0].archives[1].can_delete);
+    }
+
+    #[test]
+    fn session_file_retrocompatible_sans_archive_groups() {
+        // Un ancien fichier de session sans le champ archive_groups doit etre lu sans erreur
+        let json_old = r#"{"summary":{"id":"x","folder":"/y","total_wasted_bytes":0,"total_groups":0,"scanned_files":0,"duration_ms":0,"ffmpeg_missing":false,"fpcalc_missing":false},"groups":[]}"#;
+        let file: SessionFile = serde_json::from_str(json_old).unwrap();
+        assert_eq!(file.archive_groups.len(), 0);
+    }
 
     // ── Tests notifications ────────────────────────────────────────────────────
 

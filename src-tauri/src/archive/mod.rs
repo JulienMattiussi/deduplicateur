@@ -40,7 +40,7 @@ pub fn detect_archive_format(path: &Path) -> Option<ArchiveFormat> {
         Some(ArchiveFormat::TarXz)
     } else if name.ends_with(".tar.zst") {
         Some(ArchiveFormat::TarZst)
-    } else if name.ends_with(".zip") {
+    } else if name.ends_with(".zip") || name.ends_with(".cbz") {
         Some(ArchiveFormat::Zip)
     } else if name.ends_with(".7z") {
         Some(ArchiveFormat::SevenZip)
@@ -114,12 +114,14 @@ pub fn compute_comparison(path_a: &str, path_b: &str) -> Result<ArchiveCompariso
     let map_a: HashMap<u64, &ArchiveEntry> = entries_a.iter().map(|e| (e.hash, e)).collect();
 
     let a_entries = entries_a.iter().map(|e| {
+        let hash_hex = format!("{:x}", e.hash);
         if let Some(other) = map_b.get(&e.hash) {
             ArchiveEntryResult {
                 internal_path: e.internal_path.clone(),
                 size: e.size,
                 status: "duplicate".to_string(),
                 duplicate_in: Some(other.internal_path.clone()),
+                hash: hash_hex,
             }
         } else {
             ArchiveEntryResult {
@@ -127,17 +129,20 @@ pub fn compute_comparison(path_a: &str, path_b: &str) -> Result<ArchiveCompariso
                 size: e.size,
                 status: "unique".to_string(),
                 duplicate_in: None,
+                hash: hash_hex,
             }
         }
     }).collect();
 
     let b_entries = entries_b.iter().map(|e| {
+        let hash_hex = format!("{:x}", e.hash);
         if let Some(other) = map_a.get(&e.hash) {
             ArchiveEntryResult {
                 internal_path: e.internal_path.clone(),
                 size: e.size,
                 status: "duplicate".to_string(),
                 duplicate_in: Some(other.internal_path.clone()),
+                hash: hash_hex,
             }
         } else {
             ArchiveEntryResult {
@@ -145,6 +150,7 @@ pub fn compute_comparison(path_a: &str, path_b: &str) -> Result<ArchiveCompariso
                 size: e.size,
                 status: "unique".to_string(),
                 duplicate_in: None,
+                hash: hash_hex,
             }
         }
     }).collect();
@@ -196,6 +202,18 @@ mod tests {
     }
 
     #[test]
+    fn detect_cbz_comme_zip() {
+        assert_eq!(detect_archive_format(Path::new("comic.cbz")), Some(ArchiveFormat::Zip));
+        assert_eq!(detect_archive_format(Path::new("COMIC.CBZ")), Some(ArchiveFormat::Zip));
+    }
+
+    #[test]
+    fn detect_cbr_retourne_none() {
+        // CBR = RAR renomme, pas supporte (comme .rar)
+        assert_eq!(detect_archive_format(Path::new("comic.cbr")), None);
+    }
+
+    #[test]
     fn detect_inconnu_retourne_none() {
         assert_eq!(detect_archive_format(Path::new("file.txt")), None);
         assert_eq!(detect_archive_format(Path::new("noext")), None);
@@ -239,6 +257,23 @@ mod tests {
         let entries = hash_archive_entries(f.path()).unwrap();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].internal_path, "subdir/file.txt");
+    }
+
+    #[test]
+    fn hash_cbz_lu_comme_zip() {
+        // Cree un .cbz (en realite un zip avec extension .cbz) et verifie qu'on lit ses entrees
+        let mut f = NamedTempFile::with_suffix(".cbz").unwrap();
+        {
+            let mut w = zip::ZipWriter::new(std::io::BufWriter::new(f.as_file_mut()));
+            let opts = zip::write::SimpleFileOptions::default();
+            w.start_file("page01.jpg", opts).unwrap();
+            w.write_all(b"image data").unwrap();
+            w.start_file("page02.jpg", opts).unwrap();
+            w.write_all(b"more image data").unwrap();
+            w.finish().unwrap();
+        }
+        let entries = hash_archive_entries(f.path()).unwrap();
+        assert_eq!(entries.len(), 2);
     }
 
     #[test]
@@ -299,5 +334,10 @@ mod tests {
         assert_eq!(uniq_a.len(), 1);
         assert_eq!(dup_a[0].internal_path, "common.txt");
         assert!(dup_a[0].duplicate_in.is_some());
+        // Le champ hash doit etre rempli (hex non vide) pour permettre le pairing greedy frontend
+        assert!(!dup_a[0].hash.is_empty());
+        // Meme contenu => meme hash des deux cotes
+        let dup_b: Vec<_> = cmp.b.entries.iter().filter(|e| e.status == "duplicate").collect();
+        assert_eq!(dup_a[0].hash, dup_b[0].hash);
     }
 }

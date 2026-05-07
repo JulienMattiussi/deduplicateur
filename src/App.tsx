@@ -4,7 +4,7 @@ import { save as dialogSave } from "@tauri-apps/plugin-dialog";
 import "./App.css";
 import { formatSize, formatDuration, toHammingThreshold, VIDEO_EXTS, AUDIO_EXTS } from "./utils";
 import { useLang } from "./LangContext";
-import type { DuplicateGroup, FolderSummary, IgnoreEntry, ScanProfile, ScanSummary, ArchiveGroupResult } from "./types";
+import type { DuplicateGroup, FolderSummary, IgnoreEntry, ScanProfile, ScanSummary, ArchiveGroupResult, ArchiveInGroup } from "./types";
 import { interp } from "./i18n";
 import { useScanConfig } from "./hooks/useScanConfig";
 import { useScanExecution } from "./hooks/useScanExecution";
@@ -48,7 +48,7 @@ export default function App() {
   const [videoComparatorIdx, setVideoComparatorIdx] = useState<number | null>(null);
   const [audioComparatorIdx, setAudioComparatorIdx] = useState<number | null>(null);
   const [archiveGroups, setArchiveGroups] = useState<ArchiveGroupResult[]>([]);
-  const [archiveComparatorPair, setArchiveComparatorPair] = useState<{ pathA: string; pathB: string } | null>(null);
+  const [archiveComparatorPair, setArchiveComparatorPair] = useState<{ a: ArchiveInGroup; b: ArchiveInGroup } | null>(null);
   const [resumingId, setResumingId] = useState<string | null>(null);
   const [smartRule, setSmartRule] = useState<SmartMode>("newest");
   const [priorityFolder, setPriorityFolder] = useState("");
@@ -208,6 +208,10 @@ export default function App() {
         startTransition(() => results.setFolderSummaries(summaries));
       } else {
         await results.loadPage(0, false);
+      }
+      if (s.archive_groups_count && s.archive_groups_count > 0) {
+        const ag = await invoke<ArchiveGroupResult[]>("get_archive_groups");
+        setArchiveGroups(ag);
       }
     } catch (e) {
       setError(String(e));
@@ -723,7 +727,7 @@ export default function App() {
                       group={ag}
                       selected={selection.selected}
                       onToggle={selection.toggleFile}
-                      onCompare={(a, b) => setArchiveComparatorPair({ pathA: a, pathB: b })}
+                      onCompare={(a, b) => setArchiveComparatorPair({ a, b })}
                     />
                   ))}
                   {filteredFolderSummaries.map((fs) => (
@@ -758,7 +762,7 @@ export default function App() {
                           group={item.group}
                           selected={selection.selected}
                           onToggle={selection.toggleFile}
-                          onCompare={(a, b) => setArchiveComparatorPair({ pathA: a, pathB: b })}
+                          onCompare={(a, b) => setArchiveComparatorPair({ a, b })}
                         />
                       );
                     }
@@ -853,8 +857,8 @@ export default function App() {
 
       {archiveComparatorPair && (
         <ArchiveComparator
-          pathA={archiveComparatorPair.pathA}
-          pathB={archiveComparatorPair.pathB}
+          archiveA={archiveComparatorPair.a}
+          archiveB={archiveComparatorPair.b}
           onClose={() => setArchiveComparatorPair(null)}
         />
       )}

@@ -1137,7 +1137,7 @@ The notification uses the **active UI language** (FR or EN) at the time the scan
       en: ["archive", "zip", "tar", "gz", "7z", "archives", "content", "duplicate", "comparator"],
     },
     body: {
-      fr: `**Analyser les archives** est une option disponible en mode **Fichiers**. Elle ouvre les archives (ZIP, tar.gz, 7z...) trouvées dans le dossier analysé et détecte celles dont le contenu est identique ou partiellement partagé avec une autre archive.
+      fr: `**Analyser les archives** est une option disponible en mode **Fichiers**. Elle ouvre les archives (ZIP, tar.gz, 7z, CBZ...) trouvées dans le dossier analysé et détecte celles dont le contenu est identique ou partiellement partagé avec une autre archive. Les fichiers \`.cbz\` (Comic Book ZIP) sont traités comme des ZIP. Les \`.cbr\` (Comic Book RAR) et \`.rar\` ne sont pas supportés.
 
 **Activer l'option** : cochez la case "Analyser les archives" dans la barre de configuration, à côté de l'option "Sous-dossiers".
 
@@ -1145,12 +1145,12 @@ The notification uses the **active UI language** (FR or EN) at the time the scan
 - En-tête : icône 📦, nombre d'archives, nombre de fichiers en commun et bouton **Comparer**
 - Une ligne par archive avec son icône, son nom, sa date, sa taille, le ratio de fichiers dupliqués (ex. 3/5 fichier(s)), son dossier et le badge **Supprimable** si applicable
 
-**Sélection** : la case à cocher n'apparaît que sur les archives **entièrement** dupliquées dans une autre (\`Supprimable\`). Pour les archives partiellement partagées, il n'y a pas de case - aller dans le comparateur pour voir le détail.
+**Sélection** : la case à cocher n'apparaît que sur les archives **entièrement** dupliquées dans une autre (\`Supprimable\`). Pour les archives partiellement partagées, une icône 🚫 s'affiche à la place avec une infobulle qui rappelle qu'on ne peut pas supprimer un fichier individuellement à l'intérieur d'une archive.
 
-**Comparateur d'archives** : cliquez sur **Comparer** pour ouvrir le comparateur côte à côte. Il affiche chaque entrée interne avec un badge **doublon** (vert) ou **unique** (gris) et la taille correspondante.
+**Comparateur d'archives** : cliquez sur **Comparer** pour ouvrir le comparateur plein écran. Les entrées dupliquées entre les deux archives sont affichées **face à face** (mêmes lignes), suivies des entrées uniques côté gauche puis côté droit. Le scroll des deux colonnes est synchronisé. Une case **"Doublons uniquement"** masque les entrées non partagées. En bas de chaque colonne, un bloc de méta affiche le nom, le dossier, la taille, la date et le ratio entrées dupliquées/total de l'archive.
 
 **Supprimer** : utilisez la barre d'outils standard (\`Supprimer N fichiers\`) après avoir coché les archives supprimables. La suppression envoie le fichier dans la corbeille (récupérable).`,
-      en: `**Scan archives** is an option available in **Files** mode. It opens archives (ZIP, tar.gz, 7z...) found in the scanned folder and detects those whose content is identical or partially shared with another archive.
+      en: `**Scan archives** is an option available in **Files** mode. It opens archives (ZIP, tar.gz, 7z, CBZ...) found in the scanned folder and detects those whose content is identical or partially shared with another archive. \`.cbz\` files (Comic Book ZIP) are treated as ZIP archives. \`.cbr\` (Comic Book RAR) and \`.rar\` are not supported.
 
 **Enable the option**: check the "Scan archives" checkbox in the configuration bar, next to the "Subfolders" option.
 
@@ -1158,9 +1158,9 @@ The notification uses the **active UI language** (FR or EN) at the time the scan
 - Header: 📦 icon, archive count, shared file count and a **Compare** button
 - One row per archive with its icon, name, date, size, ratio of duplicated files (e.g. 3/5 file(s)), folder and a **Deletable** badge when applicable
 
-**Selection**: the checkbox only appears on archives **fully** duplicated in another one (\`Deletable\`). Partially shared archives have no checkbox - use the comparator to inspect.
+**Selection**: the checkbox only appears on archives **fully** duplicated in another one (\`Deletable\`). Partially shared archives show a 🚫 icon with a tooltip reminding that files inside an archive can't be deleted individually.
 
-**Archive comparator**: click **Compare** to open the side-by-side comparator. It shows each internal entry with a **duplicate** (green) or **unique** (grey) badge and the corresponding size.
+**Archive comparator**: click **Compare** to open the full-screen comparator. Duplicate entries between the two archives are displayed **face to face** (same rows), followed by unique entries from the left side then from the right side. Both columns scroll in sync. A **"Duplicates only"** checkbox hides non-shared entries. At the bottom of each column, a meta block shows the archive name, folder, size, date, and duplicated/total entry ratio.
 
 **Delete**: use the standard toolbar (\`Delete N files\`) after checking deletable archives. Deletion sends the file to the trash (recoverable).`,
     },

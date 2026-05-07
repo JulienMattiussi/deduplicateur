@@ -242,6 +242,10 @@ const fr = {
   archiveComparator: "Comparateur d'archives",
   archiveLabel: "archives",
   archiveVs: "vs",
+  archiveCannotDeleteTooltip: "Les fichiers à l'intérieur d'une archive ne sont pas supprimables individuellement. Utilisez le bouton Comparer pour voir leur détail.",
+  archiveOnlyDuplicates: "Doublons uniquement",
+  archiveTotalEntries: "Entrées",
+  archiveDuplicateCount: "Doublons",
 };
 
 const en: typeof fr = {
@@ -486,6 +490,10 @@ const en: typeof fr = {
   archiveComparator: "Archive comparator",
   archiveLabel: "archives",
   archiveVs: "vs",
+  archiveCannotDeleteTooltip: "Files inside an archive can't be deleted individually. Click Compare to view their details.",
+  archiveOnlyDuplicates: "Duplicates only",
+  archiveTotalEntries: "Entries",
+  archiveDuplicateCount: "Duplicates",
 };
 
 export const translations: Record<Lang, typeof fr> = { fr, en };

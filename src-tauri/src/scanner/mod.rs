@@ -9,7 +9,7 @@ mod archive_phase;
 
 pub use types::{
     DuplicateFile, DuplicateGroup, FileSource, ScanParams, ScanResult,
-    ArchiveGroupResult,
+    ArchiveGroupResult, ArchiveInGroup,
 };
 
 use std::collections::HashMap;

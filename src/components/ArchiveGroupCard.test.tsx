@@ -3,7 +3,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ArchiveGroupCard } from "./ArchiveGroupCard";
 import { LangProvider } from "../LangContext";
-import type { ArchiveGroupResult } from "../types";
+import type { ArchiveGroupResult, ArchiveInGroup } from "../types";
 
 function makeGroup(overrides: Partial<ArchiveGroupResult> = {}): ArchiveGroupResult {
   return {
@@ -17,7 +17,7 @@ function makeGroup(overrides: Partial<ArchiveGroupResult> = {}): ArchiveGroupRes
   };
 }
 
-function renderCard(group: ArchiveGroupResult, opts: Partial<{ selected: Set<string>; onToggle: (p: string) => void; onCompare: (a: string, b: string) => void }> = {}) {
+function renderCard(group: ArchiveGroupResult, opts: Partial<{ selected: Set<string>; onToggle: (p: string) => void; onCompare: (a: ArchiveInGroup, b: ArchiveInGroup) => void }> = {}) {
   return render(
     <LangProvider>
       <ArchiveGroupCard
@@ -59,6 +59,17 @@ describe("ArchiveGroupCard - case a cocher conditionnelle", () => {
     expect(checkboxes).toHaveLength(1);
   });
 
+  it("affiche l'icone interdit a la place de la case quand can_delete=false", () => {
+    renderCard(makeGroup());
+    // 1 archive sur 2 a can_delete=false -> 1 icone interdit
+    const icons = screen.getAllByTestId("archive-no-delete-icon");
+    expect(icons).toHaveLength(1);
+    // Tooltip sur la cellule parente (et pas sur l'icone) pour que la zone clickable soit large
+    const parentCell = icons[0].closest(".file-col-cb");
+    expect(parentCell?.getAttribute("title")).toMatch(/archive/i);
+    expect(parentCell?.classList.contains("file-col-cb--no-delete")).toBe(true);
+  });
+
   it("aucune case a cocher si toutes les archives sont can_delete=false", () => {
     const g = makeGroup({
       archives: [
@@ -68,6 +79,7 @@ describe("ArchiveGroupCard - case a cocher conditionnelle", () => {
     });
     renderCard(g);
     expect(screen.queryAllByTestId("archive-row-checkbox")).toHaveLength(0);
+    expect(screen.getAllByTestId("archive-no-delete-icon")).toHaveLength(2);
   });
 
   it("la case a cocher est cochee si le path est dans selected", () => {
@@ -109,11 +121,14 @@ describe("ArchiveGroupCard - bouton Comparer", () => {
     expect(screen.getByText("Comparer")).toBeInTheDocument();
   });
 
-  it("clic sur Comparer appelle onCompare avec la 1ere paire", async () => {
+  it("clic sur Comparer appelle onCompare avec les 2 premiers ArchiveInGroup", async () => {
     const user = userEvent.setup();
     const onCompare = vi.fn();
     renderCard(makeGroup(), { onCompare });
     await user.click(screen.getByText("Comparer"));
-    expect(onCompare).toHaveBeenCalledWith("/data/archive_a.zip", "/data/archive_b.zip");
+    expect(onCompare).toHaveBeenCalledTimes(1);
+    const [a, b] = onCompare.mock.calls[0];
+    expect(a.path).toBe("/data/archive_a.zip");
+    expect(b.path).toBe("/data/archive_b.zip");
   });
 });

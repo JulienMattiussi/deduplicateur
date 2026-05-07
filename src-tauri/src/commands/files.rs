@@ -87,13 +87,19 @@ pub fn delete_files(app: tauri::AppHandle, paths: Vec<String>) -> Result<(), Str
         let mut guard = cache.0.lock().unwrap();
         guard.as_mut().map(|loaded| {
             purge_deleted_from_session(&mut loaded.groups, &deleted);
+            // Purge des archives supprimees (memes paths que les fichiers supprimes)
+            for ag in loaded.archive_groups.iter_mut() {
+                ag.archives.retain(|a| !deleted.contains(&a.path));
+            }
+            loaded.archive_groups.retain(|ag| ag.archives.len() >= 2);
             loaded.summary.total_groups = loaded.groups.len();
             loaded.summary.total_wasted_bytes = recalc_wasted_bytes(&loaded.groups);
-            (loaded.summary.clone(), loaded.groups.clone())
+            loaded.summary.archive_groups_count = loaded.archive_groups.len();
+            (loaded.summary.clone(), loaded.groups.clone(), loaded.archive_groups.clone())
         })
     };
-    if let Some((summary, groups)) = session_to_save {
-        save_session(&app, &summary, &groups);
+    if let Some((summary, groups, archive_groups)) = session_to_save {
+        save_session(&app, &summary, &groups, &archive_groups);
     }
     Ok(())
 }

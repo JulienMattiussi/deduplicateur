@@ -105,6 +105,46 @@ export function useComparatorNav({
   };
 }
 
+/**
+ * Coquille minimaliste pour comparateur : overlay plein ecran, header (titre + close),
+ * gestion d'Echap. Pas de navigation entre groupes ni de tabs - utilise par les comparateurs
+ * mono-paire (ArchiveComparator).
+ */
+export function ComparatorBasicShell({
+  title,
+  headerExtra,
+  onClose,
+  children,
+}: {
+  title: string;
+  headerExtra?: React.ReactNode;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const inInput = (e.target as HTMLElement).tagName === "INPUT";
+      if (inInput) return;
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div className="comparator-overlay">
+      <div className="comparator-header">
+        <span className="comparator-title">{title}</span>
+        <div className="comparator-header-right">
+          {headerExtra}
+          <button className="btn-ghost btn-sm" onClick={onClose}>✕</button>
+        </div>
+      </div>
+      {children}
+    </div>
+  );
+}
+
 export function ComparatorShell({
   nav,
   groups,

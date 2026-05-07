@@ -89,6 +89,7 @@ export interface ArchiveEntryResult {
   size: number;
   status: "duplicate" | "unique";
   duplicate_in?: string;
+  hash: string;
 }
 
 export interface ArchiveDetail {

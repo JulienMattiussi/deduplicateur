@@ -162,7 +162,7 @@ pub async fn scan_folder(
         archive_groups_count: result.archive_groups.len(),
     };
 
-    save_session(&app, &summary, &result.groups);
+    save_session(&app, &summary, &result.groups, &result.archive_groups);
     *app.state::<ScanCache>().0.lock().unwrap() = Some(LoadedSession {
         summary: summary.clone(),
         groups: result.groups,

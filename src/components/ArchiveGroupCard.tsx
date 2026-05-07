@@ -9,7 +9,7 @@ interface Props {
   group: ArchiveGroupResult;
   selected: Set<string>;
   onToggle: (path: string) => void;
-  onCompare: (pathA: string, pathB: string) => void;
+  onCompare: (a: ArchiveInGroup, b: ArchiveInGroup) => void;
 }
 
 function basename(p: string): string {
@@ -46,7 +46,7 @@ export function ArchiveGroupCard({ group, selected, onToggle, onCompare }: Props
 
   function handleCompareClick(e: React.MouseEvent) {
     e.stopPropagation();
-    onCompare(archives[0].path, archives[1].path);
+    onCompare(archives[0], archives[1]);
   }
 
   return (
@@ -91,8 +91,13 @@ export function ArchiveGroupCard({ group, selected, onToggle, onCompare }: Props
                 className={`file-row file-row--media ${isChecked ? "file-row--checked" : ""}`}
                 onClick={() => { if (canSelect) onToggle(archive.path); }}
               >
-                <span className="file-col-cb">
-                  {canSelect && (
+                <span
+                  className={`file-col-cb${!canSelect ? " file-col-cb--no-delete" : ""}`}
+                  title={!canSelect ? t.archiveCannotDeleteTooltip : undefined}
+                  aria-label={!canSelect ? t.archiveCannotDeleteTooltip : undefined}
+                  onClick={(e) => { if (!canSelect) e.stopPropagation(); }}
+                >
+                  {canSelect ? (
                     <input
                       type="checkbox"
                       data-testid="archive-row-checkbox"
@@ -100,6 +105,16 @@ export function ArchiveGroupCard({ group, selected, onToggle, onCompare }: Props
                       onChange={() => onToggle(archive.path)}
                       onClick={(e) => e.stopPropagation()}
                     />
+                  ) : (
+                    <span
+                      className="archive-no-delete-icon"
+                      data-testid="archive-no-delete-icon"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.5" />
+                        <line x1="3.5" y1="12.5" x2="12.5" y2="3.5" stroke="currentColor" strokeWidth="1.5" />
+                      </svg>
+                    </span>
                   )}
                 </span>
                 <span className="file-col-thumb">

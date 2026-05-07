@@ -22,9 +22,20 @@ const EXT_TO_CATEGORY: Record<string, FileCategory> = {
   ppt: "presentation", pptx: "presentation", odp: "presentation",
 };
 
-function FileTypeIcon({ path }: { path: string }) {
+const CATEGORY_COLORS: Record<FileCategory, string> = {
+  pdf: "#e74c3c",
+  archive: "#f39c12",
+  code: "#3498db",
+  document: "#5dade2",
+  spreadsheet: "#27ae60",
+  presentation: "#e67e22",
+  generic: "#95a5a6",
+};
+
+export function FileTypeIcon({ path }: { path: string }) {
   const ext = path.split(".").pop()?.toLowerCase() ?? "";
   const category: FileCategory = EXT_TO_CATEGORY[ext] ?? "generic";
+  const color = CATEGORY_COLORS[category];
 
   return (
     <svg
@@ -35,43 +46,49 @@ function FileTypeIcon({ path }: { path: string }) {
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
     >
+      {/* Page shape colore */}
       <path
         d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"
-        stroke="currentColor" strokeWidth="1.3" opacity="0.45"
+        stroke={color} strokeWidth="1.5" fill={color} fillOpacity="0.12"
       />
-      <polyline points="13 2 13 9 20 9" stroke="currentColor" strokeWidth="1.3" opacity="0.45" />
+      <polyline points="13 2 13 9 20 9" stroke={color} strokeWidth="1.5" fill="none" />
 
-      {category === "pdf" && (
-        <text x="12" y="17.5" textAnchor="middle" fontSize="5" fill="currentColor"
-          fontFamily="monospace" fontWeight="bold" opacity="0.75">PDF</text>
-      )}
+      {category === "pdf" && (<>
+        <rect x="4" y="13" width="16" height="6" rx="0.8" fill={color} />
+        <text x="12" y="17.7" textAnchor="middle" fontSize="4.3" fill="white"
+          fontFamily="sans-serif" fontWeight="700">PDF</text>
+      </>)}
       {category === "archive" && (<>
-        <line x1="12" y1="11" x2="12" y2="17" stroke="currentColor" strokeWidth="1.3" opacity="0.65" />
-        <polyline points="9,14.5 12,17.5 15,14.5" stroke="currentColor" strokeWidth="1.3" opacity="0.65" />
-        <line x1="9" y1="19" x2="15" y2="19" stroke="currentColor" strokeWidth="1.3" opacity="0.65" />
+        {/* Fermeture eclair stylisee */}
+        <rect x="11" y="10" width="2" height="11" fill={color} />
+        <line x1="9" y1="12" x2="13" y2="12" stroke={color} strokeWidth="1" />
+        <line x1="11" y1="14" x2="15" y2="14" stroke={color} strokeWidth="1" />
+        <line x1="9" y1="16" x2="13" y2="16" stroke={color} strokeWidth="1" />
+        <line x1="11" y1="18" x2="15" y2="18" stroke={color} strokeWidth="1" />
+        <line x1="9" y1="20" x2="13" y2="20" stroke={color} strokeWidth="1" />
       </>)}
       {category === "code" && (
-        <text x="12" y="17.5" textAnchor="middle" fontSize="4.5" fill="currentColor"
-          fontFamily="monospace" opacity="0.75">{"</>"}</text>
+        <text x="12" y="19" textAnchor="middle" fontSize="8.5" fill={color}
+          fontFamily="monospace" fontWeight="700">{"<>"}</text>
       )}
       {category === "document" && (<>
-        <line x1="8" y1="13" x2="16" y2="13" stroke="currentColor" strokeWidth="1.2" opacity="0.6" />
-        <line x1="8" y1="16" x2="16" y2="16" stroke="currentColor" strokeWidth="1.2" opacity="0.6" />
-        <line x1="8" y1="19" x2="13" y2="19" stroke="currentColor" strokeWidth="1.2" opacity="0.6" />
+        <line x1="7" y1="13" x2="17" y2="13" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+        <line x1="7" y1="16" x2="17" y2="16" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+        <line x1="7" y1="19" x2="13" y2="19" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
       </>)}
       {category === "spreadsheet" && (<>
-        <rect x="7" y="11" width="10" height="8" stroke="currentColor" strokeWidth="1.2" opacity="0.6" fill="none" />
-        <line x1="12" y1="11" x2="12" y2="19" stroke="currentColor" strokeWidth="1.2" opacity="0.6" />
-        <line x1="7" y1="15" x2="17" y2="15" stroke="currentColor" strokeWidth="1.2" opacity="0.6" />
+        <rect x="6" y="12" width="12" height="8" stroke={color} strokeWidth="1.3" fill={color} fillOpacity="0.15" />
+        <line x1="12" y1="12" x2="12" y2="20" stroke={color} strokeWidth="1.2" />
+        <line x1="6" y1="16" x2="18" y2="16" stroke={color} strokeWidth="1.2" />
       </>)}
       {category === "presentation" && (<>
-        <rect x="7" y="11" width="10" height="6.5" stroke="currentColor" strokeWidth="1.2" opacity="0.6" fill="none" />
-        <line x1="12" y1="17.5" x2="12" y2="20" stroke="currentColor" strokeWidth="1.2" opacity="0.6" />
-        <line x1="9.5" y1="20" x2="14.5" y2="20" stroke="currentColor" strokeWidth="1.2" opacity="0.6" />
+        {/* Diagramme en barres */}
+        <line x1="8" y1="20" x2="8" y2="17" stroke={color} strokeWidth="2" strokeLinecap="round" />
+        <line x1="12" y1="20" x2="12" y2="13" stroke={color} strokeWidth="2" strokeLinecap="round" />
+        <line x1="16" y1="20" x2="16" y2="15" stroke={color} strokeWidth="2" strokeLinecap="round" />
       </>)}
       {category === "generic" && (<>
-        <line x1="8" y1="13" x2="16" y2="13" stroke="currentColor" strokeWidth="1" opacity="0.35" />
-        <line x1="8" y1="16" x2="14" y2="16" stroke="currentColor" strokeWidth="1" opacity="0.35" />
+        <circle cx="12" cy="16" r="3" stroke={color} strokeWidth="1.3" fill="none" />
       </>)}
     </svg>
   );
