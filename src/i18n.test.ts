@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { interp, translations } from "./i18n";
+import { interp, pluralInterp, translations } from "./i18n";
 
 describe("interp", () => {
   it("remplace une clé simple", () => {
@@ -18,16 +18,14 @@ describe("interp", () => {
     expect(interp("il y a {n} h", { n: 3 })).toBe("il y a 3 h");
   });
 
-  it("deleteN s'interpole correctement en FR", () => {
-    const result = interp(translations.fr.deleteN, { n: 3, s: "s", size: "1,2 Mo" });
-    expect(result).toContain("3");
-    expect(result).toContain("1,2 Mo");
+  it("deleteN pluralise correctement en FR", () => {
+    expect(pluralInterp(translations.fr.deleteN, 3, { size: "1,2 Mo" })).toBe("Supprimer 3 fichiers (1,2 Mo)");
+    expect(pluralInterp(translations.fr.deleteN, 1, { size: "500 Ko" })).toBe("Supprimer 1 fichier (500 Ko)");
   });
 
-  it("deleteN s'interpole correctement en EN", () => {
-    const result = interp(translations.en.deleteN, { n: 1, s: "", size: "500 KB" });
-    expect(result).toContain("1");
-    expect(result).toContain("500 KB");
+  it("deleteN pluralise correctement en EN", () => {
+    expect(pluralInterp(translations.en.deleteN, 3, { size: "1.2 MB" })).toBe("Delete 3 files (1.2 MB)");
+    expect(pluralInterp(translations.en.deleteN, 1, { size: "500 KB" })).toBe("Delete 1 file (500 KB)");
   });
 });
 
@@ -49,9 +47,8 @@ describe("translations", () => {
   });
 
   it("les clés à placeholders contiennent bien leurs variables", () => {
-    expect(translations.fr.deleteN).toContain("{n}");
-    expect(translations.fr.deleteN).toContain("{s}");
-    expect(translations.fr.deleteN).toContain("{size}");
+    expect(translations.fr.deleteN.other).toContain("{n}");
+    expect(translations.fr.deleteN.other).toContain("{size}");
     expect(translations.fr.scanProgress).toContain("{n}");
     expect(translations.fr.scanProgress).toContain("{m}");
     expect(translations.fr.loadMore).toContain("{n}");

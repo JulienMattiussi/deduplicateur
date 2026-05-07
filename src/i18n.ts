@@ -98,7 +98,7 @@ const fr = {
   clearAllIgnored: "Tout effacer",
   ignoredAt: "Ignoré le",
   deleting: "Suppression…",
-  deleteN: "Supprimer {n} fichier{s} ({size})",
+  deleteN: { one: "Supprimer 1 fichier ({size})", other: "Supprimer {n} fichiers ({size})" },
   calculating: "Calcul de la sélection…",
   sortBy: "Trier par",
   sortWaste: "Taille récupérable",
@@ -154,7 +154,7 @@ const fr = {
   temporalAlign: "Alignement temporel",
   dtwHint: "(intro/génériques courts)",
   scanProgress: "Analyse en cours… {n} / {m} {type}",
-  groupsFoundSoFar: "{n} doublon(s) trouvé(s) au total",
+  groupsFoundSoFar: { one: "1 doublon trouvé au total", other: "{n} doublons trouvés au total" },
   almostDone: "c'est presque fini",
   estimating: "estimation en cours…",
   aboutTime: "environ {t}",
@@ -171,7 +171,7 @@ const fr = {
   noDuplicates: "Aucun doublon trouvé dans ce dossier.",
   pickFolderHint: "Choisissez un dossier et lancez l'analyse.",
   confirmTitle: "Confirmer la suppression",
-  confirmBody: "{n} fichier{s} ({size}) seront envoyés dans la corbeille.",
+  confirmBody: { one: "1 fichier ({size}) sera envoyé dans la corbeille.", other: "{n} fichiers ({size}) seront envoyés dans la corbeille." },
   confirmCancel: "Annuler",
   confirmConfirm: "Supprimer",
   loadMore: "Afficher 50 de plus ({n} restants)",
@@ -329,7 +329,7 @@ const en: typeof fr = {
   ignoredAt: "Ignored on",
   deselect: "Deselect all",
   deleting: "Deleting…",
-  deleteN: "Delete {n} file{s} ({size})",
+  deleteN: { one: "Delete 1 file ({size})", other: "Delete {n} files ({size})" },
   calculating: "Computing selection…",
   sortBy: "Sort by",
   sortWaste: "Wasted space",
@@ -385,7 +385,7 @@ const en: typeof fr = {
   temporalAlign: "Temporal alignment",
   dtwHint: "(short intros/credits)",
   scanProgress: "Scanning… {n} / {m} {type}",
-  groupsFoundSoFar: "{n} duplicate(s) found so far",
+  groupsFoundSoFar: { one: "1 duplicate found so far", other: "{n} duplicates found so far" },
   almostDone: "almost done",
   estimating: "estimating…",
   aboutTime: "about {t}",
@@ -402,7 +402,7 @@ const en: typeof fr = {
   noDuplicates: "No duplicates found in this folder.",
   pickFolderHint: "Choose a folder and start the scan.",
   confirmTitle: "Confirm deletion",
-  confirmBody: "{n} file{s} ({size}) will be sent to the trash.",
+  confirmBody: { one: "1 file ({size}) will be sent to the trash.", other: "{n} files ({size}) will be sent to the trash." },
   confirmCancel: "Cancel",
   confirmConfirm: "Delete",
   loadMore: "Show 50 more ({n} remaining)",
@@ -466,7 +466,14 @@ export const translations: Record<Lang, typeof fr> = { fr, en };
 
 export type Translations = typeof fr;
 
+export type PluralKey = { one: string; other: string };
+
 /** Simple {key} interpolation. */
 export function interp(s: string, params: Record<string, string | number>): string {
   return s.replace(/\{(\w+)\}/g, (_, k) => String(params[k] ?? `{${k}}`));
+}
+
+/** Pluralized interpolation: picks `one` when n === 1, `other` otherwise. */
+export function pluralInterp(key: PluralKey, n: number, params: Record<string, string | number> = {}): string {
+  return interp(n === 1 ? key.one : key.other, { n, ...params });
 }

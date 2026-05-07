@@ -53,7 +53,7 @@ pub fn set_audio_config(app: tauri::AppHandle, config: AudioConfig) -> Result<()
 
 #[tauri::command]
 pub fn get_cache_size(app: tauri::AppHandle) -> u64 {
-    const CACHE_FILES: &[&str] = &["phash_cache.json", "video_cache.json", "audio_cache.json", "exact_cache.json"];
+    const CACHE_FILES: &[&str] = &["phash_cache.bin", "phash_cache.json", "video_cache.json", "audio_cache.json", "exact_cache.json"];
     let Some(dir) = app_data_dir(&app) else { return 0; };
     CACHE_FILES.iter().map(|name| {
         std::fs::metadata(dir.join(name)).map(|m| m.len()).unwrap_or(0)
@@ -62,7 +62,7 @@ pub fn get_cache_size(app: tauri::AppHandle) -> u64 {
 
 #[tauri::command]
 pub fn purge_cache(app: tauri::AppHandle) -> Result<(), String> {
-    const CACHE_FILES: &[&str] = &["phash_cache.json", "video_cache.json", "audio_cache.json", "exact_cache.json"];
+    const CACHE_FILES: &[&str] = &["phash_cache.bin", "phash_cache.json", "video_cache.json", "audio_cache.json", "exact_cache.json"];
     let dir = app_data_dir(&app).ok_or("Impossible d'acceder au dossier de donnees")?;
     for name in CACHE_FILES {
         let path = dir.join(name);

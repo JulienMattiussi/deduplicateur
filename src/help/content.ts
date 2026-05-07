@@ -402,14 +402,14 @@ Path matching is by inclusion: typing "Important Photos" is enough if it's part 
       en: ["delete", "trash", "recycle bin", "confirmation", "safety", "recover", "cancel"],
     },
     body: {
-      fr: `Cliquez sur le bouton rouge **"Supprimer N fichier(s) (X Mo)"** pour demander la suppression. Une boîte de confirmation affiche le récapitulatif exact.
+      fr: `Cliquez sur le bouton rouge **"Supprimer N fichiers (X Mo)"** pour demander la suppression. Une boîte de confirmation affiche le récapitulatif exact.
 
 **Les fichiers sont envoyés dans la corbeille**, pas supprimés définitivement. Vous pouvez les récupérer depuis la corbeille de votre système d'exploitation tant que vous ne l'avez pas vidée.
 
 Après confirmation, les fichiers supprimés disparaissent des groupes. Les groupes réduits à un seul fichier sont automatiquement retirés de la liste.
 
 Si une erreur survient (fichier déjà absent, permissions insuffisantes), un message s'affiche en haut de l'écran.`,
-      en: `Click the red **"Delete N file(s) (X MB)"** button to request deletion. A confirmation dialog shows the exact summary.
+      en: `Click the red **"Delete N files (X MB)"** button to request deletion. A confirmation dialog shows the exact summary.
 
 **Files are sent to the trash**, not permanently deleted. You can recover them from your system's trash as long as you haven't emptied it.
 

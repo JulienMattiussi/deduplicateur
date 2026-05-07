@@ -4,7 +4,7 @@ import { save as dialogSave } from "@tauri-apps/plugin-dialog";
 import "./App.css";
 import { formatSize, VIDEO_EXTS, AUDIO_EXTS } from "./utils";
 import { useLang } from "./LangContext";
-import { interp, type Translations } from "./i18n";
+import { interp, pluralInterp, type Translations } from "./i18n";
 import type { DuplicateGroup, FolderSummary, IgnoreEntry, ScanProfile, ScanSummary, ScanProgress, ScanPhase } from "./types";
 import { useScanConfig } from "./hooks/useScanConfig";
 import { useScanExecution } from "./hooks/useScanExecution";
@@ -119,7 +119,7 @@ function ScanProgressView({
       )}
       {(progress?.groups_found ?? 0) > 0 && (
         <p className="progress-groups-found">
-          {interp(t.groupsFoundSoFar, { n: progress!.groups_found! })}
+          {pluralInterp(t.groupsFoundSoFar, progress!.groups_found!)}
         </p>
       )}
       {isReading ? (
@@ -830,7 +830,7 @@ export default function App() {
               <button className="btn-danger" onClick={() => selection.setConfirmPending(true)} disabled={selection.deleting}>
                 {selection.deleting
                   ? t.deleting
-                  : interp(t.deleteN, { n: selection.selected.size, s: selection.selected.size > 1 ? "s" : "", size: formatSize(selection.selectedSize) })}
+                  : pluralInterp(t.deleteN, selection.selected.size, { size: formatSize(selection.selectedSize) })}
               </button>
             )}
             {selection.selecting && (
@@ -981,7 +981,7 @@ export default function App() {
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h2 className="modal-title">{t.confirmTitle}</h2>
             <p className="modal-body">
-              {interp(t.confirmBody, { n: selection.selected.size, s: selection.selected.size > 1 ? "s" : "", size: formatSize(selection.selectedSize) })}
+              {pluralInterp(t.confirmBody, selection.selected.size, { size: formatSize(selection.selectedSize) })}
             </p>
             <div className="modal-actions">
               <button className="btn-ghost" onClick={() => selection.setConfirmPending(false)}>{t.confirmCancel}</button>

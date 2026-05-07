@@ -689,14 +689,14 @@ mod tests {
     // ── Tests get_cache_size / purge_cache (logique pure) ─────────────────────
 
     fn sum_cache_files(dir: &std::path::Path) -> u64 {
-        const CACHE_FILES: &[&str] = &["phash_cache.json", "video_cache.json", "audio_cache.json", "exact_cache.json"];
+        const CACHE_FILES: &[&str] = &["phash_cache.bin", "phash_cache.json", "video_cache.json", "audio_cache.json", "exact_cache.json"];
         CACHE_FILES.iter().map(|name| {
             std::fs::metadata(dir.join(name)).map(|m| m.len()).unwrap_or(0)
         }).sum()
     }
 
     fn purge_cache_files(dir: &std::path::Path) {
-        const CACHE_FILES: &[&str] = &["phash_cache.json", "video_cache.json", "audio_cache.json", "exact_cache.json"];
+        const CACHE_FILES: &[&str] = &["phash_cache.bin", "phash_cache.json", "video_cache.json", "audio_cache.json", "exact_cache.json"];
         for name in CACHE_FILES {
             let _ = std::fs::remove_file(dir.join(name));
         }
@@ -711,14 +711,16 @@ mod tests {
     #[test]
     fn test_get_cache_size_with_files() {
         let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("phash_cache.bin"), b"BINARY").unwrap();
         std::fs::write(dir.path().join("phash_cache.json"), b"ABCDE").unwrap();
         std::fs::write(dir.path().join("video_cache.json"), b"XY").unwrap();
-        assert_eq!(sum_cache_files(dir.path()), 7);
+        assert_eq!(sum_cache_files(dir.path()), 13);
     }
 
     #[test]
     fn test_purge_cache_removes_all_cache_files() {
         let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("phash_cache.bin"), b"binary").unwrap();
         std::fs::write(dir.path().join("phash_cache.json"), b"data1").unwrap();
         std::fs::write(dir.path().join("video_cache.json"), b"data2").unwrap();
         std::fs::write(dir.path().join("audio_cache.json"), b"data3").unwrap();

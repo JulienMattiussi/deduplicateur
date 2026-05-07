@@ -43,8 +43,7 @@ export function ProgressETA({
     return <span className="progress-eta">{interp(t.elapsed, { t: elapsedLabel })}</span>;
   }
 
-  const windowRef = hist[Math.max(0, hist.findIndex((s) => s.time >= now - 60_000))];
-  const ref = windowRef ?? hist[0];
+  const ref = hist[0];
   const rate = (progress.current - ref.current) / (now - ref.time);
   if (rate <= 0) {
     return <span className="progress-eta">{interp(t.elapsed, { t: elapsedLabel })}</span>;
