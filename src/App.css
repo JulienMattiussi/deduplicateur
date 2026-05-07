@@ -1233,25 +1233,27 @@
   flex-direction: column;
   align-items: center;
   gap: 10px;
-  width: 360px;
+  width: 480px;
 }
 
 .progress-steps {
   display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
+  gap: 4px;
+  flex-wrap: nowrap;
   justify-content: center;
   margin-bottom: 4px;
+  width: 100%;
 }
 
 .progress-step {
   display: flex;
   align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  padding: 3px 8px;
+  gap: 3px;
+  font-size: 10px;
+  padding: 2px 7px;
   border-radius: 12px;
   border: 1px solid var(--border);
+  white-space: nowrap;
 }
 
 .progress-step--done {
