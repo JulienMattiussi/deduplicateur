@@ -22,8 +22,10 @@ npm-debug.log*
 .DS_Store
 Thumbs.db
 
-# Binaires bundlés (téléchargés par scripts/download-fpcalc.sh)
+# Binaires bundlés (téléchargés par download-fpcalc.sh / download-ffmpeg.sh)
 src-tauri/binaries/fpcalc*
+src-tauri/binaries/ffmpeg*
+src-tauri/binaries/ffprobe*
 
 # Claude Code (settings locaux et worktrees - settings.json est versionne)
 .claude/settings.local.json

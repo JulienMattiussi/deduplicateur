@@ -555,3 +555,19 @@ En mode "Comparer avec un autre dossier" : dossier source S et dossier de réfé
 - [x] `App.tsx` : bulles de phase (✓ fait / ● actif / ○ en attente) + compteur heartbeat toujours croissant (`progress.current`)
 - [x] `App.css` : `.progress-steps`, `.progress-step`, `.progress-step--{done|active|pending}`, `.progress-heartbeat`
 - [x] 196 tests Rust / 312 tests TypeScript - tous au vert
+
+
+---
+
+## Phase 26 - Double installeur light/full ✅
+
+**Objectif : proposer deux variantes du binaire - une légère (fpcalc seul) et une complète (fpcalc + ffmpeg + ffprobe bundlés), pour que les utilisateurs sans ffmpeg système puissent utiliser toutes les fonctionnalités sans installation supplémentaire**
+
+- [x] `scripts/download-ffmpeg.sh` : télécharge ffmpeg et ffprobe en builds statiques LGPL depuis BtbN/FFmpeg-Builds (Linux x86_64/arm64 et Windows x86_64) ; affiche les instructions Homebrew pour macOS
+- [x] `src-tauri/tauri.conf.full.json` : surcharge partielle appliquée via `tauri build --config` ; remplace `externalBin` pour inclure `fpcalc`, `ffmpeg` et `ffprobe` (Tauri 2 merge automatique)
+- [x] `src-tauri/build.rs` : boucle sur les 3 binaires (fpcalc, ffmpeg, ffprobe) pour créer les placeholders vides en dev - le placeholder permet à `tauri_build::build()` de ne pas rejeter le build en l'absence du binaire réel
+- [x] `package.json` : scripts `build:light` (`tauri build`) et `build:full` (`tauri build --config src-tauri/tauri.conf.full.json`)
+- [x] `.gitignore` : ajout de `src-tauri/binaries/ffmpeg*` et `src-tauri/binaries/ffprobe*`
+- [x] `README.md` : table de téléchargement mise à jour (2 variantes), section Build mise à jour, counts de tests mis à jour
+
+**Critère de validation : `npm run build:light` produit un installeur sans ffmpeg ; `npm run build:full` après `download-ffmpeg.sh` produit un installeur avec ffmpeg et ffprobe inclus automatiquement dans tous les formats (MSI, NSIS, AppImage, deb)**

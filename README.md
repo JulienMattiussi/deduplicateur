@@ -45,7 +45,7 @@ Outil de détection et suppression de fichiers en double - rapide, local, sans c
 - **Export** - après un scan, boutons "Export CSV" et "Rapport HTML" dans la barre de statistiques ; le CSV liste chaque fichier avec son statut (kept/duplicate) ; le HTML est une page autonome avec stats, groupes cliquables et liens système (`file://`)
 - **Profils de scan** - panneau collapsible pour sauvegarder une configuration complète (dossier, mode, type de détection, seuils, filtres) sous un nom ; lancement rapide en un clic (▶) charge et exécute immédiatement le scan
 - **Similarité audio** - détecte les mêmes fichiers audio en formats ou qualités différents via fpcalc (chromaprint) : empreinte acoustique sur vecteur d'entiers 32 bits, distance de Hamming normalisée, filtre de durée configurable, cache inter-scans
-- **fpcalc bundlé** - fpcalc est téléchargé et inclus dans le bundle de l'application (`scripts/download-fpcalc.sh`) ; l'app le détecte automatiquement sans que l'utilisateur ait à l'installer
+- **fpcalc bundlé (variante full)** - fpcalc et ffmpeg sont inclus dans le bundle de l'installeur full (`scripts/download-fpcalc.sh` + `scripts/download-ffmpeg.sh`) ; la variante light requiert fpcalc et ffmpeg installés sur le système
 - **Recherche élargie des outils** - ffmpeg et fpcalc sont recherchés à côté de l'exécutable (binaire bundlé), dans les chemins système courants (Chocolatey, Scoop, Homebrew, paquets système), puis dans le PATH
 - **Bannière d'installation guidée** - si ffmpeg ou fpcalc est absent, l'app affiche un bandeau avec instructions d'installation OS-spécifiques, lien de téléchargement officiel, et bouton "Vérifier à nouveau" pour détecter l'installation sans relancer l'app
 - **Règles de sélection par métadonnées** - dropdown dans la barre d'actions pour choisir automatiquement quel fichier garder dans chaque groupe : plus haute résolution (images via en-tête, vidéos via métadonnées), plus grand fichier (audio/vidéo), dossier prioritaire (chemin configurable - si aucun fichier ne s'y trouve, le groupe est laissé sans sélection), plus récent, plus ancien
@@ -109,11 +109,12 @@ src-tauri/src/
   audio_cache.rs           # Cache inter-scans des empreintes audio
   audio_config.rs          # Configuration du pipeline audio (JSON persistant)
   tool_finder.rs           # Recherche d'outils (fpcalc, ffmpeg) : binaire bundte, chemins systeme, PATH
-  build.rs                 # Placeholder fpcalc vide en dev si download-fpcalc.sh pas encore lancé
+  build.rs                 # Placeholders fpcalc/ffmpeg/ffprobe vides en dev si scripts de download pas encore lancés
 
-src-tauri/binaries/        # Binaires bundlés (non commités - voir scripts/download-fpcalc.sh)
+src-tauri/binaries/        # Binaires bundlés (non commités - voir scripts/)
 scripts/
   download-fpcalc.sh       # Télécharge fpcalc v1.5.1 pour la plateforme courante
+  download-ffmpeg.sh       # Télécharge ffmpeg/ffprobe LGPL statiques (BtbN) pour Linux/Windows
 
 src/components/
   MissingToolBanner.tsx    # Bandeau guidé si ffmpeg/fpcalc absent : instructions OS, téléchargement, re-check
@@ -178,7 +179,7 @@ Chaque scan produit un fichier JSON dans `~/.local/share/deduplicateur/sessions/
 | CI/CD | GitHub Actions | Build Windows automatique sur push |
 | Similarité audio | fpcalc/chromaprint (subprocess) | Empreinte acoustique, distance de Hamming sur vecteurs i32, cache inter-scans |
 | Tests Rust | cargo test + tempfile | 196 tests unitaires sur le moteur |
-| Tests TS | Vitest + jsdom + React Testing Library | 309 tests (utilitaires + i18n + App + ImageComparator + VideoComparator + AudioComparator + MissingToolBanner + FileThumbnail + AdvancedPanelWrapper + IgnoredPanel + FolderSection + HelpPanel + AdvancedPanel + AudioAdvancedPanel + VideoAdvancedPanel + ProfilesPanel + ProgressETA + GroupCard) |
+| Tests TS | Vitest + jsdom + React Testing Library | 312 tests (utilitaires + i18n + App + ImageComparator + VideoComparator + AudioComparator + MissingToolBanner + FileThumbnail + AdvancedPanelWrapper + IgnoredPanel + FolderSection + HelpPanel + AdvancedPanel + AudioAdvancedPanel + VideoAdvancedPanel + ProfilesPanel + ProgressETA + GroupCard) |
 
 ---
 
@@ -191,18 +192,24 @@ Les binaires sont produits automatiquement par le CI à chaque push sur `main`.
 1. Aller dans l'onglet **Releases** du dépôt GitHub (ou cliquer sur **latest** dans la barre latérale)
 2. Télécharger le fichier correspondant à votre système :
 
-| Système | Fichier | Notes |
-|---------|---------|-------|
-| Windows | `deduplicateur.exe` | Portable, aucune installation |
-| Windows | `deduplicateur_x.x.x_x64-setup.exe` | Installeur NSIS |
-| Windows | `deduplicateur_x.x.x_x64_en-US.msi` | Installeur MSI |
-| Linux | `deduplicateur_x.x.x_amd64.AppImage` | Portable, toutes distros |
-| Linux | `deduplicateur_x.x.x_amd64.deb` | Paquet Debian/Ubuntu |
-| macOS | `deduplicateur_x.x.x_x64.dmg` | Installeur DMG |
+Deux variantes sont disponibles :
+
+| Variante | Contenu | Quand l'utiliser |
+|----------|---------|-----------------|
+| **light** | aucun binaire bundlé | fpcalc et ffmpeg déjà installés sur votre système |
+| **full** | fpcalc + ffmpeg + ffprobe bundlés | Tout-en-un, aucune dépendance système requise |
+
+| Système | Fichier (light) | Fichier (full) |
+|---------|-----------------|----------------|
+| Windows | `deduplicateur_x.x.x_x64-setup.exe` | `deduplicateur-full_x.x.x_x64-setup.exe` |
+| Windows | `deduplicateur_x.x.x_x64_en-US.msi` | `deduplicateur-full_x.x.x_x64_en-US.msi` |
+| Linux | `deduplicateur_x.x.x_amd64.AppImage` | `deduplicateur-full_x.x.x_amd64.AppImage` |
+| Linux | `deduplicateur_x.x.x_amd64.deb` | `deduplicateur-full_x.x.x_amd64.deb` |
+| macOS | `deduplicateur_x.x.x_x64.dmg` | non disponible (BtbN ne fournit pas de builds macOS - utiliser Homebrew) |
 
 > **Windows** : lors du premier lancement, Windows peut afficher un avertissement SmartScreen - cliquer sur « Plus d'informations » puis « Exécuter quand même ».
 
-> **ffmpeg** : nécessite ffmpeg installé et présent dans le `PATH` système pour la détection de vidéos similaires et l'affichage des thumbnails vidéo. Sans ffmpeg, les modes fichiers et images fonctionnent normalement. Voir [docs/ffmpeg.md](docs/ffmpeg.md).
+> **ffmpeg (variante light)** : si vous choisissez la variante légère, ffmpeg doit être installé et présent dans le `PATH` système pour la détection de vidéos similaires et les thumbnails vidéo. Voir [docs/ffmpeg.md](docs/ffmpeg.md).
 
 ### Prérequis (compilation depuis les sources)
 
@@ -237,16 +244,23 @@ npm run tauri dev      # démarre l'app avec hot-reload
 ### Build
 
 ```bash
-npm run tauri build    # produit un binaire dans src-tauri/target/release/
+# Variante light (fpcalc uniquement)
+bash scripts/download-fpcalc.sh
+npm run build:light
+
+# Variante full (fpcalc + ffmpeg + ffprobe bundlés)
+bash scripts/download-fpcalc.sh
+bash scripts/download-ffmpeg.sh
+npm run build:full
 ```
 
 ### Tests
 
 ```bash
-# Moteur Rust (186 tests)
+# Moteur Rust (196 tests)
 cargo test --manifest-path src-tauri/Cargo.toml
 
-# TypeScript - utilitaires + i18n + composants React (309 tests)
+# TypeScript - utilitaires + i18n + composants React (312 tests)
 npm test
 ```
 
@@ -278,6 +292,8 @@ npm test
 | 18 | Comparateur vidéo côte à côte avec lecture synchronisée | ✅ |
 | 19 | Scan multi-dossiers et mode "comparer avec le dossier X" | ✅ |
 | 20 | Sessions auto-mises à jour à la suppression, cache purge, sessions toujours visibles | ✅ |
+| 21 | UX : icônes par type, chemin tronqué par la gauche, point dossier partagé, bouton dossier visible, compteur temps réel | ✅ |
+| 22 | Double installeur light/full : variante full bundle ffmpeg + ffprobe via tauri.conf.full.json | ✅ |
 
 ---
 

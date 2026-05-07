@@ -39,8 +39,7 @@
         "bannerPath": "wix/banner.bmp",
         "dialogImagePath": "wix/dialog.bmp"
       }
-    },
-    "externalBin": ["binaries/fpcalc"]
+    }
   },
   "plugins": {
     "shell": {
