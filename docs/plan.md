@@ -603,7 +603,7 @@ En mode "Comparer avec un autre dossier" : dossier source S et dossier de réfé
 
 ---
 
-### Phase 27A - Mode Fichier (doublons exacts entre archives)
+### Phase 27A - Mode Fichier (doublons exacts entre archives) ✅
 
 **A1. Option UI et `ScanParams`**
 - `ScanParams` : champ `scan_archives: bool` (défaut false)
@@ -706,6 +706,16 @@ En mode "Comparer avec un autre dossier" : dossier source S et dossier de réfé
 **A10. Documentation**
 - `src/help/content.ts` : article "Analyser les archives" bilingue dans nouvelle section "Archives"
 - `README.md` : fonctionnalité ajoutée dans la section Fonctionnalités
+
+**Réalisé**
+- [x] Module `src-tauri/src/archive/` : zip_reader, tar_reader (gz/bz2/xz/zst), sevenz_reader (stub), mod avec detect_format + hash_archive_entries
+- [x] `scanner/archive_phase.rs` : Union-Find inter-archives, can_delete, progress
+- [x] Commandes Tauri : `get_archive_groups`, `get_archive_comparison`
+- [x] `ArchiveGroupCard.tsx` + `ArchiveComparator.tsx` + leurs tests
+- [x] `App.tsx` : section archives, checkbox UI, modal comparateur
+- [x] `i18n.ts` : 9 clés bilingues (archive*)
+- [x] `src/help/content.ts` : article "archive-scan" bilingue
+- [x] 221 tests Rust / 334 tests TypeScript - tous au vert
 
 ---
 

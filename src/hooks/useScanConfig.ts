@@ -61,6 +61,7 @@ export function useScanConfig() {
   const [exactCacheEnabled, setExactCacheEnabled] = useState(true);
   const [minModifiedDate, setMinModifiedDate] = useState("");
   const [maxModifiedDate, setMaxModifiedDate] = useState("");
+  const [scanArchives, setScanArchives] = useState(false);
 
   useEffect(() => {
     invoke<PHashConfig>("get_phash_config").then(setPhashConfig).catch(() => {});
@@ -126,5 +127,6 @@ export function useScanConfig() {
     exactCacheEnabled, setExactCacheEnabled,
     minModifiedDate, setMinModifiedDate,
     maxModifiedDate, setMaxModifiedDate,
+    scanArchives, setScanArchives,
   };
 }

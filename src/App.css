@@ -1233,27 +1233,25 @@
   flex-direction: column;
   align-items: center;
   gap: 10px;
-  width: 480px;
+  width: 360px;
 }
 
 .progress-steps {
   display: flex;
-  gap: 4px;
-  flex-wrap: nowrap;
+  gap: 6px;
+  flex-wrap: wrap;
   justify-content: center;
   margin-bottom: 4px;
-  width: 100%;
 }
 
 .progress-step {
   display: flex;
   align-items: center;
-  gap: 3px;
-  font-size: 10px;
-  padding: 2px 7px;
+  gap: 4px;
+  font-size: 11px;
+  padding: 3px 8px;
   border-radius: 12px;
   border: 1px solid var(--border);
-  white-space: nowrap;
 }
 
 .progress-step--done {
@@ -2664,4 +2662,149 @@
   border-radius: 3px;
   font-size: 12px;
   color: var(--text);
+}
+
+/* ===== Archive results section ===== */
+.archive-results-section {
+  margin-top: 2rem;
+}
+.archive-results-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-muted, var(--text-2));
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.75rem;
+}
+.archive-group-card {
+  flex-shrink: 0;
+}
+.archive-entry {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.875rem;
+  flex-wrap: wrap;
+}
+.archive-entry:last-child {
+  border-bottom: none;
+}
+.archive-entry-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+.archive-badge-deletable {
+  background: var(--bg-badge);
+  color: var(--accent, #4f8ef7);
+  font-size: 0.75rem;
+}
+.archive-entry-count {
+  color: var(--text-2);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+.archive-pairs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+/* ===== Archive comparator ===== */
+.archive-comparator-panel {
+  max-width: 900px;
+  width: 90vw;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+}
+.archive-comparator-loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 3rem;
+}
+.archive-comparator-body {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+}
+.archive-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
+}
+.archive-col-header {
+  font-weight: 600;
+  padding: 0.5rem 0.75rem;
+  background: var(--bg-card-header);
+  border-bottom: 1px solid var(--border);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.875rem;
+}
+.archive-col-entries {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.25rem 0;
+}
+.archive-entry-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.75rem;
+  font-size: 0.82rem;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.archive-entry-row:last-child {
+  border-bottom: none;
+}
+.archive-entry-row--unique {
+  opacity: 0.6;
+}
+.archive-badge-unique {
+  background: var(--bg-hover-strong);
+  color: var(--text-2);
+  font-size: 0.72rem;
+  padding: 1px 5px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+.archive-entry-internal-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.archive-entry-muted {
+  color: var(--text-2);
+}
+.archive-entry-size {
+  color: var(--text-2);
+  white-space: nowrap;
+  font-size: 0.78rem;
+}
+.archive-entry-dup-in {
+  color: var(--text-2);
+  font-size: 0.75rem;
+  font-style: italic;
+  white-space: nowrap;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.archive-empty-label {
+  display: block;
+  text-align: center;
+  padding: 1rem;
+  color: var(--text-2);
 }

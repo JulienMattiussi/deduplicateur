@@ -35,7 +35,7 @@ where
     let candidates = filter_exact_candidates(audio_candidates_all, existing_groups);
 
     let offset = ctx.total_to_hash + ctx.phash_estimate + ctx.phash_compare_estimate
-        + ctx.video_estimate + ctx.video_compare_estimate;
+        + ctx.video_estimate;
 
     let mut acache = if params.audio_cache_enabled {
         params.data_dir.as_deref()

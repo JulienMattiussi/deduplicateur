@@ -33,5 +33,29 @@ image = "0.24"
 base64 = "0.21"
 kamadak-exif = "0.5"
 
+[dependencies.zip]
+version = "2"
+
+[dependencies.tar]
+version = "0.4"
+
+[dependencies.flate2]
+version = "1"
+
+[dependencies.bzip2]
+version = "0.4"
+
+[dependencies.xz2]
+version = "0.1"
+
+[dependencies.zstd]
+version = "0.13"
+
+[dependencies.sevenz-rust]
+version = "0.6"
+
+[dependencies.tempfile]
+version = "3"
+
 [dev-dependencies]
 tempfile = "3"

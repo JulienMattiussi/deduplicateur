@@ -65,6 +65,38 @@ export interface ScanSummary {
   ffmpeg_missing?: boolean;
   find_similar_audio?: boolean;
   fpcalc_missing?: boolean;
+  archive_groups_count?: number;
+}
+
+export interface ArchiveInGroup {
+  path: string;
+  total_entries: number;
+  duplicated_entries: number;
+  can_delete: boolean;
+  wasted_bytes: number;
+}
+
+export interface ArchiveGroupResult {
+  id: string;
+  archives: ArchiveInGroup[];
+  shared_entry_count: number;
+}
+
+export interface ArchiveEntryResult {
+  internal_path: string;
+  size: number;
+  status: "duplicate" | "unique";
+  duplicate_in?: string;
+}
+
+export interface ArchiveDetail {
+  path: string;
+  entries: ArchiveEntryResult[];
+}
+
+export interface ArchiveComparison {
+  a: ArchiveDetail;
+  b: ArchiveDetail;
 }
 
 export interface PHashConfig {

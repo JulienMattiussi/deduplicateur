@@ -1028,3 +1028,118 @@ describe("R - session picker et gestion du cache", () => {
     });
   });
 });
+
+// ---- S : option "Analyser les archives" ----
+describe("S - option Analyser les archives", () => {
+  it("la checkbox est visible en mode Fichiers", async () => {
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByTestId("scan-archives-checkbox")).toBeInTheDocument();
+    });
+  });
+
+  it("la checkbox n'est pas visible en mode Images", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByText("🖼 Images"));
+    expect(screen.queryByTestId("scan-archives-checkbox")).not.toBeInTheDocument();
+  });
+
+  it("cocher la checkbox envoie scanArchives: true dans les args scan", async () => {
+    const user = userEvent.setup();
+    mockInvoke.mockImplementation(
+      makeDefaultMock({
+        scan_folder: baseSummary,
+        get_groups_page: { groups: [], offset: 0, total: 0, has_more: false },
+      })
+    );
+    mockDialogOpen.mockResolvedValue("/home/test");
+
+    render(<App />);
+    await user.click(screen.getByText(/Cliquer pour choisir un dossier/));
+    await waitFor(() => screen.getByText("/home/test"));
+
+    await user.click(screen.getByTestId("scan-archives-checkbox"));
+    await user.click(screen.getByText("Analyser"));
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith(
+        "scan_folder",
+        expect.objectContaining({ scanArchives: true })
+      );
+    });
+  });
+
+  it("la section archives s'affiche si archiveGroups.length > 0 apres scan", async () => {
+    const user = userEvent.setup();
+    const summaryWithArchives = { ...baseSummary, archive_groups_count: 1 };
+    const archiveGroup = {
+      id: "ag1",
+      shared_entry_count: 2,
+      archives: [
+        { path: "/data/a.zip", total_entries: 3, duplicated_entries: 2, can_delete: false, wasted_bytes: 0 },
+        { path: "/data/b.zip", total_entries: 3, duplicated_entries: 2, can_delete: true, wasted_bytes: 512 },
+      ],
+    };
+
+    mockInvoke.mockImplementation(
+      makeDefaultMock({
+        scan_folder: summaryWithArchives,
+        get_groups_page: { groups: [], offset: 0, total: 0, has_more: false },
+        get_archive_groups: [archiveGroup],
+      })
+    );
+    mockDialogOpen.mockResolvedValue("/home/test");
+
+    render(<App />);
+    await user.click(screen.getByText(/Cliquer pour choisir un dossier/));
+    await waitFor(() => screen.getByText("/home/test"));
+    await user.click(screen.getByText("Analyser"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("archive-results-section")).toBeInTheDocument();
+    });
+  });
+
+  it("invoke get_archive_comparison est appelé au clic sur Voir le contenu", async () => {
+    const user = userEvent.setup();
+    const summaryWithArchives = { ...baseSummary, archive_groups_count: 1 };
+    const archiveGroup = {
+      id: "ag1",
+      shared_entry_count: 2,
+      archives: [
+        { path: "/data/a.zip", total_entries: 3, duplicated_entries: 2, can_delete: false, wasted_bytes: 0 },
+        { path: "/data/b.zip", total_entries: 3, duplicated_entries: 2, can_delete: true, wasted_bytes: 512 },
+      ],
+    };
+
+    mockInvoke.mockImplementation(
+      makeDefaultMock({
+        scan_folder: summaryWithArchives,
+        get_groups_page: { groups: [], offset: 0, total: 0, has_more: false },
+        get_archive_groups: [archiveGroup],
+        get_archive_comparison: {
+          a: { path: "/data/a.zip", entries: [] },
+          b: { path: "/data/b.zip", entries: [] },
+        },
+      })
+    );
+    mockDialogOpen.mockResolvedValue("/home/test");
+
+    render(<App />);
+    await user.click(screen.getByText(/Cliquer pour choisir un dossier/));
+    await waitFor(() => screen.getByText("/home/test"));
+    await user.click(screen.getByText("Analyser"));
+
+    await waitFor(() => screen.getByTestId("archive-results-section"));
+
+    await user.click(screen.getByText("Voir le contenu"));
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("get_archive_comparison", {
+        pathA: "/data/a.zip",
+        pathB: "/data/b.zip",
+      });
+    });
+  });
+});

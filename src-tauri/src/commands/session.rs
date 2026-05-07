@@ -193,7 +193,7 @@ pub fn load_session(app: tauri::AppHandle, id: String) -> Result<ScanSummary, St
     }
 
     let result = summary.clone();
-    *app.state::<ScanCache>().0.lock().unwrap() = Some(LoadedSession { summary, groups });
+    *app.state::<ScanCache>().0.lock().unwrap() = Some(LoadedSession { summary, groups, archive_groups: vec![] });
     Ok(result)
 }
 

@@ -55,6 +55,7 @@ Outil de détection et suppression de fichiers en double - rapide, local, sans c
 - **Comparateur de vidéos** - vue plein écran côte à côte pour les groupes de vidéos : deux lecteurs natifs synchronisés (play/pause/seek), barre de scrubbing commune, métadonnées complètes (résolution, durée, codec, taille), navigation entre groupes au clavier (← →, Échap), bouton "Garder celui-ci"
 - **Mode "Comparer avec un autre dossier"** - 3e mode de scan : compare un dossier source S avec un dossier de référence R et ne signale que les fichiers présents dans les deux ; les doublons internes à S ou à R sont ignorés ; les fichiers du dossier de référence affichent un badge "Réf." dans les résultats
 - **Sessions toujours visibles** - la section "Mes analyses" est affichée dès le démarrage même sans scan précédent ; le bouton "← Mes analyses" dans la barre d'outils est toujours accessible ; affiche "Aucune analyse enregistrée" quand la liste est vide
+- **Scan d'archives** - option "Analyser les archives" (mode Fichier) : ouvre les ZIP, tar.gz, tar.bz2, tar.xz, tar.zst et 7z et compare leur contenu entre archives ; les entrées communes à plusieurs archives forment un groupe ; chaque archive n'occupe qu'une ligne dans les résultats ; comparateur d'archives en deux colonnes avec badges "doublon"/"unique" ; suppression possible si toutes les entrées sont dupliquées ailleurs
 - **Sessions mises à jour à la suppression** - quand des fichiers sont supprimés, la session en cours est mise à jour instantanément (groupes réduits à 1 fichier retirés, espace récupérable recalculé) ; au rechargement d'une session ancienne, les fichiers absents du disque sont filtrés automatiquement
 - **Gestion du cache de détection** - la section "Mes analyses" affiche la taille totale du cache (phash, vidéo, audio, hashes exacts) et propose un bouton "Purger" avec confirmation inline pour libérer l'espace disque
 - **Comparateur audio** - vue plein écran côte à côte pour les groupes de fichiers audio : deux lecteurs natifs synchronisés (play/pause/seek, pattern maître/esclave), métadonnées complètes (nom, dossier, taille, durée), navigation entre groupes au clavier (← →, Échap), bouton "Garder celui-ci"
@@ -178,8 +179,8 @@ Chaque scan produit un fichier JSON dans `~/.local/share/deduplicateur/sessions/
 | Bundler | Vite + Tauri CLI | Dev HMR + build natif |
 | CI/CD | GitHub Actions | Build Windows automatique sur push |
 | Similarité audio | fpcalc/chromaprint (subprocess) | Empreinte acoustique, distance de Hamming sur vecteurs i32, cache inter-scans |
-| Tests Rust | cargo test + tempfile | 196 tests unitaires sur le moteur |
-| Tests TS | Vitest + jsdom + React Testing Library | 312 tests (utilitaires + i18n + App + ImageComparator + VideoComparator + AudioComparator + MissingToolBanner + FileThumbnail + AdvancedPanelWrapper + IgnoredPanel + FolderSection + HelpPanel + AdvancedPanel + AudioAdvancedPanel + VideoAdvancedPanel + ProfilesPanel + ProgressETA + GroupCard) |
+| Tests Rust | cargo test + tempfile | 221 tests unitaires sur le moteur |
+| Tests TS | Vitest + jsdom + React Testing Library | 334 tests (utilitaires + i18n + App + ImageComparator + VideoComparator + AudioComparator + MissingToolBanner + FileThumbnail + AdvancedPanelWrapper + IgnoredPanel + FolderSection + HelpPanel + AdvancedPanel + AudioAdvancedPanel + VideoAdvancedPanel + ProfilesPanel + ProgressETA + GroupCard + ArchiveGroupCard + ArchiveComparator) |
 
 ---
 
@@ -257,10 +258,10 @@ npm run build:full
 ### Tests
 
 ```bash
-# Moteur Rust (196 tests)
+# Moteur Rust (221 tests)
 cargo test --manifest-path src-tauri/Cargo.toml
 
-# TypeScript - utilitaires + i18n + composants React (312 tests)
+# TypeScript - utilitaires + i18n + composants React (334 tests)
 npm test
 ```
 

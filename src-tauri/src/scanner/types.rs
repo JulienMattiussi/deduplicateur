@@ -45,6 +45,22 @@ pub struct DuplicateGroup {
     pub audio_similar: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ArchiveInGroup {
+    pub path: String,
+    pub total_entries: usize,
+    pub duplicated_entries: usize,
+    pub can_delete: bool,
+    pub wasted_bytes: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ArchiveGroupResult {
+    pub id: String,
+    pub archives: Vec<ArchiveInGroup>,
+    pub shared_entry_count: usize,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ScanResult {
     pub groups: Vec<DuplicateGroup>,
@@ -55,6 +71,8 @@ pub struct ScanResult {
     pub partial: bool,
     pub ffmpeg_missing: bool,
     pub fpcalc_missing: bool,
+    #[serde(default)]
+    pub archive_groups: Vec<ArchiveGroupResult>,
 }
 
 /// Parametres d'un scan. Utiliser `ScanParams::new(folder)` pour les valeurs par defaut.
@@ -112,6 +130,8 @@ pub struct ScanParams {
     /// Compteur de groupes trouves, mis a jour en temps reel pendant le scan.
     /// None = pas de suivi externe (valeur par defaut dans les tests).
     pub groups_counter: Option<Arc<AtomicUsize>>,
+    /// Analyser le contenu des archives (ZIP, tar.gz, 7z...) et comparer entre archives.
+    pub scan_archives: bool,
 }
 
 impl ScanParams {
@@ -146,6 +166,7 @@ impl ScanParams {
             min_modified_timestamp: 0,
             max_modified_timestamp: 0,
             groups_counter: None,
+            scan_archives: false,
         }
     }
 }

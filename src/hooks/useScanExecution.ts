@@ -22,6 +22,7 @@ export interface ScanInvokeArgs {
   secondaryFolder?: string | null;
   minModifiedTimestamp?: number;
   maxModifiedTimestamp?: number;
+  scanArchives?: boolean;
 }
 
 export function useScanExecution(

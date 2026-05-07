@@ -229,6 +229,16 @@ const fr = {
   cacheSize: "Cache de détection : {size}",
   purgeCache: "Purger",
   purgeCacheQuestion: "Purger le cache de détection ? Cette action est irréversible.",
+  scanArchives: "Analyser les archives",
+  tipScanArchives: "Ouvre les archives (ZIP, tar.gz, 7z...) et signale celles dont le contenu est identique dans une autre archive. Visible uniquement en mode Fichiers.",
+  archivesSection: "Correspondances entre archives",
+  archiveSharedFiles: "fichier(s) en commun",
+  archiveEntries: "fichier(s)",
+  archiveDuplicate: "doublon",
+  archiveUnique: "unique",
+  archiveCanDelete: "Supprimable",
+  archiveViewContent: "Voir le contenu",
+  archiveComparator: "Comparateur d'archives",
 };
 
 const en: typeof fr = {
@@ -460,6 +470,16 @@ const en: typeof fr = {
   cacheSize: "Detection cache: {size}",
   purgeCache: "Purge",
   purgeCacheQuestion: "Purge detection cache? This cannot be undone.",
+  scanArchives: "Scan archives",
+  tipScanArchives: "Opens archives (ZIP, tar.gz, 7z...) and flags those whose content is identical in another archive. Only visible in Files mode.",
+  archivesSection: "Archive matches",
+  archiveSharedFiles: "shared file(s)",
+  archiveEntries: "file(s)",
+  archiveDuplicate: "duplicate",
+  archiveUnique: "unique",
+  archiveCanDelete: "Deletable",
+  archiveViewContent: "View content",
+  archiveComparator: "Archive comparator",
 };
 
 export const translations: Record<Lang, typeof fr> = { fr, en };

@@ -34,6 +34,7 @@ pub async fn scan_folder(
     secondary_folder: Option<String>,
     min_modified_timestamp: Option<u64>,
     max_modified_timestamp: Option<u64>,
+    scan_archives: bool,
 ) -> Result<ScanSummary, String> {
     let app = window.app_handle().clone();
     let cancelled = {
@@ -116,6 +117,7 @@ pub async fn scan_folder(
             min_modified_timestamp: min_modified_timestamp.unwrap_or(0),
             max_modified_timestamp: max_modified_timestamp.unwrap_or(0),
             groups_counter: Some(Arc::clone(&groups_counter)),
+            scan_archives,
         };
         do_scan(params, cancelled, move |current, total, total_files, file: &str, phase_current, phase_total, phase: &str| {
             *progress_for_scan.lock().unwrap() = Some((current, total, total_files, file.to_string(), phase_current, phase_total, phase.to_string()));
@@ -157,12 +159,14 @@ pub async fn scan_folder(
         ffmpeg_missing: result.ffmpeg_missing,
         find_similar_audio,
         fpcalc_missing: result.fpcalc_missing,
+        archive_groups_count: result.archive_groups.len(),
     };
 
     save_session(&app, &summary, &result.groups);
     *app.state::<ScanCache>().0.lock().unwrap() = Some(LoadedSession {
         summary: summary.clone(),
         groups: result.groups,
+        archive_groups: result.archive_groups,
     });
 
     let threshold = notification_threshold_secs.unwrap_or(10);

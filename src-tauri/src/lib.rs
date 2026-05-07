@@ -1,3 +1,4 @@
+mod archive;
 mod audio;
 mod cache_io;
 mod commands;
@@ -25,6 +26,7 @@ pub struct MediaServerPort(pub u16);
 pub struct LoadedSession {
     pub summary: ScanSummary,
     pub groups: Vec<DuplicateGroup>,
+    pub archive_groups: Vec<crate::scanner::ArchiveGroupResult>,
 }
 
 pub struct ScanCache(pub Mutex<Option<LoadedSession>>);
@@ -57,6 +59,8 @@ pub struct ScanSummary {
     pub find_similar_audio: bool,
     #[serde(default)]
     pub fpcalc_missing: bool,
+    #[serde(default)]
+    pub archive_groups_count: usize,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -231,6 +235,7 @@ pub fn select_files_to_delete(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    use commands::archive::{get_archive_comparison, get_archive_groups};
     use commands::files::{
         check_path_is_dir, delete_files, get_image_meta, get_image_thumbnail, get_video_metadata,
         get_video_thumbnail, open_file, reveal_in_folder,
@@ -301,6 +306,8 @@ pub fn run() {
             get_media_server_port,
             get_cache_size,
             purge_cache,
+            get_archive_groups,
+            get_archive_comparison,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -689,14 +696,14 @@ mod tests {
     // ── Tests get_cache_size / purge_cache (logique pure) ─────────────────────
 
     fn sum_cache_files(dir: &std::path::Path) -> u64 {
-        const CACHE_FILES: &[&str] = &["phash_cache.bin", "phash_cache.json", "video_cache.json", "audio_cache.json", "exact_cache.json"];
+        const CACHE_FILES: &[&str] = &["phash_cache.json", "video_cache.json", "audio_cache.json", "exact_cache.json"];
         CACHE_FILES.iter().map(|name| {
             std::fs::metadata(dir.join(name)).map(|m| m.len()).unwrap_or(0)
         }).sum()
     }
 
     fn purge_cache_files(dir: &std::path::Path) {
-        const CACHE_FILES: &[&str] = &["phash_cache.bin", "phash_cache.json", "video_cache.json", "audio_cache.json", "exact_cache.json"];
+        const CACHE_FILES: &[&str] = &["phash_cache.json", "video_cache.json", "audio_cache.json", "exact_cache.json"];
         for name in CACHE_FILES {
             let _ = std::fs::remove_file(dir.join(name));
         }
@@ -711,16 +718,14 @@ mod tests {
     #[test]
     fn test_get_cache_size_with_files() {
         let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("phash_cache.bin"), b"BINARY").unwrap();
         std::fs::write(dir.path().join("phash_cache.json"), b"ABCDE").unwrap();
         std::fs::write(dir.path().join("video_cache.json"), b"XY").unwrap();
-        assert_eq!(sum_cache_files(dir.path()), 13);
+        assert_eq!(sum_cache_files(dir.path()), 7);
     }
 
     #[test]
     fn test_purge_cache_removes_all_cache_files() {
         let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("phash_cache.bin"), b"binary").unwrap();
         std::fs::write(dir.path().join("phash_cache.json"), b"data1").unwrap();
         std::fs::write(dir.path().join("video_cache.json"), b"data2").unwrap();
         std::fs::write(dir.path().join("audio_cache.json"), b"data3").unwrap();

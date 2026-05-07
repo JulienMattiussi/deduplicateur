@@ -5,7 +5,7 @@ import "./App.css";
 import { formatSize, VIDEO_EXTS, AUDIO_EXTS } from "./utils";
 import { useLang } from "./LangContext";
 import { interp, pluralInterp, type Translations } from "./i18n";
-import type { DuplicateGroup, FolderSummary, IgnoreEntry, ScanProfile, ScanSummary, ScanProgress, ScanPhase } from "./types";
+import type { DuplicateGroup, FolderSummary, IgnoreEntry, ScanProfile, ScanSummary, ScanProgress, ScanPhase, ArchiveGroupResult } from "./types";
 import { useScanConfig } from "./hooks/useScanConfig";
 import { useScanExecution } from "./hooks/useScanExecution";
 import { useResults } from "./hooks/useResults";
@@ -16,6 +16,8 @@ import { useProfiles } from "./hooks/useProfiles";
 import { ImageComparator } from "./ImageComparator";
 import { VideoComparator } from "./VideoComparator";
 import { AudioComparator } from "./AudioComparator";
+import { ArchiveComparator } from "./ArchiveComparator";
+import { ArchiveGroupCard } from "./components/ArchiveGroupCard";
 import { SessionCard } from "./components/SessionCard";
 import { GroupCard } from "./components/GroupCard";
 import { FolderSection } from "./components/FolderSection";
@@ -164,6 +166,8 @@ export default function App() {
   const [comparatorIdx, setComparatorIdx] = useState<number | null>(null);
   const [videoComparatorIdx, setVideoComparatorIdx] = useState<number | null>(null);
   const [audioComparatorIdx, setAudioComparatorIdx] = useState<number | null>(null);
+  const [archiveGroups, setArchiveGroups] = useState<ArchiveGroupResult[]>([]);
+  const [archiveComparatorPair, setArchiveComparatorPair] = useState<{ pathA: string; pathB: string } | null>(null);
   const [resumingId, setResumingId] = useState<string | null>(null);
   const [smartRule, setSmartRule] = useState<SmartMode>("newest");
   const [priorityFolder, setPriorityFolder] = useState("");
@@ -219,6 +223,10 @@ export default function App() {
       const target = e.target as HTMLElement;
       const inInput = target.tagName === "INPUT" || target.tagName === "TEXTAREA";
 
+      if (e.key === "Escape" && archiveComparatorPair) {
+        setArchiveComparatorPair(null);
+        return;
+      }
       if (e.key === "Escape" && selection.confirmPending) {
         selection.setConfirmPending(false);
         return;
@@ -236,7 +244,7 @@ export default function App() {
     }
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [summary, selection, scanExec.scanning, comparatorIdx, videoComparatorIdx, audioComparatorIdx]);
+  }, [summary, selection, scanExec.scanning, comparatorIdx, videoComparatorIdx, audioComparatorIdx, archiveComparatorPair]);
 
   async function loadIgnoredEntries() {
     try {
@@ -259,6 +267,8 @@ export default function App() {
     results.reset();
     selection.setSelected(new Set());
     setFilterText("");
+    setArchiveGroups([]);
+    setArchiveComparatorPair(null);
   }
 
   async function handlePurgeCache() {
@@ -282,6 +292,10 @@ export default function App() {
       results.setFolderSummaries(summaries);
     } else {
       await results.loadPage(0, false);
+    }
+    if (s.archive_groups_count && s.archive_groups_count > 0) {
+      const ag = await invoke<ArchiveGroupResult[]>("get_archive_groups");
+      setArchiveGroups(ag);
     }
   }
 
@@ -404,6 +418,7 @@ export default function App() {
       secondaryFolder: config.scanMode === "compare_folder" ? (config.secondaryFolder || null) : null,
       minModifiedTimestamp: minModifiedTimestamp || undefined,
       maxModifiedTimestamp: maxModifiedTimestamp || undefined,
+      scanArchives: config.scanArchives || undefined,
     });
   }
 
@@ -629,6 +644,17 @@ export default function App() {
               disabled={scanExec.scanning || config.scanMode === "by_folder" || config.scanMode === "compare_folder"} />
             {t.recursive}
           </label>
+          {config.detectionMode === "files" && !scanExec.scanning && (
+            <label className="toggle-recursive" title={t.tipScanArchives} data-testid="scan-archives-label">
+              <input
+                type="checkbox"
+                checked={config.scanArchives}
+                onChange={(e) => config.setScanArchives(e.target.checked)}
+                data-testid="scan-archives-checkbox"
+              />
+              {t.scanArchives}
+            </label>
+          )}
           {scanExec.scanning ? (
             <button className="btn-cancel" onClick={scanExec.cancelScan} disabled={scanExec.cancelling}>
               {scanExec.cancelling ? <><span className="btn-spinner" /> {t.cancelling}</> : t.cancel}
@@ -917,6 +943,31 @@ export default function App() {
               </>
             )}
           </div>
+
+          {archiveGroups.length > 0 && (
+            <div className="archive-results-section" data-testid="archive-results-section">
+              <h3 className="archive-results-title">{t.archivesSection}</h3>
+              {archiveGroups.map((g) => (
+                <ArchiveGroupCard
+                  key={g.id}
+                  group={g}
+                  onViewContent={(a, b) => setArchiveComparatorPair({ pathA: a, pathB: b })}
+                  onDelete={async (path) => {
+                    try {
+                      await invoke("delete_files", { paths: [path] });
+                      setArchiveGroups((prev) =>
+                        prev
+                          .map((ag) => ({ ...ag, archives: ag.archives.filter((a) => a.path !== path) }))
+                          .filter((ag) => ag.archives.length > 1)
+                      );
+                    } catch (e) {
+                      setError(String(e));
+                    }
+                  }}
+                />
+              ))}
+            </div>
+          )}
         </>
       )}
 
@@ -973,6 +1024,14 @@ export default function App() {
           selected={selection.selected}
           onSelectPaths={handleSelectPaths}
           onClose={() => setAudioComparatorIdx(null)}
+        />
+      )}
+
+      {archiveComparatorPair && (
+        <ArchiveComparator
+          pathA={archiveComparatorPair.pathA}
+          pathB={archiveComparatorPair.pathB}
+          onClose={() => setArchiveComparatorPair(null)}
         />
       )}
 

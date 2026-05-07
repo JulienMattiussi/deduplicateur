@@ -27,6 +27,7 @@ export const HELP_SECTIONS: HelpSection[] = [
   { id: "tools",      title: { fr: "Outils externes",               en: "External tools" } },
   { id: "misc",       title: { fr: "Export et interface",           en: "Export and interface" } },
   { id: "notif",      title: { fr: "Notifications",                 en: "Notifications" } },
+  { id: "archives",   title: { fr: "Analyse des archives",          en: "Archive scanning" } },
 ];
 
 export const HELP_ARTICLES: HelpArticle[] = [
@@ -402,14 +403,14 @@ Path matching is by inclusion: typing "Important Photos" is enough if it's part 
       en: ["delete", "trash", "recycle bin", "confirmation", "safety", "recover", "cancel"],
     },
     body: {
-      fr: `Cliquez sur le bouton rouge **"Supprimer N fichiers (X Mo)"** pour demander la suppression. Une boîte de confirmation affiche le récapitulatif exact.
+      fr: `Cliquez sur le bouton rouge **"Supprimer N fichier(s) (X Mo)"** pour demander la suppression. Une boîte de confirmation affiche le récapitulatif exact.
 
 **Les fichiers sont envoyés dans la corbeille**, pas supprimés définitivement. Vous pouvez les récupérer depuis la corbeille de votre système d'exploitation tant que vous ne l'avez pas vidée.
 
 Après confirmation, les fichiers supprimés disparaissent des groupes. Les groupes réduits à un seul fichier sont automatiquement retirés de la liste.
 
 Si une erreur survient (fichier déjà absent, permissions insuffisantes), un message s'affiche en haut de l'écran.`,
-      en: `Click the red **"Delete N files (X MB)"** button to request deletion. A confirmation dialog shows the exact summary.
+      en: `Click the red **"Delete N file(s) (X MB)"** button to request deletion. A confirmation dialog shows the exact summary.
 
 **Files are sent to the trash**, not permanently deleted. You can recover them from your system's trash as long as you haven't emptied it.
 
@@ -1122,6 +1123,42 @@ The notification uses the **active UI language** (FR or EN) at the time the scan
 - **Escape**: closes the deletion confirmation or the image/video/audio comparator
 - **← →** (in comparator): navigate between image, video or audio groups
 - **F1** or **?** button: opens this help`,
+    },
+  },
+
+  // ── Analyse des archives ──────────────────────────────────────────────────
+
+  {
+    id: "archive-scan",
+    sectionId: "archives",
+    title: { fr: "Analyser les archives", en: "Scan archives" },
+    keywords: {
+      fr: ["archive", "zip", "tar", "gz", "7z", "archives", "contenu", "doublon", "comparateur"],
+      en: ["archive", "zip", "tar", "gz", "7z", "archives", "content", "duplicate", "comparator"],
+    },
+    body: {
+      fr: `**Analyser les archives** est une option disponible en mode **Fichiers**. Elle ouvre les archives (ZIP, tar.gz, 7z...) trouvées dans le dossier analysé et détecte celles dont le contenu est identique ou partiellement partagé avec une autre archive.
+
+**Activer l'option** : cochez la case "Analyser les archives" dans la barre de configuration, à côté de l'option "Sous-dossiers".
+
+**Résultats** : après le scan, une section **Correspondances entre archives** apparaît sous les groupes de fichiers normaux. Chaque carte affiche :
+- Le nombre d'archives dans le groupe et le nombre de fichiers en commun
+- Pour chaque archive : son nom, le ratio de fichiers dupliqués (ex. 3/5 fichier(s)), et si elle est supprimable
+
+**Comparateur d'archives** : cliquez sur **Voir le contenu** pour ouvrir le comparateur côte à côte. Il affiche chaque entrée interne avec un badge **doublon** (vert) ou **unique** (gris) et la taille correspondante.
+
+**Supprimer** : le bouton rouge **Supprimer** n'est disponible que sur les archives marquées "Supprimable". La suppression envoie le fichier dans la corbeille (récupérable).`,
+      en: `**Scan archives** is an option available in **Files** mode. It opens archives (ZIP, tar.gz, 7z...) found in the scanned folder and detects those whose content is identical or partially shared with another archive.
+
+**Enable the option**: check the "Scan archives" checkbox in the configuration bar, next to the "Subfolders" option.
+
+**Results**: after the scan, an **Archive matches** section appears below the normal file groups. Each card shows:
+- The number of archives in the group and the number of shared files
+- For each archive: its name, the ratio of duplicated files (e.g. 3/5 file(s)), and whether it is deletable
+
+**Archive comparator**: click **View content** to open the side-by-side comparator. It shows each internal entry with a **duplicate** (green) or **unique** (grey) badge and the corresponding size.
+
+**Delete**: the red **Delete** button is only available on archives marked as "Deletable". Deletion sends the file to the trash (recoverable).`,
     },
   },
 ];
