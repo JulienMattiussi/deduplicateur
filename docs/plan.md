@@ -571,3 +571,191 @@ En mode "Comparer avec un autre dossier" : dossier source S et dossier de réfé
 - [x] `README.md` : table de téléchargement mise à jour (2 variantes), section Build mise à jour, counts de tests mis à jour
 
 **Critère de validation : `npm run build:light` produit un installeur sans ffmpeg ; `npm run build:full` après `download-ffmpeg.sh` produit un installeur avec ffmpeg et ffprobe inclus automatiquement dans tous les formats (MSI, NSIS, AppImage, deb)**
+
+---
+
+## Phase 27 - Scan d'archives
+
+**Objectif : détecter les archives (ZIP, tar.gz, 7z...) dont le contenu est dupliqué entre elles**
+
+### Principes transverses
+
+- Une archive apparait toujours comme **une seule ligne** dans les résultats - le détail des entrées n'est visible que dans le comparateur d'archives.
+- Le contenu d'une archive est comparé **uniquement avec le contenu d'autres archives** - jamais avec les fichiers disque ordinaires.
+- Les archives imbriquées (ZIP dans un ZIP) sont ignorées silencieusement.
+- Les archives protégées par mot de passe sont ignorées silencieusement.
+- Les entrées non-fichiers (répertoires, liens symboliques) sont filtrées silencieusement.
+- Les entrées > 100 Mo sont extraites dans un `tempfile::NamedTempFile` (auto-supprimé) au lieu d'être lues en RAM.
+- Chaque entrée d'archive compte comme un fichier dans la barre de progression.
+- Suppression vers la corbeille uniquement si **toutes** les entrées de l'archive sont dupliquées dans au moins une autre archive (`can_delete = true`). Sinon : comparateur en lecture seule.
+
+### Formats d'archives supportés
+
+| Format | Extensions | Crate |
+|---|---|---|
+| ZIP | `.zip` | `zip` |
+| Tar+gzip | `.tar.gz`, `.tgz` | `tar` + `flate2` |
+| Tar+bzip2 | `.tar.bz2`, `.tbz2` | `tar` + `bzip2` |
+| Tar+xz | `.tar.xz`, `.txz` | `tar` + `xz2` |
+| Tar+zstd | `.tar.zst` | `tar` + `zstd` |
+| 7-Zip | `.7z` | `sevenz-rust` |
+| RAR | `.rar` | **non supporté** (pas de crate libre fiable) - ignoré silencieusement |
+
+---
+
+### Phase 27A - Mode Fichier (doublons exacts entre archives)
+
+**A1. Option UI et `ScanParams`**
+- `ScanParams` : champ `scan_archives: bool` (défaut false)
+- `useScanConfig.ts` : champ `scanArchives` (défaut false) - transmis à `invoke("scan_folder")`
+- UI : checkbox "Analyser les archives" dans le panneau principal de configuration du scan, visible **uniquement en mode Fichier** pour cette phase - même niveau que "Récursif"
+- `i18n.ts` : clés `scanArchives`, `scanArchivesTooltip` bilingues
+
+**A2. Module `archive/` Rust**
+- `src-tauri/src/archive/mod.rs` : `ArchiveEntry { internal_path: String, size: u64 }` + trait `fn read_entry_bytes(path, internal_path, size_threshold) -> Result<EntryContent>` où `EntryContent = Bytes(Vec<u8>) | TempFile(NamedTempFile)`
+- `src-tauri/src/archive/zip_reader.rs` : implémentation ZIP via crate `zip` - itère les entrées, filtre les répertoires et les entrées protégées (password-needed = skip silencieux), dispatche sur seuil 100 Mo
+- `src-tauri/src/archive/tar_reader.rs` : implémentation tar.gz / tar.bz2 / tar.xz / tar.zst - décompression via le crate adapté, même logique de filtrage et de seuil
+- `src-tauri/src/archive/sevenz_reader.rs` : implémentation 7z via `sevenz-rust`
+- `src-tauri/src/archive/mod.rs` : `fn detect_archive_format(path) -> Option<ArchiveFormat>` (par extension, insensible à la casse) + `fn list_entries(path) -> Result<Vec<ArchiveEntry>>` - retourne `Err` silencieusement converti en log pour RAR
+- `Cargo.toml` : ajouter `zip`, `tar`, `flate2`, `bzip2`, `xz2`, `zstd`, `sevenz-rust`, `tempfile`
+
+**A3. Phase de scan archives dans `scanner/`**
+- `scanner/archive_phase.rs` : `fn run(files: &[PathEntry], params: &ScanParams, on_progress) -> Vec<ArchiveGroupResult>`
+  1. Filtrer les `PathEntry` qui sont des archives détectées
+  2. Pour chaque archive : `list_entries()` + lecture des bytes / temp file de chaque entrée
+  3. Hacher chaque entrée (xxhash, même pipeline que les fichiers ordinaires) - chaque entrée émet un tick de progression
+  4. Grouper les entrées par hash - ne garder que les groupes dont les entrées proviennent d'**au moins deux archives différentes** (pas de groupe "interne" à une seule archive)
+  5. Pour chaque archive impliquée dans au moins un groupe : calculer `total_entries`, `duplicated_entries`, `can_delete`
+  6. Construire les `ArchiveGroupResult` via Union-Find (même pattern que pHash) : deux archives sont dans le même groupe si elles partagent au moins un hash en commun
+- Appel de `archive_phase::run()` depuis `scanner/mod.rs` si `params.scan_archives` et mode Fichier
+
+**A4. Structures de résultats**
+- `scanner/types.rs` : nouveaux types
+  ```rust
+  pub struct ArchiveInGroup {
+      pub path: String,
+      pub total_entries: usize,
+      pub duplicated_entries: usize,
+      pub can_delete: bool,      // duplicated_entries == total_entries && total_entries > 0
+      pub wasted_bytes: u64,     // somme des tailles des entrées dupliquées
+  }
+  pub struct ArchiveGroupResult {
+      pub id: String,            // UUID stable pour l'UI
+      pub archives: Vec<ArchiveInGroup>,
+      pub shared_entry_count: usize,  // nb de hashes distincts partagés
+  }
+  ```
+- `ScanResult` : nouveau champ `archive_groups: Vec<ArchiveGroupResult>` (vide si `scan_archives=false`)
+- Commande Tauri `get_archive_comparison(archive_path_a: String, archive_path_b: String) -> Result<ArchiveComparison, String>` : appelée en lazy uniquement quand l'utilisateur ouvre le comparateur - relit les entrées et reconstitue la comparaison détaillée entrée par entrée
+  ```rust
+  pub struct ArchiveEntryResult {
+      pub internal_path: String,
+      pub size: u64,
+      pub status: String,          // "duplicate" | "unique"
+      pub duplicate_in: Option<String>,  // internal_path dans l'autre archive
+  }
+  pub struct ArchiveDetail {
+      pub path: String,
+      pub entries: Vec<ArchiveEntryResult>,
+  }
+  pub struct ArchiveComparison {
+      pub a: ArchiveDetail,
+      pub b: ArchiveDetail,
+  }
+  ```
+
+**A5. Types TypeScript**
+- `src/types.ts` : `ArchiveInGroup`, `ArchiveGroupResult`, `ArchiveEntryResult`, `ArchiveDetail`, `ArchiveComparison`
+- `ScanResult` : champ `archive_groups?: ArchiveGroupResult[]`
+
+**A6. Composant `ArchiveGroupCard.tsx`**
+- Affiche une ligne par paire/groupe d'archives impliquées
+- Pour chaque archive : nom de fichier, chemin, `X/Y fichiers dupliqués`, taille récupérable
+- Badge "Supprimable" si `can_delete=true`
+- Bouton "Voir le contenu" → ouvre `ArchiveComparator`
+- Bouton "Supprimer" uniquement si `can_delete=true` (`invoke("delete_files", ...)` existant, corbeille)
+- Section dédiée dans `App.tsx` sous les groupes de fichiers ordinaires, visible si `archive_groups.length > 0`
+
+**A7. Composant `ArchiveComparator.tsx`**
+- Modal plein écran, même pattern d'ouverture/fermeture que `ImageComparator`
+- Deux colonnes : archive A (gauche) et archive B (droite)
+- En-tête de colonne : nom d'archive, chemin complet, ratio `X/Y fichiers en commun`
+- Liste des entrées dans chaque colonne : icône type de fichier (`FileThumbnail` mode "other"), nom interne, taille, badge vert "doublon" ou gris "unique"
+- Pour les entrées "doublon" : infobulle ou texte discret indiquant le chemin correspondant dans l'autre archive
+- Pas d'action de suppression sur les entrées individuelles
+- Si `can_delete` sur une archive : bouton "Supprimer cette archive" en bas de la colonne
+- Navigation entre plusieurs comparaisons si le groupe contient 3+ archives (sélecteur de paire)
+- Fermeture : Escape ou clic sur overlay
+- `i18n.ts` : clés `archiveComparator`, `archiveEntries`, `archiveDuplicate`, `archiveUnique`, `archiveCanDelete`, `archiveDeleteThis`, `archiveViewContent` bilingues
+
+**A8. Tests Rust**
+- `archive/zip_reader.rs` : lecture entrées d'un ZIP en mémoire (fixture .zip créée dans le test), répertoires filtrés, ZIP vide retourne liste vide
+- `archive/zip_reader.rs` : ZIP avec entrée > seuil → TempFile créé et contenu correct
+- `archive/tar_reader.rs` : lecture entrées d'un tar.gz basique
+- `archive/mod.rs` : `detect_archive_format` - extensions connues et inconnues
+- `scanner/archive_phase.rs` : deux ZIPs avec contenu identique → groupe avec `can_delete=true` sur les deux
+- `scanner/archive_phase.rs` : deux ZIPs avec contenu partiellement identique → groupe avec `can_delete=false`
+- `scanner/archive_phase.rs` : deux ZIPs sans contenu commun → aucun groupe
+- `scanner/archive_phase.rs` : entrées internes à une seule archive → pas de groupe (comparaison intra-archive ignorée)
+
+**A9. Tests TypeScript**
+- `ArchiveGroupCard.test.tsx` : rendu de base, badge "Supprimable" présent/absent, clic "Voir le contenu" appelle callback, bouton Supprimer visible uniquement si `can_delete`
+- `ArchiveComparator.test.tsx` : rendu colonnes A/B, badge "doublon"/"unique", bouton Supprimer si can_delete, fermeture Escape, groupe vide retourne null
+- `App.test.tsx` section S : section archives absente si `archive_groups=[]`, présente si non vide, invoke `get_archive_comparison` au clic "Voir le contenu"
+
+**A10. Documentation**
+- `src/help/content.ts` : article "Analyser les archives" bilingue dans nouvelle section "Archives"
+- `README.md` : fonctionnalité ajoutée dans la section Fonctionnalités
+
+---
+
+### Phase 27B - Mode Image (pHash sur contenu d'archives)
+
+**B1. pHash sur entrées d'archives image**
+- `scanner/archive_phase.rs` : si mode Image, après la phase de hachage exact, lancer la phase pHash sur les entrées image des archives
+  - Entrées `Bytes(Vec<u8>)` → `image::load_from_memory()` pour décoder (pas de fichier disque nécessaire)
+  - Entrées `TempFile` → chemin normal (déjà sur disque)
+  - Le cache pHash utilise une clé composite `archive_path::internal_path` + mtime de l'archive parente pour l'invalidation
+- Les groupes pHash archives suivent les mêmes règles : comparaison inter-archives uniquement, pas de croisement avec les images disque
+- `ArchiveGroupResult` : champ `match_type: "exact" | "similar"` + `similarity_score: Option<f32>` pour les groupes pHash
+- `ScanParams` : la phase pHash archives est activée si `scan_archives=true && find_similar=true`
+- Option UI : checkbox visible en mode Image (même condition d'affichage que pour mode Fichier)
+
+**B2. ArchiveComparator étendu**
+- Entrées image "doublon similaire" : badge orange "similaire" (à la place de vert "doublon exact")
+- Affichage du score de similarité en pourcentage
+- Thumbnail lazy de l'entrée image si disponible (via `get_image_thumbnail` avec le chemin tempfile ou via appel dédié pour les bytes)
+
+**B3. Tests Rust et TypeScript**
+- `archive_phase.rs` : deux ZIPs avec la même image en résolutions différentes → groupe similaire
+- `ArchiveComparator.test.tsx` : badge "similaire" avec score, badge "doublon exact" restant
+
+---
+
+### Phase 27C - Mode Son (empreinte acoustique sur contenu d'archives)
+
+**C1. Fingerprint fpcalc sur entrées audio**
+- `scanner/archive_phase.rs` : si mode Audio, après la phase de hachage exact, lancer la phase audio sur les entrées audio des archives
+  - Entrées `Bytes(Vec<u8>)` → extraction obligatoire en `tempfile::NamedTempFile` (fpcalc accepte uniquement des chemins disque)
+  - Entrées déjà en `TempFile` → chemin direct
+  - Appel `audio_hash::get_fingerprint(temp_path)` sur chaque entrée - même pipeline que les fichiers audio ordinaires
+- Le cache audio utilise une clé composite `archive_path::internal_path` + mtime de l'archive parente pour l'invalidation
+- Les groupes audio archives suivent les mêmes règles : comparaison inter-archives uniquement
+- `ScanParams` : la phase audio archives est activée si `scan_archives=true && find_similar_audio=true` (mode Audio)
+- Option UI : checkbox "Analyser les archives" visible en mode Audio
+- `ArchiveGroupResult` : `match_type` étendu avec `"audio_similar"` + champ `audio_similarity: Option<f32>`
+
+**C2. ArchiveComparator étendu**
+- Entrées audio : badge "similaire" avec score de similarité
+- Bouton play sur les entrées audio pour les écouter (via le media server HTTP local, même pattern que `AudioComparator`)
+- Durée de l'entrée audio affichée (depuis les métadonnées fpcalc ou via lecture d'en-tête)
+
+**C3. Tests Rust et TypeScript**
+- `archive_phase.rs` : deux archives avec le même fichier audio (fingerprint identique) → groupe audio similaire
+- `ArchiveComparator.test.tsx` : badge "audio similaire", bouton play présent sur les entrées audio
+
+---
+
+### Phase 27D - Mode Vidéo (différé)
+
+**Note** : les entrées vidéo dans les archives nécessitent une extraction obligatoire en temp file (ffmpeg/ffprobe travaillent sur des chemins disque). Le gain pratique est faible (les vidéos sont rarement archivées). À traiter séparément si le besoin se confirme.
