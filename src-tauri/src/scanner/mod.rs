@@ -25,6 +25,7 @@ use fs::{collect_files, first_level_subdir, size_candidates, is_image, is_video}
 pub(self) struct Ctx {
     pub total_to_hash: usize,
     pub phash_estimate: usize,
+    pub phash_compare_estimate: usize,
     pub video_estimate: usize,
     pub total_work: usize,
     pub analysis_total: usize,
@@ -163,11 +164,13 @@ where
         .map(|(_, cands)| cands.iter().map(|v| v.len()).sum::<usize>())
         .sum();
 
-    let total_work = total_to_hash + phash_estimate + video_estimate + audio_estimate;
+    let phash_compare_estimate = phash_estimate;
+    let total_work = total_to_hash + phash_estimate + phash_compare_estimate + video_estimate + audio_estimate;
 
     let ctx = Ctx {
         total_to_hash,
         phash_estimate,
+        phash_compare_estimate,
         video_estimate,
         total_work,
         analysis_total,

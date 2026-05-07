@@ -537,3 +537,21 @@ En mode "Comparer avec un autre dossier" : dossier source S et dossier de réfé
 - [x] `i18n.ts` : cle `tipCompareOptimization` ajoutee (tooltip section titre)
 - [x] `components/AdvancedPanel.tsx` : tooltip `tipCompareOptimization` sur le titre de section
 - [x] 196 tests Rust / 312 tests TypeScript - tous au vert
+
+---
+
+## Phase 25 - Refonte de la progression : barre mobile + heartbeat counter ✅
+
+**Objectif : la barre de progression ne gèle plus pendant la phase de comparaison pHash (qui peut durer plusieurs minutes sur de grandes collections)**
+
+**Problème** : `total_work` ne comptabilisait pas la phase de comparaison. Après le hachage de toutes les images, `current` atteignait `total_to_hash + phash_estimate` et restait immobile pendant toute la comparaison (bucket index, sorted_aspect ou fallback O(n²)), quelle que soit la durée.
+
+**Solution** :
+- [x] `scanner/mod.rs` : `phash_compare_estimate = phash_estimate` ; `total_work += phash_compare_estimate` ; champ ajouté dans `Ctx`
+- [x] `scanner/phash_phase.rs` : `compare_base = total_to_hash + phash_estimate` ; `compare_counter: Arc<AtomicUsize>` ; `on_progress(compare_base + cnt, ...)` ajouté dans les 6 sous-branches (bucket/sorted_aspect/fallback × séquentiel/parallèle)
+- [x] `scanner/video_phase.rs` : offset mis à jour (`+ phash_compare_estimate`)
+- [x] `scanner/audio_phase.rs` : offset mis à jour (`+ phash_compare_estimate`)
+- [x] `i18n.ts` : clé `heartbeatCounter` bilingue ("● {n} opérations traitées" / "● {n} operations processed")
+- [x] `App.tsx` : bulles de phase (✓ fait / ● actif / ○ en attente) + compteur heartbeat toujours croissant (`progress.current`)
+- [x] `App.css` : `.progress-steps`, `.progress-step`, `.progress-step--{done|active|pending}`, `.progress-heartbeat`
+- [x] 196 tests Rust / 312 tests TypeScript - tous au vert

@@ -73,9 +73,13 @@ function ScanProgressView({
     audio: t.phaseAudio,
   };
 
-  const totalPhases = detectionMode === "files" ? 2 : 3;
-  const phaseNum = phase ? (PHASE_ORDER.indexOf(phase) + 1) : 1;
-  const phaseName = phase ? phaseNames[phase] : t.phaseReading;
+  const relevantPhases: ScanPhase[] =
+    detectionMode === "files" ? ["reading", "exact"] :
+    detectionMode === "images" ? ["reading", "exact", "images"] :
+    detectionMode === "videos" ? ["reading", "exact", "videos"] :
+    ["reading", "exact", "audio"];
+
+  const currentPhaseIdx = phase ? PHASE_ORDER.indexOf(phase) : -1;
 
   const lastPhase: ScanPhase = detectionMode === "files" ? "exact"
     : detectionMode === "images" ? "images"
@@ -92,10 +96,22 @@ function ScanProgressView({
     : phase === "videos" ? t.typeVideos
     : t.typeAudio;
 
+  const heartbeat = progress?.current ?? 0;
+
   return (
     <div className="progress-container">
-      <p className="progress-phase-name">{phaseName}</p>
-      <p className="progress-phase-counter">{interp(t.phaseCounter, { n: phaseNum, total: totalPhases })}</p>
+      <div className="progress-steps">
+        {relevantPhases.map(p => {
+          const idx = PHASE_ORDER.indexOf(p);
+          const status = idx < currentPhaseIdx ? "done" : idx === currentPhaseIdx ? "active" : "pending";
+          return (
+            <div key={p} className={`progress-step progress-step--${status}`}>
+              <span className="progress-step-dot">{status === "done" ? "✓" : status === "active" ? "●" : "○"}</span>
+              <span className="progress-step-label">{phaseNames[p]}</span>
+            </div>
+          );
+        })}
+      </div>
       {!isReading && progress?.phase_current != null && (progress.phase_total ?? 0) > 0 && (
         <p className="progress-label">
           {interp(t.scanProgress, { n: progress.phase_current, m: progress.phase_total!, type: fileType })}
@@ -117,6 +133,11 @@ function ScanProgressView({
           {progress.file && <p className="progress-filename">{progress.file}</p>}
         </>
       ) : null}
+      {heartbeat > 0 && (
+        <p className="progress-heartbeat">
+          {interp(t.heartbeatCounter, { n: heartbeat.toLocaleString() })}
+        </p>
+      )}
       <ProgressETA
         historyRef={historyRef}
         scanStartRef={scanStartRef}

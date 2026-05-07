@@ -1236,6 +1236,53 @@
   width: 360px;
 }
 
+.progress-steps {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-bottom: 4px;
+}
+
+.progress-step {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+}
+
+.progress-step--done {
+  color: var(--accent);
+  border-color: var(--accent);
+  opacity: 0.7;
+}
+
+.progress-step--active {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  font-weight: 600;
+}
+
+.progress-step--pending {
+  color: var(--text-6);
+}
+
+.progress-step-dot {
+  font-size: 10px;
+}
+
+.progress-heartbeat {
+  font-size: 12px;
+  color: var(--accent);
+  opacity: 0.9;
+  font-variant-numeric: tabular-nums;
+  margin-top: 2px;
+}
+
 .progress-label {
   font-size: 13px;
   color: var(--text-4);

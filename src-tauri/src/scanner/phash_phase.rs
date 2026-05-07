@@ -227,6 +227,9 @@ where
         return (vec![], true);
     }
 
+    let compare_base = ctx.total_to_hash + ctx.phash_estimate;
+    let compare_counter = Arc::new(AtomicUsize::new(0));
+
     // 2.1 : bucket index actif uniquement quand coarse_threshold == 0 (identite exacte du hash grossier)
     let use_bucket = cfg.use_bucket_index && coarse_threshold == 0;
 
@@ -239,13 +242,17 @@ where
         let bucket_vecs: Vec<Vec<usize>> = buckets.into_values().collect();
 
         if use_parallel {
+            let num_buckets = bucket_vecs.len();
             let cf = Arc::clone(&compared_fine);
+            let cc = Arc::clone(&compare_counter);
             bucket_vecs
                 .into_par_iter()
                 .flat_map_iter(|bucket| {
                     if cancelled.load(Ordering::Relaxed) {
                         return vec![].into_iter();
                     }
+                    let cnt = cc.fetch_add(1, Ordering::Relaxed);
+                    on_progress(compare_base + cnt, ctx.total_work, ctx.scanned_files, "", cnt, num_buckets, "images");
                     let cf = Arc::clone(&cf);
                     let m = bucket.len();
                     let mut local = Vec::new();
@@ -270,12 +277,15 @@ where
                 })
                 .collect()
         } else {
+            let num_buckets = bucket_vecs.len();
             let mut pairs = Vec::new();
             let mut cf = 0usize;
-            for bucket in &bucket_vecs {
+            for (b_idx, bucket) in bucket_vecs.iter().enumerate() {
                 if cancelled.load(Ordering::Relaxed) {
                     return (vec![], true);
                 }
+                let cnt = compare_counter.fetch_add(1, Ordering::Relaxed);
+                on_progress(compare_base + cnt, ctx.total_work, ctx.scanned_files, "", b_idx, num_buckets, "images");
                 let m = bucket.len();
                 for a in 0..m {
                     for b in (a + 1)..m {
@@ -317,12 +327,15 @@ where
         if use_parallel {
             let sc = Arc::clone(&skipped_coarse);
             let cf = Arc::clone(&compared_fine);
+            let cc = Arc::clone(&compare_counter);
             (0..n)
                 .into_par_iter()
                 .flat_map_iter(|pos_a| {
                     if cancelled.load(Ordering::Relaxed) {
                         return vec![].into_iter();
                     }
+                    let cnt = cc.fetch_add(1, Ordering::Relaxed);
+                    on_progress(compare_base + cnt, ctx.total_work, ctx.scanned_files, "", cnt, n, "images");
                     let sc = Arc::clone(&sc);
                     let cf = Arc::clone(&cf);
                     let i = sorted_indices[pos_a];
@@ -384,6 +397,8 @@ where
                 if cancelled.load(Ordering::Relaxed) {
                     return (vec![], true);
                 }
+                let cnt = compare_counter.fetch_add(1, Ordering::Relaxed);
+                on_progress(compare_base + cnt, ctx.total_work, ctx.scanned_files, "", cnt, n, "images");
                 let i = sorted_indices[pos_a];
                 let ai = sorted_aspects[pos_a];
 
@@ -436,12 +451,15 @@ where
         if use_parallel {
             let sc = Arc::clone(&skipped_coarse);
             let cf = Arc::clone(&compared_fine);
+            let cc = Arc::clone(&compare_counter);
             (0..n)
                 .into_par_iter()
                 .flat_map_iter(|i| {
                     if cancelled.load(Ordering::Relaxed) {
                         return vec![].into_iter();
                     }
+                    let cnt = cc.fetch_add(1, Ordering::Relaxed);
+                    on_progress(compare_base + cnt, ctx.total_work, ctx.scanned_files, "", cnt, n, "images");
                     let sc = Arc::clone(&sc);
                     let cf = Arc::clone(&cf);
                     let mut local = Vec::new();
@@ -477,6 +495,8 @@ where
                 if cancelled.load(Ordering::Relaxed) {
                     return (vec![], true);
                 }
+                let cnt = compare_counter.fetch_add(1, Ordering::Relaxed);
+                on_progress(compare_base + cnt, ctx.total_work, ctx.scanned_files, "", cnt, n, "images");
                 for j in (i + 1)..n {
                     if use_two_pass
                         && hamming_distance(&images[i].coarse, &images[j].coarse)

@@ -43,7 +43,7 @@ where
         .filter(|f| !exact_paths.contains(&f.path))
         .collect();
 
-    let offset = ctx.total_to_hash + ctx.phash_estimate;
+    let offset = ctx.total_to_hash + ctx.phash_estimate + ctx.phash_compare_estimate;
 
     let mut vcache = if params.video_cache_enabled {
         params.data_dir.as_deref()
