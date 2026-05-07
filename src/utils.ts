@@ -1,3 +1,26 @@
+import type { Translations } from "./i18n";
+
+/** Nombre de bits dans le hash Hamming (grille 8x8). */
+export const HAMMING_BITS = 64;
+
+/** Convertit un pourcentage de similarite (60-100) en distance de Hamming sur HAMMING_BITS bits. */
+export function toHammingThreshold(pct: number): number {
+  return Math.round((1 - pct / 100) * HAMMING_BITS);
+}
+
+/** Formate une duree en ms en libelle lisible (ms / s / min / h). */
+export function formatDuration(ms: number, t: Translations): string {
+  if (ms < 1000) return `${ms} ${t.durationMs}`;
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s} ${t.durationS}`;
+  const m = Math.floor(s / 60);
+  const rem = s % 60;
+  if (m < 60) return rem > 0 ? `${m} ${t.durationMin} ${rem} ${t.durationS}` : `${m} ${t.durationMin}`;
+  const h = Math.floor(m / 60);
+  const remMin = m % 60;
+  return remMin > 0 ? `${h} ${t.durationH} ${remMin} ${t.durationMin}` : `${h} ${t.durationH}`;
+}
+
 export function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} o`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} Ko`;

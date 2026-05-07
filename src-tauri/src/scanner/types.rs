@@ -48,6 +48,8 @@ pub struct DuplicateGroup {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ArchiveInGroup {
     pub path: String,
+    pub size: u64,
+    pub modified: u64,
     pub total_entries: usize,
     pub duplicated_entries: usize,
     pub can_delete: bool,

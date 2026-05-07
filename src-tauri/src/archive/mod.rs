@@ -250,6 +250,41 @@ mod tests {
         assert_eq!(e1[0].hash, e2[0].hash);
     }
 
+    fn make_sevenz(entries: &[(&str, &[u8])]) -> NamedTempFile {
+        use sevenz_rust2::{ArchiveWriter, ArchiveEntry as SzEntry};
+        let f = NamedTempFile::with_suffix(".7z").unwrap();
+        {
+            let mut w = ArchiveWriter::create(f.path()).unwrap();
+            w.set_encrypt_header(false);
+            for (name, data) in entries {
+                let entry = SzEntry::new_file(*name);
+                w.push_archive_entry(entry, Some(*data)).unwrap();
+            }
+            w.finish().unwrap();
+        }
+        f
+    }
+
+    #[test]
+    fn hash_sevenz_retourne_entrees_avec_hash() {
+        let sz = make_sevenz(&[("a.txt", b"hello"), ("b.txt", b"world")]);
+        let entries = hash_archive_entries(sz.path()).unwrap();
+        assert_eq!(entries.len(), 2);
+        let names: Vec<_> = entries.iter().map(|e| e.internal_path.as_str()).collect();
+        assert!(names.contains(&"a.txt"));
+        assert!(names.contains(&"b.txt"));
+    }
+
+    #[test]
+    fn hash_sevenz_contenu_identique_meme_hash_que_zip() {
+        // Un meme contenu produit le meme xxh3 quel que soit le format
+        let sz = make_sevenz(&[("x", b"shared content")]);
+        let zip = make_zip(&[("y", b"shared content")]);
+        let e_sz = hash_archive_entries(sz.path()).unwrap();
+        let e_zip = hash_archive_entries(zip.path()).unwrap();
+        assert_eq!(e_sz[0].hash, e_zip[0].hash);
+    }
+
     #[test]
     fn compute_comparison_deux_zips() {
         let zip_a = make_zip(&[("common.txt", b"shared"), ("unique_a.txt", b"only in a")]);

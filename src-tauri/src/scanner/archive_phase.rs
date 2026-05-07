@@ -60,9 +60,8 @@ pub fn run(
     // Garder uniquement les hashes qui apparaissent dans 2+ archives differentes
     let cross_hashes: Vec<(u64, Vec<(usize, String, u64)>)> = hash_map.into_iter()
         .filter(|(_, refs)| {
-            let mut seen = std::collections::HashSet::new();
-            refs.iter().map(|(idx, _, _)| *idx).any(|idx| !seen.insert(idx))
-                || refs.iter().map(|(idx, _, _)| *idx).collect::<std::collections::HashSet<_>>().len() >= 2
+            let distinct: std::collections::HashSet<usize> = refs.iter().map(|(idx, _, _)| *idx).collect();
+            distinct.len() >= 2
         })
         .collect();
 
@@ -128,6 +127,8 @@ pub fn run(
             let wasted = duplicated_entries[idx].values().sum();
             ArchiveInGroup {
                 path: archives[idx].path.clone(),
+                size: archives[idx].size,
+                modified: archives[idx].modified,
                 total_entries: total,
                 duplicated_entries: dup_count,
                 can_delete: total > 0 && dup_count == total,
@@ -170,12 +171,14 @@ mod tests {
     }
 
     fn make_dup_file(path: &str) -> DuplicateFile {
+        let metadata = std::fs::metadata(path).ok();
+        let size = metadata.as_ref().map(|m| m.len()).unwrap_or(0);
         DuplicateFile {
             path: path.to_string(),
             name: std::path::Path::new(path).file_name()
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_default(),
-            size: 0,
+            size,
             modified: 0,
             video_metadata: None,
             audio_metadata: None,
@@ -259,5 +262,23 @@ mod tests {
         let files = vec![make_dup_file(zip1.path().to_str().unwrap())];
         let groups = run(&files, &no_cancel(), 0, 100, &no_progress);
         assert_eq!(groups.len(), 0);
+    }
+
+    #[test]
+    fn size_et_modified_propages_dans_archive_in_group() {
+        let zip1 = make_zip_file(&[("a.txt", b"shared")]);
+        let zip2 = make_zip_file(&[("a.txt", b"shared")]);
+        let mut f1 = make_dup_file(zip1.path().to_str().unwrap());
+        let mut f2 = make_dup_file(zip2.path().to_str().unwrap());
+        f1.modified = 1700000000;
+        f2.modified = 1700001000;
+        let groups = run(&[f1, f2], &no_cancel(), 0, 100, &no_progress);
+        assert_eq!(groups.len(), 1);
+        let archives = &groups[0].archives;
+        assert_eq!(archives.len(), 2);
+        // Tous les archives doivent avoir size > 0 et modified non nul
+        assert!(archives.iter().all(|a| a.size > 0));
+        assert!(archives.iter().any(|a| a.modified == 1700000000));
+        assert!(archives.iter().any(|a| a.modified == 1700001000));
     }
 }

@@ -715,7 +715,8 @@ En mode "Comparer avec un autre dossier" : dossier source S et dossier de réfé
 - [x] `App.tsx` : section archives, checkbox UI, modal comparateur
 - [x] `i18n.ts` : 9 clés bilingues (archive*)
 - [x] `src/help/content.ts` : article "archive-scan" bilingue
-- [x] 221 tests Rust / 334 tests TypeScript - tous au vert
+- [x] 223 tests Rust / 334 tests TypeScript - tous au vert
+- [x] 7z fonctionnel via `sevenz-rust2` (fork de sevenz-rust qui resout les contraintes HRTB) - hash et comparaison entre archives 7z et autres formats
 
 ---
 

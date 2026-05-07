@@ -417,3 +417,20 @@ rame l'UI au chargement d'un gros scan. Utiliser `IntersectionObserver` avec
 declenche que quand le placeholder entre dans la zone etendue. En test (jsdom), mocker
 `IntersectionObserver` pour qu'il declenche immediatement `isIntersecting: true` dans
 `src/test-setup.ts` - sinon tous les tests de thumbnails echouent (invoke jamais appele).
+
+### Scan d'archives 7z : utiliser sevenz-rust2, pas sevenz-rust
+`sevenz-rust` (version 0.6) expose `for_each_entries` avec une signature HRTB
+(`for<'a> FnMut(&'a ArchiveEntry, &'a mut SevenZReader<'a>)`) impossible a satisfaire
+en Rust stable depuis un closure qui capture une variable mutable. Utiliser
+`sevenz-rust2` (fork actif, version 0.21+) qui simplifie en `FnMut(&ArchiveEntry, &mut dyn Read) -> Result<bool, Error>`.
+Le closure peut capturer `&mut Vec<ArchiveEntry>` sans probleme.
+```rust
+let mut reader = ArchiveReader::open(path, Password::empty())?;
+let mut entries = Vec::new();
+reader.for_each_entries(|entry, stream| {
+    if entry.is_directory() || !entry.has_stream() { return Ok(true); }
+    let hash = hash_reader(stream)?;
+    entries.push(...);
+    Ok(true)  // continuer
+})?;
+```

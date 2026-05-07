@@ -1077,8 +1077,8 @@ describe("S - option Analyser les archives", () => {
       id: "ag1",
       shared_entry_count: 2,
       archives: [
-        { path: "/data/a.zip", total_entries: 3, duplicated_entries: 2, can_delete: false, wasted_bytes: 0 },
-        { path: "/data/b.zip", total_entries: 3, duplicated_entries: 2, can_delete: true, wasted_bytes: 512 },
+        { path: "/data/a.zip", size: 1024, modified: 1700000000, total_entries: 3, duplicated_entries: 2, can_delete: false, wasted_bytes: 0 },
+        { path: "/data/b.zip", size: 2048, modified: 1700001000, total_entries: 3, duplicated_entries: 2, can_delete: true, wasted_bytes: 512 },
       ],
     };
 
@@ -1097,19 +1097,19 @@ describe("S - option Analyser les archives", () => {
     await user.click(screen.getByText("Analyser"));
 
     await waitFor(() => {
-      expect(screen.getByTestId("archive-results-section")).toBeInTheDocument();
+      expect(screen.getByTestId("archive-group-card")).toBeInTheDocument();
     });
   });
 
-  it("invoke get_archive_comparison est appelé au clic sur Voir le contenu", async () => {
+  it("invoke get_archive_comparison est appelé au clic sur Comparer", async () => {
     const user = userEvent.setup();
     const summaryWithArchives = { ...baseSummary, archive_groups_count: 1 };
     const archiveGroup = {
       id: "ag1",
       shared_entry_count: 2,
       archives: [
-        { path: "/data/a.zip", total_entries: 3, duplicated_entries: 2, can_delete: false, wasted_bytes: 0 },
-        { path: "/data/b.zip", total_entries: 3, duplicated_entries: 2, can_delete: true, wasted_bytes: 512 },
+        { path: "/data/a.zip", size: 1024, modified: 1700000000, total_entries: 3, duplicated_entries: 2, can_delete: false, wasted_bytes: 0 },
+        { path: "/data/b.zip", size: 2048, modified: 1700001000, total_entries: 3, duplicated_entries: 2, can_delete: true, wasted_bytes: 512 },
       ],
     };
 
@@ -1131,9 +1131,9 @@ describe("S - option Analyser les archives", () => {
     await waitFor(() => screen.getByText("/home/test"));
     await user.click(screen.getByText("Analyser"));
 
-    await waitFor(() => screen.getByTestId("archive-results-section"));
+    await waitFor(() => screen.getByTestId("archive-group-card"));
 
-    await user.click(screen.getByText("Voir le contenu"));
+    await user.click(screen.getByRole("button", { name: "Comparer" }));
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith("get_archive_comparison", {

@@ -1,15 +1,17 @@
-import React, { useState, startTransition, useEffect, useMemo } from "react";
+import { useState, startTransition, useEffect, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { save as dialogSave } from "@tauri-apps/plugin-dialog";
 import "./App.css";
-import { formatSize, VIDEO_EXTS, AUDIO_EXTS } from "./utils";
+import { formatSize, formatDuration, toHammingThreshold, VIDEO_EXTS, AUDIO_EXTS } from "./utils";
 import { useLang } from "./LangContext";
-import { interp, pluralInterp, type Translations } from "./i18n";
-import type { DuplicateGroup, FolderSummary, IgnoreEntry, ScanProfile, ScanSummary, ScanProgress, ScanPhase, ArchiveGroupResult } from "./types";
+import type { DuplicateGroup, FolderSummary, IgnoreEntry, ScanProfile, ScanSummary, ArchiveGroupResult } from "./types";
+import { interp } from "./i18n";
 import { useScanConfig } from "./hooks/useScanConfig";
 import { useScanExecution } from "./hooks/useScanExecution";
 import { useResults } from "./hooks/useResults";
 import { useSelectionState, type SmartMode } from "./hooks/useSelectionState";
+import { useDragDrop } from "./hooks/useDragDrop";
+import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { IgnoredPanel } from "./components/IgnoredPanel";
 import { HelpPanel } from "./components/HelpPanel";
 import { useProfiles } from "./hooks/useProfiles";
@@ -17,139 +19,19 @@ import { ImageComparator } from "./ImageComparator";
 import { VideoComparator } from "./VideoComparator";
 import { AudioComparator } from "./AudioComparator";
 import { ArchiveComparator } from "./ArchiveComparator";
-import { ArchiveGroupCard } from "./components/ArchiveGroupCard";
-import { SessionCard } from "./components/SessionCard";
 import { GroupCard } from "./components/GroupCard";
 import { FolderSection } from "./components/FolderSection";
 import { FiltersPanel } from "./components/FiltersPanel";
 import { AdvancedPanel } from "./components/AdvancedPanel";
 import { VideoAdvancedPanel } from "./components/VideoAdvancedPanel";
 import { AudioAdvancedPanel } from "./components/AudioAdvancedPanel";
-import { ProgressETA } from "./components/ProgressETA";
 import { ProfilesPanel } from "./components/ProfilesPanel";
 import { MissingToolBanner } from "./components/MissingToolBanner";
-
-// Nombre de bits dans le hash Hamming (grille 8x8)
-const HAMMING_BITS = 64;
-
-function toHammingThreshold(pct: number): number {
-  return Math.round((1 - pct / 100) * HAMMING_BITS);
-}
-
-function formatDuration(ms: number, t: Translations): string {
-  if (ms < 1000) return `${ms} ${t.durationMs}`;
-  const s = Math.round(ms / 1000);
-  if (s < 60) return `${s} ${t.durationS}`;
-  const m = Math.floor(s / 60);
-  const rem = s % 60;
-  if (m < 60) return rem > 0 ? `${m} ${t.durationMin} ${rem} ${t.durationS}` : `${m} ${t.durationMin}`;
-  const h = Math.floor(m / 60);
-  const remMin = m % 60;
-  return remMin > 0 ? `${h} ${t.durationH} ${remMin} ${t.durationMin}` : `${h} ${t.durationH}`;
-}
-
-// ----- Progression du scan -----
-
-const PHASE_ORDER: ScanPhase[] = ["reading", "exact", "images", "videos", "audio"];
-
-function ScanProgressView({
-  progress,
-  detectionMode,
-  historyRef,
-  scanStartRef,
-  t,
-}: {
-  progress: ScanProgress | null;
-  detectionMode: "files" | "images" | "videos" | "audio";
-  historyRef: React.MutableRefObject<{ time: number; current: number }[]>;
-  scanStartRef: React.MutableRefObject<number>;
-  t: Translations;
-}) {
-  const phase = progress?.phase;
-
-  const phaseNames: Record<ScanPhase, string> = {
-    reading: t.phaseReading,
-    exact: t.phaseExact,
-    images: t.phaseImages,
-    videos: t.phaseVideos,
-    audio: t.phaseAudio,
-  };
-
-  const relevantPhases: ScanPhase[] =
-    detectionMode === "files" ? ["reading", "exact"] :
-    detectionMode === "images" ? ["reading", "exact", "images"] :
-    detectionMode === "videos" ? ["reading", "exact", "videos"] :
-    ["reading", "exact", "audio"];
-
-  const currentPhaseIdx = phase ? PHASE_ORDER.indexOf(phase) : -1;
-
-  const lastPhase: ScanPhase = detectionMode === "files" ? "exact"
-    : detectionMode === "images" ? "images"
-    : detectionMode === "videos" ? "videos"
-    : "audio";
-  const isLastPhase = phase === lastPhase;
-
-  const isReading = !phase || phase === "reading";
-  const showBar = !isReading && progress && progress.total > 0;
-  const pct = showBar ? Math.round((progress.current / progress.total) * 100) : 0;
-
-  const fileType = phase === "exact" ? t.typeFiles
-    : phase === "images" ? t.typeImages
-    : phase === "videos" ? t.typeVideos
-    : t.typeAudio;
-
-  const heartbeat = progress?.current ?? 0;
-
-  return (
-    <div className="progress-container">
-      <div className="progress-steps">
-        {relevantPhases.map(p => {
-          const idx = PHASE_ORDER.indexOf(p);
-          const status = idx < currentPhaseIdx ? "done" : idx === currentPhaseIdx ? "active" : "pending";
-          return (
-            <div key={p} className={`progress-step progress-step--${status}`}>
-              <span className="progress-step-dot">{status === "done" ? "✓" : status === "active" ? "●" : "○"}</span>
-              <span className="progress-step-label">{phaseNames[p]}</span>
-            </div>
-          );
-        })}
-      </div>
-      {!isReading && progress?.phase_current != null && (progress.phase_total ?? 0) > 0 && (
-        <p className="progress-label">
-          {interp(t.scanProgress, { n: progress.phase_current, m: progress.phase_total!, type: fileType })}
-        </p>
-      )}
-      {(progress?.groups_found ?? 0) > 0 && (
-        <p className="progress-groups-found">
-          {pluralInterp(t.groupsFoundSoFar, progress!.groups_found!)}
-        </p>
-      )}
-      {isReading ? (
-        <div className="spinner" />
-      ) : showBar ? (
-        <>
-          <div className="progress-track">
-            <div className="progress-bar" style={{ width: `${pct}%` }} />
-          </div>
-          <p className="progress-pct">{pct} %</p>
-          {progress.file && <p className="progress-filename">{progress.file}</p>}
-        </>
-      ) : null}
-      {heartbeat > 0 && (
-        <p className="progress-heartbeat">
-          {interp(t.heartbeatCounter, { n: heartbeat.toLocaleString() })}
-        </p>
-      )}
-      <ProgressETA
-        historyRef={historyRef}
-        scanStartRef={scanStartRef}
-        isLastPhase={isLastPhase}
-        progress={{ current: progress?.current ?? 0, total: progress?.total ?? 0 }}
-        t={t}
-      />
-    </div>
-  );
-}
+import { ScanProgressView } from "./components/ScanProgressView";
+import { SessionPicker } from "./components/SessionPicker";
+import { ConfirmDeleteModal } from "./components/ConfirmDeleteModal";
+import { ArchiveGroupCard } from "./components/ArchiveGroupCard";
+import { ScanResultsToolbar } from "./components/ScanResultsToolbar";
 
 // ----- Composant principal -----
 
@@ -161,7 +43,6 @@ export default function App() {
   const [theme, setTheme] = useState<"dark" | "light">(() =>
     (localStorage.getItem("theme") as "dark" | "light") ?? "dark"
   );
-  const [dragOver, setDragOver] = useState(false);
   const [filterText, setFilterText] = useState("");
   const [comparatorIdx, setComparatorIdx] = useState<number | null>(null);
   const [videoComparatorIdx, setVideoComparatorIdx] = useState<number | null>(null);
@@ -188,63 +69,28 @@ export default function App() {
     localStorage.setItem("theme", theme);
   }, [theme]);
 
-  useEffect(() => {
-    let unlisten: (() => void) | undefined;
-    import("@tauri-apps/api/webview").then(({ getCurrentWebview }) => {
-      getCurrentWebview().onDragDropEvent(async (event) => {
-        const type = event.payload.type;
-        if (type === "over") {
-          if (!scanExec.scanning) setDragOver(true);
-        } else if (type === "drop") {
-          setDragOver(false);
-          if (!scanExec.scanning && "paths" in event.payload) {
-            const paths = event.payload.paths as string[];
-            if (paths.length > 0) {
-              const isDir = await invoke<boolean>("check_path_is_dir", { path: paths[0] });
-              if (isDir) config.setFolder(paths[0]);
-            }
-          }
-        } else {
-          setDragOver(false);
-        }
-      }).then((fn) => { unlisten = fn; });
-    });
-    return () => { unlisten?.(); };
-  }, [scanExec.scanning]);
+  const dragOver = useDragDrop(scanExec.scanning, config.setFolder);
 
-  useEffect(() => {
-    function handleKey(e: KeyboardEvent) {
-      if (e.key === "F1") {
-        e.preventDefault();
-        setHelpOpen((v) => !v);
-        return;
-      }
-      if (comparatorIdx !== null || videoComparatorIdx !== null || audioComparatorIdx !== null) return;
-      const target = e.target as HTMLElement;
-      const inInput = target.tagName === "INPUT" || target.tagName === "TEXTAREA";
-
-      if (e.key === "Escape" && archiveComparatorPair) {
-        setArchiveComparatorPair(null);
-        return;
-      }
-      if (e.key === "Escape" && selection.confirmPending) {
-        selection.setConfirmPending(false);
-        return;
-      }
-      if (inInput) return;
-
-      const showResults = summary !== null && summary.total_groups > 0;
-      if (e.key === "Delete" && showResults && selection.selected.size > 0 && !selection.deleting && !selection.selecting) {
-        selection.setConfirmPending(true);
-      }
-      if ((e.key === "a" || e.key === "A") && (e.ctrlKey || e.metaKey) && showResults && !scanExec.scanning) {
-        e.preventDefault();
-        selection.selectAllDuplicates();
-      }
-    }
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, [summary, selection, scanExec.scanning, comparatorIdx, videoComparatorIdx, audioComparatorIdx, archiveComparatorPair]);
+  const showResultsForKb = summary !== null && summary.total_groups > 0;
+  useKeyboardShortcuts({
+    onToggleHelp: () => setHelpOpen((v) => !v),
+    onEscapeArchive: () => {
+      if (archiveComparatorPair) { setArchiveComparatorPair(null); return true; }
+      return false;
+    },
+    onEscapeConfirm: () => {
+      if (selection.confirmPending) { selection.setConfirmPending(false); return true; }
+      return false;
+    },
+    onDelete: () => selection.setConfirmPending(true),
+    onSelectAll: () => selection.selectAllDuplicates(),
+    anyComparatorOpen: comparatorIdx !== null || videoComparatorIdx !== null || audioComparatorIdx !== null,
+    showResults: showResultsForKb,
+    selecting: selection.selecting,
+    deleting: selection.deleting,
+    scanning: scanExec.scanning,
+    selectedCount: selection.selected.size,
+  });
 
   async function loadIgnoredEntries() {
     try {
@@ -339,6 +185,11 @@ export default function App() {
         total_groups: s.total_groups - removedCount,
         total_wasted_bytes: s.total_wasted_bytes - (oldLoadedWasted - newLoadedWasted),
       } : null);
+      setArchiveGroups((prev) =>
+        prev
+          .map((ag) => ({ ...ag, archives: ag.archives.filter((a) => !deletedPaths.has(a.path)) }))
+          .filter((ag) => ag.archives.length > 1)
+      );
     });
   }
 
@@ -571,6 +422,33 @@ export default function App() {
     );
   }, [results.sortedFolderSummaries, filterText]);
 
+  type ListItem =
+    | { kind: "file"; group: DuplicateGroup; waste: number }
+    | { kind: "archive"; group: ArchiveGroupResult; waste: number };
+
+  const filteredArchiveGroups = useMemo(() => {
+    if (!filterText.trim()) return archiveGroups;
+    const q = filterText.toLowerCase();
+    return archiveGroups.filter((ag) =>
+      ag.archives.some((a) => a.path.toLowerCase().includes(q))
+    );
+  }, [archiveGroups, filterText]);
+
+  const mergedItems: ListItem[] = useMemo(() => {
+    const fileItems: ListItem[] = filteredGroups.map((g) => ({
+      kind: "file",
+      group: g,
+      waste: g.size * (g.files.length - 1),
+    }));
+    if (filteredArchiveGroups.length === 0) return fileItems;
+    const archItems: ListItem[] = filteredArchiveGroups.map((g) => ({
+      kind: "archive",
+      group: g,
+      waste: g.archives.reduce((s, a) => s + a.wasted_bytes, 0),
+    }));
+    return [...fileItems, ...archItems].sort((a, b) => b.waste - a.waste);
+  }, [filteredGroups, filteredArchiveGroups]);
+
   return (
     <div className="app" data-theme={theme}>
       {dragOver && (
@@ -785,87 +663,34 @@ export default function App() {
       )}
 
       {showSessionPicker && (
-        <div className="session-list">
-          <p className="session-list-title">{t.previousSessions}</p>
-          {sessions.length === 0 ? (
-            <p className="session-list-empty">{t.noSessions}</p>
-          ) : (
-            sessions.map((s) => (
-              <SessionCard key={s.id} session={s} active={false} resuming={resumingId === s.id} onResume={resumeSession} onDelete={removeSession} />
-            ))
-          )}
-          {cacheBytes !== null && cacheBytes > 0 && (
-            <div className="cache-section">
-              {purgeConfirm ? (
-                <>
-                  <span className="cache-confirm-text">{t.purgeCacheQuestion}</span>
-                  <div className="cache-confirm-buttons">
-                    <button className="btn-ghost btn-sm btn-danger" onClick={handlePurgeCache}>{t.purgeCache}</button>
-                    <button className="btn-ghost btn-sm" onClick={() => setPurgeConfirm(false)}>{t.confirmCancel}</button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <span className="cache-size-label">{interp(t.cacheSize, { size: formatSize(cacheBytes) })}</span>
-                  <button className="btn-ghost btn-sm" onClick={() => setPurgeConfirm(true)}>{t.purgeCache}</button>
-                </>
-              )}
-            </div>
-          )}
-        </div>
+        <SessionPicker
+          sessions={sessions}
+          resumingId={resumingId}
+          cacheBytes={cacheBytes}
+          purgeConfirm={purgeConfirm}
+          onResume={resumeSession}
+          onDelete={removeSession}
+          onPurge={handlePurgeCache}
+          onPurgeConfirm={setPurgeConfirm}
+        />
       )}
 
       {showResults && (
         <>
-          <div className="toolbar">
-            <button className="btn-ghost" onClick={selection.selectAllDuplicates} disabled={selection.selecting}>{t.selectAll}</button>
-            <span className="rule-selector">
-              <span className="rule-label">{t.selectionRule}</span>
-              <select
-                data-testid="rule-select"
-                className="rule-select"
-                value={smartRule}
-                onChange={(e) => setSmartRule(e.target.value as SmartMode)}
-                disabled={selection.selecting}
-              >
-                <option value="newest">{t.keepNewest}</option>
-                <option value="oldest">{t.keepOldest}</option>
-                <option value="highest_resolution">{t.keepHighestResolution}</option>
-                <option value="largest_size">{t.keepLargestFile}</option>
-                <option value="priority_folder">{t.keepPriorityFolder}</option>
-              </select>
-              {smartRule === "priority_folder" && (
-                <input
-                  className="rule-folder-input"
-                  value={priorityFolder}
-                  onChange={(e) => setPriorityFolder(e.target.value)}
-                  placeholder={t.priorityFolderPlaceholder}
-                  disabled={selection.selecting}
-                />
-              )}
-              <button
-                className="btn-ghost"
-                onClick={() => selection.selectSmart(smartRule, smartRule === "priority_folder" ? priorityFolder : undefined)}
-                disabled={selection.selecting}
-              >
-                {t.applyRule}
-              </button>
-            </span>
-            <button className="btn-ghost" onClick={selection.clearSelection} disabled={selection.selecting}>{t.deselect}</button>
-            {selection.selected.size > 0 && !selection.selecting && (
-              <button className="btn-danger" onClick={() => selection.setConfirmPending(true)} disabled={selection.deleting}>
-                {selection.deleting
-                  ? t.deleting
-                  : pluralInterp(t.deleteN, selection.selected.size, { size: formatSize(selection.selectedSize) })}
-              </button>
-            )}
-            {selection.selecting && (
-              <span className="toolbar-loader">
-                <span className="toolbar-spinner" />
-                {t.calculating}
-              </span>
-            )}
-          </div>
+          <ScanResultsToolbar
+            selecting={selection.selecting}
+            deleting={selection.deleting}
+            selectedCount={selection.selected.size}
+            selectedSize={selection.selectedSize}
+            smartRule={smartRule}
+            priorityFolder={priorityFolder}
+            onSetSmartRule={setSmartRule}
+            onSetPriorityFolder={setPriorityFolder}
+            onSelectAll={selection.selectAllDuplicates}
+            onApplyRule={() => selection.selectSmart(smartRule, smartRule === "priority_folder" ? priorityFolder : undefined)}
+            onClearSelection={selection.clearSelection}
+            onAskDelete={() => selection.setConfirmPending(true)}
+          />
 
           <div className="filter-bar">
             <input
@@ -888,33 +713,56 @@ export default function App() {
 
           <div className="groups-list">
             {summary?.by_folder ? (
-              filteredFolderSummaries.length === 0 && filterText.trim() ? (
+              filteredFolderSummaries.length === 0 && filteredArchiveGroups.length === 0 && filterText.trim() ? (
                 <p className="filter-no-results">{t.filterNoResults}</p>
               ) : (
-                filteredFolderSummaries.map((fs) => (
-                  <FolderSection
-                    key={fs.folder_key}
-                    summary={fs}
-                    groups={results.groupsByFolder.get(fs.folder_key) ?? []}
-                    loading={results.folderState[fs.folder_key]?.loading ?? false}
-                    hasMore={results.folderState[fs.folder_key]?.hasMore ?? true}
-                    selected={selection.selected}
-                    onToggle={selection.toggleFile}
-                    onExpand={() => results.loadFolderPage(fs.folder_key)}
-                    onLoadMore={() => results.loadFolderPage(fs.folder_key)}
-                    onIgnore={handleIgnoreGroup}
-                    onCompare={(group) => { const idx = imageGroups.indexOf(group); if (idx >= 0) setComparatorIdx(idx); }}
-                    onCompareVideo={(group) => { const idx = videoGroups.indexOf(group); if (idx >= 0) setVideoComparatorIdx(idx); }}
-                    onCompareAudio={(group) => { const idx = audioGroups.indexOf(group); if (idx >= 0) setAudioComparatorIdx(idx); }}
-                  />
-                ))
+                <>
+                  {filteredArchiveGroups.map((ag) => (
+                    <ArchiveGroupCard
+                      key={ag.id}
+                      group={ag}
+                      selected={selection.selected}
+                      onToggle={selection.toggleFile}
+                      onCompare={(a, b) => setArchiveComparatorPair({ pathA: a, pathB: b })}
+                    />
+                  ))}
+                  {filteredFolderSummaries.map((fs) => (
+                    <FolderSection
+                      key={fs.folder_key}
+                      summary={fs}
+                      groups={results.groupsByFolder.get(fs.folder_key) ?? []}
+                      loading={results.folderState[fs.folder_key]?.loading ?? false}
+                      hasMore={results.folderState[fs.folder_key]?.hasMore ?? true}
+                      selected={selection.selected}
+                      onToggle={selection.toggleFile}
+                      onExpand={() => results.loadFolderPage(fs.folder_key)}
+                      onLoadMore={() => results.loadFolderPage(fs.folder_key)}
+                      onIgnore={handleIgnoreGroup}
+                      onCompare={(group) => { const idx = imageGroups.indexOf(group); if (idx >= 0) setComparatorIdx(idx); }}
+                      onCompareVideo={(group) => { const idx = videoGroups.indexOf(group); if (idx >= 0) setVideoComparatorIdx(idx); }}
+                      onCompareAudio={(group) => { const idx = audioGroups.indexOf(group); if (idx >= 0) setAudioComparatorIdx(idx); }}
+                    />
+                  ))}
+                </>
               )
             ) : (
               <>
-                {filteredGroups.length === 0 && filterText.trim() ? (
+                {mergedItems.length === 0 && filterText.trim() ? (
                   <p className="filter-no-results">{t.filterNoResults}</p>
                 ) : (
-                  filteredGroups.map((group: DuplicateGroup) => {
+                  mergedItems.map((item) => {
+                    if (item.kind === "archive") {
+                      return (
+                        <ArchiveGroupCard
+                          key={item.group.id}
+                          group={item.group}
+                          selected={selection.selected}
+                          onToggle={selection.toggleFile}
+                          onCompare={(a, b) => setArchiveComparatorPair({ pathA: a, pathB: b })}
+                        />
+                      );
+                    }
+                    const group = item.group;
                     const imgIdx = imageGroups.indexOf(group);
                     const vidIdx = videoGroups.indexOf(group);
                     const audIdx = audioGroups.indexOf(group);
@@ -943,31 +791,6 @@ export default function App() {
               </>
             )}
           </div>
-
-          {archiveGroups.length > 0 && (
-            <div className="archive-results-section" data-testid="archive-results-section">
-              <h3 className="archive-results-title">{t.archivesSection}</h3>
-              {archiveGroups.map((g) => (
-                <ArchiveGroupCard
-                  key={g.id}
-                  group={g}
-                  onViewContent={(a, b) => setArchiveComparatorPair({ pathA: a, pathB: b })}
-                  onDelete={async (path) => {
-                    try {
-                      await invoke("delete_files", { paths: [path] });
-                      setArchiveGroups((prev) =>
-                        prev
-                          .map((ag) => ({ ...ag, archives: ag.archives.filter((a) => a.path !== path) }))
-                          .filter((ag) => ag.archives.length > 1)
-                      );
-                    } catch (e) {
-                      setError(String(e));
-                    }
-                  }}
-                />
-              ))}
-            </div>
-          )}
         </>
       )}
 
@@ -990,6 +813,7 @@ export default function App() {
           <ScanProgressView
             progress={scanExec.progress}
             detectionMode={config.detectionMode}
+            scanArchives={config.scanArchives}
             historyRef={scanExec.progressHistoryRef}
             scanStartRef={scanExec.scanStartRef}
             t={t}
@@ -1036,18 +860,12 @@ export default function App() {
       )}
 
       {selection.confirmPending && (
-        <div className="modal-overlay" onClick={() => selection.setConfirmPending(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h2 className="modal-title">{t.confirmTitle}</h2>
-            <p className="modal-body">
-              {pluralInterp(t.confirmBody, selection.selected.size, { size: formatSize(selection.selectedSize) })}
-            </p>
-            <div className="modal-actions">
-              <button className="btn-ghost" onClick={() => selection.setConfirmPending(false)}>{t.confirmCancel}</button>
-              <button className="btn-danger" onClick={selection.doDelete}>{t.confirmConfirm}</button>
-            </div>
-          </div>
-        </div>
+        <ConfirmDeleteModal
+          count={selection.selected.size}
+          totalSize={selection.selectedSize}
+          onCancel={() => selection.setConfirmPending(false)}
+          onConfirm={selection.doDelete}
+        />
       )}
 
       {helpOpen && <HelpPanel onClose={() => setHelpOpen(false)} />}

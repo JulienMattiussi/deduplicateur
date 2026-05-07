@@ -51,8 +51,8 @@ version = "0.1"
 [dependencies.zstd]
 version = "0.13"
 
-[dependencies.sevenz-rust]
-version = "0.6"
+[dependencies.sevenz-rust2]
+version = "0.21"
 
 [dependencies.tempfile]
 version = "3"

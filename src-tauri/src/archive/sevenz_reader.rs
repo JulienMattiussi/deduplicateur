@@ -1,10 +1,22 @@
 use std::path::Path;
-use crate::archive::ArchiveEntry;
+use sevenz_rust2::{ArchiveReader, Password};
+use crate::archive::{ArchiveEntry, hash_reader};
 
 pub fn hash_sevenz_entries(path: &Path) -> Result<Vec<ArchiveEntry>, String> {
-    // TODO: API sevenz-rust - for_each_entries requiert une signature HRTB incompatible
-    // avec le borrow checker en Rust stable. A implementer quand l'API sera stabilisee.
-    // Le format 7z est detecte mais son contenu n'est pas compare pour l'instant.
-    let _ = path;
-    Ok(vec![])
+    let mut reader = ArchiveReader::open(path, Password::empty())
+        .map_err(|e| e.to_string())?;
+    let mut entries: Vec<ArchiveEntry> = Vec::new();
+    reader.for_each_entries(|entry, stream| {
+        if entry.is_directory() || !entry.has_stream() {
+            return Ok(true);
+        }
+        let name = entry.name().to_string();
+        let size = entry.size();
+        match hash_reader(stream) {
+            Ok(hash) => entries.push(ArchiveEntry { internal_path: name, size, hash }),
+            Err(_) => {}  // entree corrompue : skip silencieux
+        }
+        Ok(true)
+    }).map_err(|e| e.to_string())?;
+    Ok(entries)
 }

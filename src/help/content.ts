@@ -1141,24 +1141,28 @@ The notification uses the **active UI language** (FR or EN) at the time the scan
 
 **Activer l'option** : cochez la case "Analyser les archives" dans la barre de configuration, à côté de l'option "Sous-dossiers".
 
-**Résultats** : après le scan, une section **Correspondances entre archives** apparaît sous les groupes de fichiers normaux. Chaque carte affiche :
-- Le nombre d'archives dans le groupe et le nombre de fichiers en commun
-- Pour chaque archive : son nom, le ratio de fichiers dupliqués (ex. 3/5 fichier(s)), et si elle est supprimable
+**Résultats** : les groupes d'archives apparaissent **directement dans la liste de résultats**, classés par espace gaspillé au même titre que les autres doublons. Pas de section séparée. Une carte d'archive ressemble à une carte de fichiers classique :
+- En-tête : icône 📦, nombre d'archives, nombre de fichiers en commun et bouton **Comparer**
+- Une ligne par archive avec son icône, son nom, sa date, sa taille, le ratio de fichiers dupliqués (ex. 3/5 fichier(s)), son dossier et le badge **Supprimable** si applicable
 
-**Comparateur d'archives** : cliquez sur **Voir le contenu** pour ouvrir le comparateur côte à côte. Il affiche chaque entrée interne avec un badge **doublon** (vert) ou **unique** (gris) et la taille correspondante.
+**Sélection** : la case à cocher n'apparaît que sur les archives **entièrement** dupliquées dans une autre (\`Supprimable\`). Pour les archives partiellement partagées, il n'y a pas de case - aller dans le comparateur pour voir le détail.
 
-**Supprimer** : le bouton rouge **Supprimer** n'est disponible que sur les archives marquées "Supprimable". La suppression envoie le fichier dans la corbeille (récupérable).`,
+**Comparateur d'archives** : cliquez sur **Comparer** pour ouvrir le comparateur côte à côte. Il affiche chaque entrée interne avec un badge **doublon** (vert) ou **unique** (gris) et la taille correspondante.
+
+**Supprimer** : utilisez la barre d'outils standard (\`Supprimer N fichiers\`) après avoir coché les archives supprimables. La suppression envoie le fichier dans la corbeille (récupérable).`,
       en: `**Scan archives** is an option available in **Files** mode. It opens archives (ZIP, tar.gz, 7z...) found in the scanned folder and detects those whose content is identical or partially shared with another archive.
 
 **Enable the option**: check the "Scan archives" checkbox in the configuration bar, next to the "Subfolders" option.
 
-**Results**: after the scan, an **Archive matches** section appears below the normal file groups. Each card shows:
-- The number of archives in the group and the number of shared files
-- For each archive: its name, the ratio of duplicated files (e.g. 3/5 file(s)), and whether it is deletable
+**Results**: archive groups appear **directly in the results list**, sorted by wasted space alongside regular duplicates. No separate section. An archive card looks like a regular file card:
+- Header: 📦 icon, archive count, shared file count and a **Compare** button
+- One row per archive with its icon, name, date, size, ratio of duplicated files (e.g. 3/5 file(s)), folder and a **Deletable** badge when applicable
 
-**Archive comparator**: click **View content** to open the side-by-side comparator. It shows each internal entry with a **duplicate** (green) or **unique** (grey) badge and the corresponding size.
+**Selection**: the checkbox only appears on archives **fully** duplicated in another one (\`Deletable\`). Partially shared archives have no checkbox - use the comparator to inspect.
 
-**Delete**: the red **Delete** button is only available on archives marked as "Deletable". Deletion sends the file to the trash (recoverable).`,
+**Archive comparator**: click **Compare** to open the side-by-side comparator. It shows each internal entry with a **duplicate** (green) or **unique** (grey) badge and the corresponding size.
+
+**Delete**: use the standard toolbar (\`Delete N files\`) after checking deletable archives. Deletion sends the file to the trash (recoverable).`,
     },
   },
 ];

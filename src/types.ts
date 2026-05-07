@@ -1,4 +1,4 @@
-export type ScanPhase = "reading" | "exact" | "images" | "videos" | "audio";
+export type ScanPhase = "reading" | "exact" | "images" | "videos" | "audio" | "archives";
 
 export interface ScanProgress {
   current: number;
@@ -70,6 +70,8 @@ export interface ScanSummary {
 
 export interface ArchiveInGroup {
   path: string;
+  size: number;
+  modified: number;
   total_entries: number;
   duplicated_entries: number;
   can_delete: boolean;
