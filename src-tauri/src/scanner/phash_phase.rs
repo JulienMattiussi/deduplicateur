@@ -11,7 +11,7 @@ use rayon::prelude::*;
 use crate::phash::{CacheEntry, HashCache, append_perf_log, PerfEntry};
 use super::fs::group_folder_key;
 use super::hash::{get_image_dimensions, compute_two_pass_hashes, hamming_distance, pair_passes_filters};
-use super::types::{DuplicateFile, DuplicateGroup, ImageData, ScanParams, UnionFind};
+use super::types::{DuplicateFile, DuplicateGroup, ImageData, ScanParams, build_similar_groups, filter_exact_candidates};
 use super::Ctx;
 
 pub(super) fn run<F>(
@@ -32,16 +32,8 @@ where
     let cfg = &params.phash_config;
     let data_dir_path = params.data_dir.as_deref().map(Path::new);
 
-    let exact_paths: std::collections::HashSet<String> = existing_groups
-        .iter()
-        .flat_map(|g| g.files.iter().map(|f| f.path.clone()))
-        .collect();
-
     let t_collect_start = Instant::now();
-    let candidates: Vec<DuplicateFile> = phash_candidates_all
-        .into_iter()
-        .filter(|f| !exact_paths.contains(&f.path))
-        .collect();
+    let candidates = filter_exact_candidates(phash_candidates_all, existing_groups);
     let t_collect_ms = t_collect_start.elapsed().as_millis() as u64;
     let total_images = candidates.len();
     super::timing_log(timing_enabled, params.data_dir.as_deref(), start, &format!(
@@ -531,41 +523,14 @@ where
         "phash_compare_done: pairs_found={} duration_ms={}", pairs_found, t_compare_ms
     ));
 
-    let mut uf = UnionFind::new(n);
-    for &(i, j) in &similar_pairs {
-        uf.union(i, j);
-    }
-
-    let mut hash_groups: HashMap<usize, Vec<usize>> = HashMap::new();
-    for i in 0..n {
-        let root = uf.find(i);
-        hash_groups.entry(root).or_default().push(i);
-    }
-
     let root_path = Path::new(&params.folder);
-    let mut new_groups: Vec<DuplicateGroup> = Vec::new();
-    for (_, indices) in hash_groups {
-        if indices.len() < 2 {
-            continue;
-        }
-        let files: Vec<DuplicateFile> =
-            indices.iter().map(|&i| images[i].file.clone()).collect();
-        let folder_key = group_folder_key(&files, root_path, params.by_folder);
-        let g = DuplicateGroup {
-            id: uuid::Uuid::new_v4().to_string(),
-            hash: "phash".to_string(),
-            size: files[0].size,
-            folder_key,
-            similar: true,
-            video_similar: false,
-            audio_similar: false,
-            files,
-        };
-        if ctx.compare_mode && !super::types::is_cross_source_group(&g) {
-            continue;
-        }
-        new_groups.push(g);
-    }
+    let new_groups = build_similar_groups(
+        n, similar_pairs,
+        |i| images[i].file.clone(),
+        "phash", true, false, false,
+        |files| group_folder_key(files, root_path, params.by_folder),
+        ctx.compare_mode,
+    );
 
     if cfg.cache_enabled {
         if let Some(dir) = data_dir_path {

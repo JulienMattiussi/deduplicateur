@@ -27,6 +27,9 @@ pub(self) struct Ctx {
     pub phash_estimate: usize,
     pub phash_compare_estimate: usize,
     pub video_estimate: usize,
+    pub video_compare_estimate: usize,
+    pub audio_estimate: usize,
+    pub audio_compare_estimate: usize,
     pub total_work: usize,
     pub analysis_total: usize,
     pub scanned_files: usize,
@@ -164,14 +167,25 @@ where
         .map(|(_, cands)| cands.iter().map(|v| v.len()).sum::<usize>())
         .sum();
 
-    let phash_compare_estimate = phash_estimate;
-    let total_work = total_to_hash + phash_estimate + phash_compare_estimate + video_estimate + audio_estimate;
+    // Comparison is O(n²) pairs vs O(n) for hashing → ratio ∝ n.
+    // Calibrated from docs: at 100K images (cold cache), compare ≈ 12.5% of hash time → K = 800_000.
+    // At 3K images: 0.38%, at 10K: 1.25%, at 100K: 11%.
+    let phash_compare_estimate = ((phash_estimate as u64).pow(2) / 800_000) as usize;
+    let video_compare_estimate = ((video_estimate as u64).pow(2) / 800_000) as usize;
+    let audio_compare_estimate = ((audio_estimate as u64).pow(2) / 800_000) as usize;
+    let total_work = total_to_hash
+        + phash_estimate + phash_compare_estimate
+        + video_estimate + video_compare_estimate
+        + audio_estimate + audio_compare_estimate;
 
     let ctx = Ctx {
         total_to_hash,
         phash_estimate,
         phash_compare_estimate,
         video_estimate,
+        video_compare_estimate,
+        audio_estimate,
+        audio_compare_estimate,
         total_work,
         analysis_total,
         scanned_files,
@@ -1218,6 +1232,47 @@ mod tests {
             no_progress,
         ).unwrap();
         assert!(!result.groups.iter().any(|g| g.audio_similar));
+    }
+
+    // --- Tests phase video ---
+
+    #[test]
+    fn video_phase_desactivee_par_defaut() {
+        let dir = TempDir::new().unwrap();
+        write_file(dir.path(), "a.mp4", b"fake video");
+        let result = scan_folder(ScanParams::new(dir.path().to_str().unwrap()), no_cancel(), no_progress).unwrap();
+        assert!(!result.ffmpeg_missing, "ffmpeg_missing doit etre false quand find_similar_videos=false");
+        assert!(!result.groups.iter().any(|g| g.video_similar));
+    }
+
+    #[test]
+    fn video_ffmpeg_missing_quand_active_et_absent() {
+        let dir = TempDir::new().unwrap();
+        write_file(dir.path(), "a.mp4", b"fake video 1");
+        write_file(dir.path(), "b.mp4", b"fake video 2");
+        if crate::video::is_ffmpeg_available() {
+            return;
+        }
+        let result = scan_folder(
+            ScanParams { find_similar_videos: true, ..ScanParams::new(dir.path().to_str().unwrap()) },
+            no_cancel(),
+            no_progress,
+        ).unwrap();
+        assert!(result.ffmpeg_missing, "ffmpeg_missing doit etre true quand ffmpeg est absent");
+        assert!(!result.groups.iter().any(|g| g.video_similar));
+    }
+
+    #[test]
+    fn video_phase_ignore_non_videos() {
+        let dir = TempDir::new().unwrap();
+        write_file(dir.path(), "doc.txt", b"texte");
+        write_file(dir.path(), "image.jpg", b"image");
+        let result = scan_folder(
+            ScanParams { find_similar_videos: true, ..ScanParams::new(dir.path().to_str().unwrap()) },
+            no_cancel(),
+            no_progress,
+        ).unwrap();
+        assert!(!result.groups.iter().any(|g| g.video_similar));
     }
 
     // --- Tests mode "comparer avec un autre dossier" ---

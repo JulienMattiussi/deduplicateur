@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -8,7 +7,7 @@ use rayon::prelude::*;
 
 use crate::audio::{AudioCache, AudioMetadata, compute_fingerprint, fingerprint_distance};
 use super::fs::group_folder_key;
-use super::types::{DuplicateFile, DuplicateGroup, ScanParams, UnionFind};
+use super::types::{DuplicateFile, DuplicateGroup, ScanParams, build_similar_groups, filter_exact_candidates};
 use super::Ctx;
 
 struct AudioData {
@@ -33,17 +32,10 @@ where
 {
     let _ = (timing_enabled, start);
 
-    let exact_paths: std::collections::HashSet<String> = existing_groups
-        .iter()
-        .flat_map(|g| g.files.iter().map(|f| f.path.clone()))
-        .collect();
+    let candidates = filter_exact_candidates(audio_candidates_all, existing_groups);
 
-    let candidates: Vec<DuplicateFile> = audio_candidates_all
-        .into_iter()
-        .filter(|f| !exact_paths.contains(&f.path))
-        .collect();
-
-    let offset = ctx.total_to_hash + ctx.phash_estimate + ctx.phash_compare_estimate + ctx.video_estimate;
+    let offset = ctx.total_to_hash + ctx.phash_estimate + ctx.phash_compare_estimate
+        + ctx.video_estimate + ctx.video_compare_estimate;
 
     let mut acache = if params.audio_cache_enabled {
         params.data_dir.as_deref()
@@ -116,10 +108,16 @@ where
         return (vec![], true);
     }
 
+    let compare_base = offset + candidates.len();
+    let compare_counter = Arc::new(AtomicUsize::new(0));
+    let cc = Arc::clone(&compare_counter);
+
     let similar_pairs: Vec<(usize, usize)> = (0..n)
         .into_par_iter()
         .flat_map_iter(|i| {
             if cancelled.load(Ordering::Relaxed) { return vec![].into_iter(); }
+            let cnt = cc.fetch_add(1, Ordering::Relaxed);
+            on_progress(compare_base + cnt, ctx.total_work, ctx.scanned_files, "", cnt, n, "audio");
             let mut local = Vec::new();
             for j in (i + 1)..n {
                 let dur_i = audio_data[i].duration_secs;
@@ -137,38 +135,14 @@ where
         })
         .collect();
 
-    let mut uf = UnionFind::new(n);
-    for &(i, j) in &similar_pairs {
-        uf.union(i, j);
-    }
-
-    let mut group_map: HashMap<usize, Vec<usize>> = HashMap::new();
-    for i in 0..n {
-        let root = uf.find(i);
-        group_map.entry(root).or_default().push(i);
-    }
-
     let root_path = Path::new(&params.folder);
-    let mut new_groups: Vec<DuplicateGroup> = Vec::new();
-    for (_, indices) in group_map {
-        if indices.len() < 2 { continue; }
-        let files: Vec<DuplicateFile> = indices.iter().map(|&i| audio_data[i].file.clone()).collect();
-        let folder_key = group_folder_key(&files, root_path, params.by_folder);
-        let g = DuplicateGroup {
-            id: uuid::Uuid::new_v4().to_string(),
-            hash: "audio".to_string(),
-            size: files[0].size,
-            folder_key,
-            similar: false,
-            video_similar: false,
-            audio_similar: true,
-            files,
-        };
-        if ctx.compare_mode && !super::types::is_cross_source_group(&g) {
-            continue;
-        }
-        new_groups.push(g);
-    }
+    let new_groups = build_similar_groups(
+        n, similar_pairs,
+        |i| audio_data[i].file.clone(),
+        "audio", false, false, true,
+        |files| group_folder_key(files, root_path, params.by_folder),
+        ctx.compare_mode,
+    );
 
     groups_counter.fetch_add(new_groups.len(), Ordering::Relaxed);
     (new_groups, false)

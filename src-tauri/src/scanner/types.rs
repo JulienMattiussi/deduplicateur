@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, atomic::AtomicUsize};
 use serde::{Deserialize, Serialize};
 use crate::audio::AudioMetadata;
@@ -200,4 +200,164 @@ pub fn is_cross_source_group(group: &DuplicateGroup) -> bool {
     let has_primary = group.files.iter().any(|f| f.source == Some(FileSource::Primary));
     let has_secondary = group.files.iter().any(|f| f.source == Some(FileSource::Secondary));
     has_primary && has_secondary
+}
+
+/// Retire de `candidates` tout fichier dont le chemin apparait deja dans `existing_groups`.
+pub fn filter_exact_candidates(
+    candidates: Vec<DuplicateFile>,
+    existing_groups: &[DuplicateGroup],
+) -> Vec<DuplicateFile> {
+    let exact_paths: HashSet<String> = existing_groups
+        .iter()
+        .flat_map(|g| g.files.iter().map(|f| f.path.clone()))
+        .collect();
+    candidates.into_iter().filter(|f| !exact_paths.contains(&f.path)).collect()
+}
+
+/// Construit des groupes de similarite depuis une liste de paires `(i, j)` via Union-Find.
+/// `get_file` recupere le DuplicateFile a l'indice i.
+/// `folder_key` calcule la cle de dossier pour un groupe (None = mode "tout le dossier").
+pub fn build_similar_groups(
+    n: usize,
+    pairs: Vec<(usize, usize)>,
+    get_file: impl Fn(usize) -> DuplicateFile,
+    hash: &str,
+    similar: bool,
+    video_similar: bool,
+    audio_similar: bool,
+    folder_key: impl Fn(&[DuplicateFile]) -> Option<String>,
+    compare_mode: bool,
+) -> Vec<DuplicateGroup> {
+    let mut uf = UnionFind::new(n);
+    for &(i, j) in &pairs {
+        uf.union(i, j);
+    }
+    let mut group_map: HashMap<usize, Vec<usize>> = HashMap::new();
+    for i in 0..n {
+        let root = uf.find(i);
+        group_map.entry(root).or_default().push(i);
+    }
+    let mut groups = Vec::new();
+    for (_, indices) in group_map {
+        if indices.len() < 2 { continue; }
+        let files: Vec<DuplicateFile> = indices.iter().map(|&i| get_file(i)).collect();
+        let fk = folder_key(&files);
+        let g = DuplicateGroup {
+            id: uuid::Uuid::new_v4().to_string(),
+            hash: hash.to_string(),
+            size: files[0].size,
+            folder_key: fk,
+            similar,
+            video_similar,
+            audio_similar,
+            files,
+        };
+        if compare_mode && !is_cross_source_group(&g) { continue; }
+        groups.push(g);
+    }
+    groups
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_file(path: &str) -> DuplicateFile {
+        DuplicateFile {
+            path: path.to_string(),
+            name: path.to_string(),
+            size: 100,
+            modified: 0,
+            video_metadata: None,
+            audio_metadata: None,
+            source: None,
+        }
+    }
+
+    fn make_file_src(path: &str, source: FileSource) -> DuplicateFile {
+        DuplicateFile { source: Some(source), ..make_file(path) }
+    }
+
+    fn make_exact_group(paths: &[&str]) -> DuplicateGroup {
+        DuplicateGroup {
+            id: "g".to_string(), hash: "exact".to_string(), size: 100,
+            files: paths.iter().map(|p| make_file(p)).collect(),
+            folder_key: None, similar: false, video_similar: false, audio_similar: false,
+        }
+    }
+
+    #[test]
+    fn filter_exact_exclut_les_chemins_deja_groupes() {
+        let candidates = vec![make_file("a"), make_file("b"), make_file("c")];
+        let result = filter_exact_candidates(candidates, &[make_exact_group(&["a"])]);
+        assert_eq!(result.len(), 2);
+        assert!(result.iter().all(|f| f.path != "a"));
+    }
+
+    #[test]
+    fn filter_exact_sans_existing_retourne_tout() {
+        let candidates = vec![make_file("a"), make_file("b")];
+        let result = filter_exact_candidates(candidates, &[]);
+        assert_eq!(result.len(), 2);
+    }
+
+    #[test]
+    fn build_groups_paire_simple() {
+        let files = vec![make_file("a"), make_file("b"), make_file("c")];
+        let groups = build_similar_groups(3, vec![(0, 1)], |i| files[i].clone(),
+            "test", true, false, false, |_| None, false);
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].files.len(), 2);
+        assert!(groups[0].similar);
+    }
+
+    #[test]
+    fn build_groups_pas_de_paire_pas_de_groupe() {
+        let files = vec![make_file("a"), make_file("b")];
+        let groups = build_similar_groups(2, vec![], |i| files[i].clone(),
+            "test", false, false, true, |_| None, false);
+        assert_eq!(groups.len(), 0);
+    }
+
+    #[test]
+    fn build_groups_by_folder_assigne_folder_key() {
+        let files = vec![make_file("a"), make_file("b")];
+        let groups = build_similar_groups(2, vec![(0, 1)], |i| files[i].clone(),
+            "audio", false, false, true,
+            |_| Some("Photos".to_string()), false);
+        assert_eq!(groups[0].folder_key, Some("Photos".to_string()));
+        assert!(groups[0].audio_similar);
+    }
+
+    #[test]
+    fn build_groups_compare_mode_garde_groupes_croises() {
+        let files = vec![
+            make_file_src("a", FileSource::Primary),
+            make_file_src("b", FileSource::Secondary),
+        ];
+        let groups = build_similar_groups(2, vec![(0, 1)], |i| files[i].clone(),
+            "video", false, true, false, |_| None, true);
+        assert_eq!(groups.len(), 1);
+    }
+
+    #[test]
+    fn build_groups_compare_mode_filtre_groupes_internes() {
+        let files = vec![
+            make_file_src("a", FileSource::Primary),
+            make_file_src("b", FileSource::Primary),
+        ];
+        let groups = build_similar_groups(2, vec![(0, 1)], |i| files[i].clone(),
+            "video", false, true, false, |_| None, true);
+        assert_eq!(groups.len(), 0);
+    }
+
+    #[test]
+    fn build_groups_transitif_trois_fichiers() {
+        let files = vec![make_file("a"), make_file("b"), make_file("c")];
+        // a~b et b~c -> {a,b,c} dans un seul groupe
+        let groups = build_similar_groups(3, vec![(0, 1), (1, 2)], |i| files[i].clone(),
+            "phash", true, false, false, |_| None, false);
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].files.len(), 3);
+    }
 }
