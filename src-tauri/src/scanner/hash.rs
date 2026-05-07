@@ -1,6 +1,7 @@
 use std::fs::File;
 use std::io::Read;
 
+use image::DynamicImage;
 use image_hasher::{HasherConfig, HashAlg};
 use xxhash_rust::xxh3::Xxh3;
 
@@ -77,14 +78,103 @@ pub fn get_image_dimensions(path: &str) -> Option<(u32, u32)> {
     read_png_dimensions(buf).or_else(|| read_jpeg_dimensions(buf))
 }
 
-/// Calcule les hash grossier et fin en un seul decodage d'image.
-/// Retourne (coarse_bytes, fine_bytes) ou None si le fichier ne peut pas etre decode.
-pub fn compute_two_pass_hashes(
-    path: &str,
-    coarse_size: u32,
-    fine_size: u32,
-) -> Option<(Vec<u8>, Vec<u8>)> {
-    let img = image::open(path).ok()?;
+// --- Extraction du thumbnail EXIF (1.2 + 1.3) ---
+
+fn read_u16_tiff(data: &[u8], off: usize, le: bool) -> Option<u16> {
+    if off + 2 > data.len() { return None; }
+    let b = [data[off], data[off + 1]];
+    Some(if le { u16::from_le_bytes(b) } else { u16::from_be_bytes(b) })
+}
+
+fn read_u32_tiff(data: &[u8], off: usize, le: bool) -> Option<u32> {
+    if off + 4 > data.len() { return None; }
+    let b = [data[off], data[off + 1], data[off + 2], data[off + 3]];
+    Some(if le { u32::from_le_bytes(b) } else { u32::from_be_bytes(b) })
+}
+
+/// Extrait les bytes JPEG du thumbnail embede dans le segment APP1 EXIF d'un JPEG.
+/// Retourne None si le fichier n'est pas JPEG, n'a pas d'EXIF, ou n'a pas de thumbnail en IFD1.
+fn try_extract_exif_thumbnail(path: &str) -> Option<Vec<u8>> {
+    const MAX_READ: usize = 131_072; // 128 Ko : suffisant pour le header EXIF + petit thumbnail
+    let mut f = File::open(path).ok()?;
+    let mut buf = vec![0u8; MAX_READ];
+    let n = f.read(&mut buf).ok()?;
+    let buf = &buf[..n];
+
+    // Verifier magic JPEG
+    if buf.len() < 4 || buf[0] != 0xFF || buf[1] != 0xD8 { return None; }
+
+    // Scanner les segments pour trouver APP1 avec "Exif\0\0"
+    let mut i = 2usize;
+    let tiff_data: &[u8] = loop {
+        if i + 3 >= buf.len() { return None; }
+        if buf[i] != 0xFF { return None; }
+        let marker = buf[i + 1];
+        if marker == 0xDA { return None; } // SOS : fin des headers
+
+        // Marqueurs sans payload
+        if matches!(marker, 0x01 | 0xD0..=0xD8) { i += 2; continue; }
+
+        let seg_len = u16::from_be_bytes([buf[i + 2], buf[i + 3]]) as usize;
+        if seg_len < 2 { return None; }
+        let data_start = i + 4;
+        let data_end = (data_start + seg_len - 2).min(buf.len());
+
+        if marker == 0xE1 && data_end > data_start + 6 {
+            let seg = &buf[data_start..data_end];
+            if &seg[..6] == b"Exif\0\0" {
+                break &seg[6..]; // debut du bloc TIFF
+            }
+        }
+        i += 2 + seg_len;
+    };
+
+    // Parser le header TIFF
+    if tiff_data.len() < 8 { return None; }
+    let le = match &tiff_data[0..2] {
+        b"II" => true,
+        b"MM" => false,
+        _ => return None,
+    };
+    if read_u16_tiff(tiff_data, 2, le)? != 42 { return None; } // magic TIFF
+
+    // Offset IFD0
+    let ifd0_off = read_u32_tiff(tiff_data, 4, le)? as usize;
+    if ifd0_off + 2 > tiff_data.len() { return None; }
+
+    // Compter les entrees IFD0 pour trouver l'offset IFD1
+    let ifd0_count = read_u16_tiff(tiff_data, ifd0_off, le)? as usize;
+    let ifd1_ptr = ifd0_off + 2 + ifd0_count * 12;
+    if ifd1_ptr + 4 > tiff_data.len() { return None; }
+
+    let ifd1_off = read_u32_tiff(tiff_data, ifd1_ptr, le)? as usize;
+    if ifd1_off == 0 || ifd1_off + 2 > tiff_data.len() { return None; }
+
+    // Parser IFD1 pour trouver JPEGInterchangeFormat (0x0201) et JPEGInterchangeFormatLength (0x0202)
+    let ifd1_count = read_u16_tiff(tiff_data, ifd1_off, le)? as usize;
+    let mut thumb_off: Option<usize> = None;
+    let mut thumb_len: Option<usize> = None;
+
+    for k in 0..ifd1_count {
+        let e = ifd1_off + 2 + k * 12;
+        if e + 12 > tiff_data.len() { break; }
+        let tag = read_u16_tiff(tiff_data, e, le)?;
+        match tag {
+            0x0201 => { thumb_off = Some(read_u32_tiff(tiff_data, e + 8, le)? as usize); }
+            0x0202 => { thumb_len = Some(read_u32_tiff(tiff_data, e + 8, le)? as usize); }
+            _ => {}
+        }
+    }
+
+    let off = thumb_off?;
+    let len = thumb_len?;
+    if len == 0 || off + len > tiff_data.len() { return None; }
+
+    Some(tiff_data[off..off + len].to_vec())
+}
+
+/// Calcule les hash grossier et fin depuis une image deja decodee.
+fn compute_hashes_from_image(img: &DynamicImage, coarse_size: u32, fine_size: u32) -> Option<(Vec<u8>, Vec<u8>)> {
     let coarse_hasher = HasherConfig::new()
         .hash_alg(HashAlg::Gradient)
         .hash_size(coarse_size, coarse_size)
@@ -93,9 +183,30 @@ pub fn compute_two_pass_hashes(
         .hash_alg(HashAlg::Gradient)
         .hash_size(fine_size, fine_size)
         .to_hasher();
-    let coarse = coarse_hasher.hash_image(&img);
-    let fine = fine_hasher.hash_image(&img);
+    let coarse = coarse_hasher.hash_image(img);
+    let fine = fine_hasher.hash_image(img);
     Some((coarse.as_bytes().to_vec(), fine.as_bytes().to_vec()))
+}
+
+/// Calcule les hash grossier et fin en un seul decodage d'image.
+/// Si use_exif_thumbnail est true, tente d'utiliser le thumbnail EXIF embarque (JPEG uniquement) :
+/// le thumbnail (~160x120 px) suffit pour un gradient hash 8x8 et evite de decoder l'image entiere.
+/// Repli automatique sur image::open si le thumbnail est absent ou si le fichier n'est pas JPEG.
+pub fn compute_two_pass_hashes(
+    path: &str,
+    coarse_size: u32,
+    fine_size: u32,
+    use_exif_thumbnail: bool,
+) -> Option<(Vec<u8>, Vec<u8>)> {
+    if use_exif_thumbnail {
+        if let Some(thumb_bytes) = try_extract_exif_thumbnail(path) {
+            if let Ok(img) = image::load_from_memory(&thumb_bytes) {
+                return compute_hashes_from_image(&img, coarse_size, fine_size);
+            }
+        }
+    }
+    let img = image::open(path).ok()?;
+    compute_hashes_from_image(&img, coarse_size, fine_size)
 }
 
 #[cfg(test)]
@@ -105,7 +216,6 @@ mod tests {
     fn png_header(w: u32, h: u32) -> Vec<u8> {
         let mut buf = vec![0u8; 24];
         buf[0..8].copy_from_slice(b"\x89PNG\r\n\x1a\n");
-        // IHDR length (4 octets) + type "IHDR" (4 octets) = octets 8-15
         buf[8..12].copy_from_slice(&13u32.to_be_bytes());
         buf[12..16].copy_from_slice(b"IHDR");
         buf[16..20].copy_from_slice(&w.to_be_bytes());
@@ -115,16 +225,16 @@ mod tests {
 
     fn jpeg_header(w: u16, h: u16) -> Vec<u8> {
         let mut buf = Vec::new();
-        buf.extend_from_slice(b"\xFF\xD8");           // SOI
-        buf.extend_from_slice(b"\xFF\xE0");           // APP0 marker
-        buf.extend_from_slice(&10u16.to_be_bytes());  // APP0 length = 10
-        buf.extend_from_slice(&[0u8; 8]);             // APP0 payload (8 octets)
-        buf.extend_from_slice(b"\xFF\xC0");           // SOF0 marker
-        buf.extend_from_slice(&11u16.to_be_bytes());  // SOF0 length = 11
-        buf.push(8);                                  // precision
-        buf.extend_from_slice(&h.to_be_bytes());      // height
-        buf.extend_from_slice(&w.to_be_bytes());      // width
-        buf.push(3);                                  // components
+        buf.extend_from_slice(b"\xFF\xD8");
+        buf.extend_from_slice(b"\xFF\xE0");
+        buf.extend_from_slice(&10u16.to_be_bytes());
+        buf.extend_from_slice(&[0u8; 8]);
+        buf.extend_from_slice(b"\xFF\xC0");
+        buf.extend_from_slice(&11u16.to_be_bytes());
+        buf.push(8);
+        buf.extend_from_slice(&h.to_be_bytes());
+        buf.extend_from_slice(&w.to_be_bytes());
+        buf.push(3);
         buf
     }
 
@@ -162,18 +272,14 @@ mod tests {
 
     #[test]
     fn jpeg_sof_absent_dans_buffer() {
-        // buffer trop court pour contenir le SOF
         let buf = b"\xFF\xD8\xFF\xE0\x00\x10";
         assert_eq!(read_jpeg_dimensions(buf), None);
     }
 
     #[test]
     fn jpeg_stoppe_sur_sos() {
-        let mut buf = jpeg_header(100, 100);
-        // insere un marqueur SOS avant le SOF
-        let sos = b"\xFF\xDA";
         let mut truncated = vec![0xFFu8, 0xD8];
-        truncated.extend_from_slice(sos);
+        truncated.extend_from_slice(b"\xFF\xDA");
         assert_eq!(read_jpeg_dimensions(&truncated), None);
     }
 
@@ -181,6 +287,42 @@ mod tests {
     fn format_non_reconnu_retourne_none() {
         assert_eq!(read_png_dimensions(b"RIFF\x00\x00\x00\x00WEBP"), None);
         assert_eq!(read_jpeg_dimensions(b"RIFF\x00\x00\x00\x00WEBP"), None);
+    }
+
+    #[test]
+    fn exif_thumbnail_retourne_none_si_pas_jpeg() {
+        // Un PNG ne contient pas d'EXIF JPEG
+        let png = png_header(100, 100);
+        // Ecrire dans un fichier temporaire
+        let dir = tempfile::TempDir::new().unwrap();
+        let p = dir.path().join("test.png");
+        std::fs::write(&p, &png).unwrap();
+        assert!(try_extract_exif_thumbnail(p.to_str().unwrap()).is_none());
+    }
+
+    #[test]
+    fn exif_thumbnail_retourne_none_si_jpeg_sans_app1() {
+        // JPEG minimal sans segment APP1
+        let jpeg = jpeg_header(100, 100);
+        let dir = tempfile::TempDir::new().unwrap();
+        let p = dir.path().join("test.jpg");
+        std::fs::write(&p, &jpeg).unwrap();
+        assert!(try_extract_exif_thumbnail(p.to_str().unwrap()).is_none());
+    }
+
+    #[test]
+    fn exif_thumbnail_retourne_none_si_jpeg_avec_app1_non_exif() {
+        // JPEG avec APP1 mais sans header "Exif\0\0"
+        let mut jpeg = vec![0xFF_u8, 0xD8];
+        let app1_data = b"XMP \x00fake_xmp_data";
+        let seg_len = (app1_data.len() + 2) as u16;
+        jpeg.extend_from_slice(b"\xFF\xE1");
+        jpeg.extend_from_slice(&seg_len.to_be_bytes());
+        jpeg.extend_from_slice(app1_data);
+        let dir = tempfile::TempDir::new().unwrap();
+        let p = dir.path().join("test.jpg");
+        std::fs::write(&p, &jpeg).unwrap();
+        assert!(try_extract_exif_thumbnail(p.to_str().unwrap()).is_none());
     }
 }
 

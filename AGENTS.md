@@ -199,16 +199,27 @@ Ne pas chercher a configurer `convertFileSrc` ou `assetProtocol` pour ce cas d'u
 `ScanParams::new(folder)` donne les valeurs par defaut. Dans les tests, utiliser la syntaxe
 de mise a jour : `ScanParams { recursive: true, ..ScanParams::new(path) }`.
 
-### Pipeline pHash optimise : 5 optimisations configurables
-Les 5 optimisations sont dans `phash_config::PHashConfig` (fichier `phash_config.json`) :
+### Pipeline pHash optimise : 8 optimisations configurables
+Les 8 optimisations sont dans `phash_config::PHashConfig` (fichier `phash_config.json`) :
 1. Filtre de taille minimale - s'active si `n >= min_images_size_filter`
 2. Filtre de ratio d'aspect - lecture d'en-tete uniquement, s'active si `n >= min_images_aspect_filter`
 3. Hash en 2 passes - coarse+fine en un seul decode, s'active si `n >= min_images_two_pass`
-4. Cache inter-scans - `phash_cache.json`, invalide automatiquement si mtime ou tailles de hash changent
+4. Cache inter-scans - `phash_cache.bin` (binaire, ~4x plus compact que JSON), invalide si mtime/tailles/thumbnail_setting changent ; repli en lecture sur l'ancien `phash_cache.json`
 5. Comparaison parallele rayon - `flat_map_iter` (pas `flat_map`), s'active si `n >= min_images_parallel_compare`
+6. Decodage rapide via thumbnail EXIF - `use_exif_thumbnail=true` : lit le thumbnail (~160x120) embarque dans les JPEG via parsing manuel APP1->TIFF->IFD1 (tags 0x0201/0x0202) ; repli automatique si absent
+7. Bucket index - `use_bucket_index=true && coarse_threshold==0` : HashMap coarse->Vec<usize>, O(n * bucket_size) au lieu de O(n^2) ; desactive si coarse_threshold > 0 (trop de buckets voisins a chercher)
+8. Tri par aspect - `use_sorted_aspect=true && use_aspect_filter` : sort + partition_point pour trouver la plage de paires compatibles en O(log n) ; images sans aspect (None) mises a la fin (INFINITY)
 
 Note : `flat_map` en rayon attend `IntoParallelIterator` ; utiliser `flat_map_iter` pour un
 iterateur standard (`Vec::into_iter()`).
+
+### Cache binaire pHash : format PHCB
+`phash_cache.bin` utilise un format binaire compact. Par entree : path_len(u16) + path + mtime(u64)
++ coarse_size(u8) + fine_size(u8) + coarse_len(u8) + coarse_bytes + fine_len(u8) + fine_bytes
++ flags(u8 : bit0=thumbnail_setting, bit1=has_aspect) + [aspect(f32 LE)].
+Environ 79 octets/entree vs ~350 en JSON. `HashCache::load()` essaie le binaire en premier,
+repli sur le JSON si absent ou invalide (retrocompatibilite). `HashCache::save()` ecrit uniquement
+en binaire.
 
 ### Log de perf pHash : JSONL, un objet par scan
 Quand `perf_log_enabled=true`, chaque scan similaire ajoute une ligne JSON dans

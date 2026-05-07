@@ -931,6 +931,75 @@ mod tests {
         );
     }
 
+    #[test]
+    fn phash_bucket_index_meme_resultat_que_fallback() {
+        let dir = TempDir::new().unwrap();
+        write_solid_png(dir.path(), "a.png", [100, 150, 200], 30);
+        write_solid_png(dir.path(), "b.png", [100, 150, 200], 60);
+        write_solid_png(dir.path(), "c.png", [50, 50, 50], 30);
+
+        let path = dir.path().to_str().unwrap();
+
+        // coarse_threshold_multiplier = 0 => coarse_threshold = 0 => bucket index eligible
+        let mut cfg_bucket = crate::phash::PHashConfig::default();
+        cfg_bucket.use_bucket_index = true;
+        cfg_bucket.coarse_threshold_multiplier = 0.0;
+        cfg_bucket.min_images_two_pass = 2;
+
+        let mut cfg_fallback = crate::phash::PHashConfig::default();
+        cfg_fallback.use_bucket_index = false;
+        cfg_fallback.coarse_threshold_multiplier = 0.0;
+        cfg_fallback.min_images_two_pass = 2;
+
+        let r_bucket = scan_folder(
+            ScanParams { find_similar: true, phash_config: cfg_bucket, ..ScanParams::new(path) },
+            no_cancel(), no_progress,
+        ).unwrap();
+        let r_fallback = scan_folder(
+            ScanParams { find_similar: true, phash_config: cfg_fallback, ..ScanParams::new(path) },
+            no_cancel(), no_progress,
+        ).unwrap();
+
+        let similar_bucket: usize = r_bucket.groups.iter().filter(|g| g.similar).map(|g| g.files.len()).sum();
+        let similar_fallback: usize = r_fallback.groups.iter().filter(|g| g.similar).map(|g| g.files.len()).sum();
+        assert_eq!(similar_bucket, similar_fallback, "bucket index doit trouver les memes groupes que le fallback O(n^2)");
+    }
+
+    #[test]
+    fn phash_sorted_aspect_meme_resultat_que_fallback() {
+        let dir = TempDir::new().unwrap();
+        // 3 images landscape similaires + 1 portrait tres different
+        write_solid_png_dims(dir.path(), "land1.png", [100, 150, 200], 100, 60);
+        write_solid_png_dims(dir.path(), "land2.png", [100, 150, 200], 80, 50);
+        write_solid_png_dims(dir.path(), "land3.png", [100, 150, 200], 120, 70);
+        write_solid_png_dims(dir.path(), "port.png", [50, 50, 50], 60, 100);
+
+        let path = dir.path().to_str().unwrap();
+
+        let mut cfg_sorted = crate::phash::PHashConfig::default();
+        cfg_sorted.use_sorted_aspect = true;
+        cfg_sorted.use_bucket_index = false; // isoler la variable testee
+        cfg_sorted.min_images_aspect_filter = 2;
+
+        let mut cfg_fallback = crate::phash::PHashConfig::default();
+        cfg_fallback.use_sorted_aspect = false;
+        cfg_fallback.use_bucket_index = false;
+        cfg_fallback.min_images_aspect_filter = 2;
+
+        let r_sorted = scan_folder(
+            ScanParams { find_similar: true, phash_config: cfg_sorted, ..ScanParams::new(path) },
+            no_cancel(), no_progress,
+        ).unwrap();
+        let r_fallback = scan_folder(
+            ScanParams { find_similar: true, phash_config: cfg_fallback, ..ScanParams::new(path) },
+            no_cancel(), no_progress,
+        ).unwrap();
+
+        let similar_sorted: usize = r_sorted.groups.iter().filter(|g| g.similar).map(|g| g.files.len()).sum();
+        let similar_fallback: usize = r_fallback.groups.iter().filter(|g| g.similar).map(|g| g.files.len()).sum();
+        assert_eq!(similar_sorted, similar_fallback, "sorted aspect doit trouver les memes groupes que le fallback O(n^2)");
+    }
+
     // --- Tests filtres dans scan_folder ---
 
     #[test]

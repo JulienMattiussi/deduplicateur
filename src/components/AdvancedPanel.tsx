@@ -89,6 +89,27 @@ export function AdvancedPanel({
         </label>
       </div>
       <div className="adv-section">
+        <span className="adv-section-title" title={t.tipExifThumbnail}>{t.fastDecoding}</span>
+        <label className="adv-row" title={t.tipExifThumbnail}>
+          <span>{t.exifThumbnail}</span>
+          <input type="checkbox" checked={config.use_exif_thumbnail}
+            onChange={(e) => set("use_exif_thumbnail", e.target.checked)} disabled={disabled} />
+        </label>
+      </div>
+      <div className="adv-section">
+        <span className="adv-section-title" title={t.tipCompareOptimization}>{t.compareOptimization}</span>
+        <label className="adv-row" title={t.tipBucketIndex}>
+          <span>{t.bucketIndex}</span>
+          <input type="checkbox" checked={config.use_bucket_index}
+            onChange={(e) => set("use_bucket_index", e.target.checked)} disabled={disabled} />
+        </label>
+        <label className="adv-row" title={t.tipSortedAspect}>
+          <span>{t.sortedAspect}</span>
+          <input type="checkbox" checked={config.use_sorted_aspect}
+            onChange={(e) => set("use_sorted_aspect", e.target.checked)} disabled={disabled} />
+        </label>
+      </div>
+      <div className="adv-section">
         <span className="adv-section-title">{t.devMode}</span>
         <label className="adv-row">
           <span>{t.savePerfMetrics}</span>

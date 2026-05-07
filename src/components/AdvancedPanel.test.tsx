@@ -115,6 +115,45 @@ describe("AdvancedPanel", () => {
     );
   });
 
+  it("checkbox use_exif_thumbnail : onChange appelle onChange avec la nouvelle valeur", () => {
+    const onChange = vi.fn();
+    const config = { ...DEFAULT_PHASH_CONFIG, use_exif_thumbnail: false };
+    renderPanel({ config, onChange });
+    fireEvent.click(screen.getByText(/Param/));
+    const checkboxes = screen.getAllByRole("checkbox");
+    // quatrieme checkbox : use_exif_thumbnail
+    fireEvent.click(checkboxes[3]);
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ use_exif_thumbnail: true })
+    );
+  });
+
+  it("checkbox use_bucket_index : onChange appelle onChange avec la nouvelle valeur", () => {
+    const onChange = vi.fn();
+    const config = { ...DEFAULT_PHASH_CONFIG, use_bucket_index: false };
+    renderPanel({ config, onChange });
+    fireEvent.click(screen.getByText(/Param/));
+    const checkboxes = screen.getAllByRole("checkbox");
+    // cinquieme checkbox : use_bucket_index
+    fireEvent.click(checkboxes[4]);
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ use_bucket_index: true })
+    );
+  });
+
+  it("checkbox use_sorted_aspect : onChange appelle onChange avec la nouvelle valeur", () => {
+    const onChange = vi.fn();
+    const config = { ...DEFAULT_PHASH_CONFIG, use_sorted_aspect: false };
+    renderPanel({ config, onChange });
+    fireEvent.click(screen.getByText(/Param/));
+    const checkboxes = screen.getAllByRole("checkbox");
+    // sixieme checkbox : use_sorted_aspect
+    fireEvent.click(checkboxes[5]);
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ use_sorted_aspect: true })
+    );
+  });
+
   it("bouton Reset appelle onChange avec DEFAULT_PHASH_CONFIG", () => {
     const onChange = vi.fn();
     const config = { ...DEFAULT_PHASH_CONFIG, min_file_size_bytes: 999999 };

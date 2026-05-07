@@ -77,7 +77,7 @@ where
         .iter()
         .map(|f| {
             cache
-                .get(&f.path, f.modified, cfg.coarse_hash_size, cfg.fine_hash_size)
+                .get(&f.path, f.modified, cfg.coarse_hash_size, cfg.fine_hash_size, cfg.use_exif_thumbnail)
                 .and_then(|e| {
                     let c = BASE64.decode(&e.coarse).ok()?;
                     let fi = BASE64.decode(&e.fine).ok()?;
@@ -150,6 +150,7 @@ where
                 &candidates[i].path,
                 cfg.coarse_hash_size,
                 cfg.fine_hash_size,
+                cfg.use_exif_thumbnail,
             );
             if emit_hash_progress {
                 let n = hash_done.fetch_add(1, Ordering::Relaxed) + 1;
@@ -180,6 +181,7 @@ where
                     coarse: BASE64.encode(coarse_bytes),
                     fine: BASE64.encode(fine_bytes),
                     aspect: dimensions[i],
+                    thumbnail_setting: cfg.use_exif_thumbnail,
                 },
             );
             cache_misses += 1;
@@ -225,27 +227,265 @@ where
         return (vec![], true);
     }
 
-    let similar_pairs: Vec<(usize, usize)> = if use_parallel {
-        let sc = Arc::clone(&skipped_coarse);
-        let cf = Arc::clone(&compared_fine);
-        (0..n)
-            .into_par_iter()
-            .flat_map_iter(|i| {
+    // 2.1 : bucket index actif uniquement quand coarse_threshold == 0 (identite exacte du hash grossier)
+    let use_bucket = cfg.use_bucket_index && coarse_threshold == 0;
+
+    let similar_pairs: Vec<(usize, usize)> = if use_bucket {
+        // Grouper par hash grossier exact : O(n * taille_bucket) au lieu de O(n^2)
+        let mut buckets: HashMap<Vec<u8>, Vec<usize>> = HashMap::new();
+        for i in 0..n {
+            buckets.entry(images[i].coarse.clone()).or_default().push(i);
+        }
+        let bucket_vecs: Vec<Vec<usize>> = buckets.into_values().collect();
+
+        if use_parallel {
+            let cf = Arc::clone(&compared_fine);
+            bucket_vecs
+                .into_par_iter()
+                .flat_map_iter(|bucket| {
+                    if cancelled.load(Ordering::Relaxed) {
+                        return vec![].into_iter();
+                    }
+                    let cf = Arc::clone(&cf);
+                    let m = bucket.len();
+                    let mut local = Vec::new();
+                    for a in 0..m {
+                        for b in (a + 1)..m {
+                            let (i, j) = (bucket[a], bucket[b]);
+                            cf.fetch_add(1, Ordering::Relaxed);
+                            if pair_passes_filters(
+                                &images[i],
+                                &images[j],
+                                use_aspect_filter,
+                                cfg.aspect_ratio_tolerance,
+                                false,
+                                0,
+                                params.sim_threshold,
+                            ) {
+                                local.push((i, j));
+                            }
+                        }
+                    }
+                    local.into_iter()
+                })
+                .collect()
+        } else {
+            let mut pairs = Vec::new();
+            let mut cf = 0usize;
+            for bucket in &bucket_vecs {
                 if cancelled.load(Ordering::Relaxed) {
-                    return vec![].into_iter();
+                    return (vec![], true);
                 }
-                let sc = Arc::clone(&sc);
-                let cf = Arc::clone(&cf);
-                let mut local = Vec::new();
+                let m = bucket.len();
+                for a in 0..m {
+                    for b in (a + 1)..m {
+                        let (i, j) = (bucket[a], bucket[b]);
+                        cf += 1;
+                        if pair_passes_filters(
+                            &images[i],
+                            &images[j],
+                            use_aspect_filter,
+                            cfg.aspect_ratio_tolerance,
+                            false,
+                            0,
+                            params.sim_threshold,
+                        ) {
+                            pairs.push((i, j));
+                        }
+                    }
+                }
+            }
+            compared_fine.store(cf, Ordering::Relaxed);
+            pairs
+        }
+    } else if cfg.use_sorted_aspect && use_aspect_filter {
+        // 2.2 : tri par ratio d'aspect + recherche binaire pour eliminer les paires incompatibles
+        let mut sorted_indices: Vec<usize> = (0..n).collect();
+        sorted_indices.sort_by(|&a, &b| {
+            let ra = images[a].aspect.unwrap_or(f32::INFINITY);
+            let rb = images[b].aspect.unwrap_or(f32::INFINITY);
+            ra.partial_cmp(&rb).unwrap_or(std::cmp::Ordering::Equal)
+        });
+        let sorted_aspects: Vec<f32> = sorted_indices
+            .iter()
+            .map(|&i| images[i].aspect.unwrap_or(f32::INFINITY))
+            .collect();
+        // Les images sans aspect (None) sont a la fin (INFINITY) ; none_start est leur premier indice.
+        let none_start = sorted_aspects.partition_point(|v| v.is_finite());
+        let tol = cfg.aspect_ratio_tolerance;
+
+        if use_parallel {
+            let sc = Arc::clone(&skipped_coarse);
+            let cf = Arc::clone(&compared_fine);
+            (0..n)
+                .into_par_iter()
+                .flat_map_iter(|pos_a| {
+                    if cancelled.load(Ordering::Relaxed) {
+                        return vec![].into_iter();
+                    }
+                    let sc = Arc::clone(&sc);
+                    let cf = Arc::clone(&cf);
+                    let i = sorted_indices[pos_a];
+                    let ai = sorted_aspects[pos_a];
+                    let mut local = Vec::new();
+
+                    // Pour une image avec aspect connu, la borne haute compatible est ai/(1-tol).
+                    // Pour une image sans aspect, on ne compare qu'avec les autres sans aspect.
+                    let (real_end, incl_none) = if ai.is_finite() {
+                        let end = sorted_aspects
+                            .partition_point(|&v| v <= ai / (1.0 - tol))
+                            .min(none_start);
+                        (end, true)
+                    } else {
+                        (pos_a + 1, false)
+                    };
+
+                    for pos_b in (pos_a + 1)..real_end {
+                        let j = sorted_indices[pos_b];
+                        if use_two_pass
+                            && hamming_distance(&images[i].coarse, &images[j].coarse)
+                                > coarse_threshold
+                        {
+                            sc.fetch_add(1, Ordering::Relaxed);
+                            continue;
+                        }
+                        cf.fetch_add(1, Ordering::Relaxed);
+                        if hamming_distance(&images[i].fine, &images[j].fine) <= params.sim_threshold {
+                            local.push((i, j));
+                        }
+                    }
+
+                    // Images sans aspect : comparees avec toutes les images sans aspect,
+                    // et depuis une image avec aspect connnu, avec toutes les images sans aspect.
+                    let extra_start = if incl_none { none_start } else { pos_a + 1 };
+                    for pos_b in extra_start.max(pos_a + 1)..n {
+                        let j = sorted_indices[pos_b];
+                        if use_two_pass
+                            && hamming_distance(&images[i].coarse, &images[j].coarse)
+                                > coarse_threshold
+                        {
+                            sc.fetch_add(1, Ordering::Relaxed);
+                            continue;
+                        }
+                        cf.fetch_add(1, Ordering::Relaxed);
+                        if hamming_distance(&images[i].fine, &images[j].fine) <= params.sim_threshold {
+                            local.push((i, j));
+                        }
+                    }
+
+                    local.into_iter()
+                })
+                .collect()
+        } else {
+            let mut pairs = Vec::new();
+            let mut sc = 0usize;
+            let mut cf = 0usize;
+            for pos_a in 0..n {
+                if cancelled.load(Ordering::Relaxed) {
+                    return (vec![], true);
+                }
+                let i = sorted_indices[pos_a];
+                let ai = sorted_aspects[pos_a];
+
+                let (real_end, incl_none) = if ai.is_finite() {
+                    let end = sorted_aspects
+                        .partition_point(|&v| v <= ai / (1.0 - tol))
+                        .min(none_start);
+                    (end, true)
+                } else {
+                    (pos_a + 1, false)
+                };
+
+                for pos_b in (pos_a + 1)..real_end {
+                    let j = sorted_indices[pos_b];
+                    if use_two_pass
+                        && hamming_distance(&images[i].coarse, &images[j].coarse)
+                            > coarse_threshold
+                    {
+                        sc += 1;
+                        continue;
+                    }
+                    cf += 1;
+                    if hamming_distance(&images[i].fine, &images[j].fine) <= params.sim_threshold {
+                        pairs.push((i, j));
+                    }
+                }
+
+                let extra_start = if incl_none { none_start } else { pos_a + 1 };
+                for pos_b in extra_start.max(pos_a + 1)..n {
+                    let j = sorted_indices[pos_b];
+                    if use_two_pass
+                        && hamming_distance(&images[i].coarse, &images[j].coarse)
+                            > coarse_threshold
+                    {
+                        sc += 1;
+                        continue;
+                    }
+                    cf += 1;
+                    if hamming_distance(&images[i].fine, &images[j].fine) <= params.sim_threshold {
+                        pairs.push((i, j));
+                    }
+                }
+            }
+            skipped_coarse.store(sc, Ordering::Relaxed);
+            compared_fine.store(cf, Ordering::Relaxed);
+            pairs
+        }
+    } else {
+        // Fallback O(n^2)
+        if use_parallel {
+            let sc = Arc::clone(&skipped_coarse);
+            let cf = Arc::clone(&compared_fine);
+            (0..n)
+                .into_par_iter()
+                .flat_map_iter(|i| {
+                    if cancelled.load(Ordering::Relaxed) {
+                        return vec![].into_iter();
+                    }
+                    let sc = Arc::clone(&sc);
+                    let cf = Arc::clone(&cf);
+                    let mut local = Vec::new();
+                    for j in (i + 1)..n {
+                        if use_two_pass
+                            && hamming_distance(&images[i].coarse, &images[j].coarse)
+                                > coarse_threshold
+                        {
+                            sc.fetch_add(1, Ordering::Relaxed);
+                            continue;
+                        }
+                        cf.fetch_add(1, Ordering::Relaxed);
+                        if pair_passes_filters(
+                            &images[i],
+                            &images[j],
+                            use_aspect_filter,
+                            cfg.aspect_ratio_tolerance,
+                            false,
+                            0,
+                            params.sim_threshold,
+                        ) {
+                            local.push((i, j));
+                        }
+                    }
+                    local.into_iter()
+                })
+                .collect()
+        } else {
+            let mut pairs = Vec::new();
+            let mut sc = 0usize;
+            let mut cf = 0usize;
+            for i in 0..n {
+                if cancelled.load(Ordering::Relaxed) {
+                    return (vec![], true);
+                }
                 for j in (i + 1)..n {
                     if use_two_pass
                         && hamming_distance(&images[i].coarse, &images[j].coarse)
                             > coarse_threshold
                     {
-                        sc.fetch_add(1, Ordering::Relaxed);
+                        sc += 1;
                         continue;
                     }
-                    cf.fetch_add(1, Ordering::Relaxed);
+                    cf += 1;
                     if pair_passes_filters(
                         &images[i],
                         &images[j],
@@ -255,45 +495,14 @@ where
                         0,
                         params.sim_threshold,
                     ) {
-                        local.push((i, j));
+                        pairs.push((i, j));
                     }
                 }
-                local.into_iter()
-            })
-            .collect()
-    } else {
-        let mut pairs = Vec::new();
-        let mut sc = 0usize;
-        let mut cf = 0usize;
-        for i in 0..n {
-            if cancelled.load(Ordering::Relaxed) {
-                return (vec![], true);
             }
-            for j in (i + 1)..n {
-                if use_two_pass
-                    && hamming_distance(&images[i].coarse, &images[j].coarse)
-                        > coarse_threshold
-                {
-                    sc += 1;
-                    continue;
-                }
-                cf += 1;
-                if pair_passes_filters(
-                    &images[i],
-                    &images[j],
-                    use_aspect_filter,
-                    cfg.aspect_ratio_tolerance,
-                    false,
-                    0,
-                    params.sim_threshold,
-                ) {
-                    pairs.push((i, j));
-                }
-            }
+            skipped_coarse.store(sc, Ordering::Relaxed);
+            compared_fine.store(cf, Ordering::Relaxed);
+            pairs
         }
-        skipped_coarse.store(sc, Ordering::Relaxed);
-        compared_fine.store(cf, Ordering::Relaxed);
-        pairs
     };
 
     let t_compare_ms = t_compare_start.elapsed().as_millis() as u64;

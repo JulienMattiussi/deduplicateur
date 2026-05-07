@@ -513,3 +513,27 @@ En mode "Comparer avec un autre dossier" : dossier source S et dossier de réfé
 - [x] Tests TypeScript : 4 tests `FileThumbnail` mode "other" (SVG sans invoke, classe file-thumb-other) + 3 tests `GroupCard` same-dir (point présent/absent/mixte) - total 186 Rust / 309 TypeScript - tous au vert
 
 **Critere de validation : pendant un scan, le compteur de doublons monte en temps réel ; les groupes de fichiers ZIP/PDF affichent une icône adaptée ; les chemins longs sont tronqués par la gauche avec tooltip ; deux fichiers dans le même dossier montrent un point orange**
+
+---
+
+## Phase 24 - Optimisations pHash avancées (EXIF thumbnail + bucket index + tri aspect + cache binaire) ✅
+
+**Objectif : réduire le temps de scan pHash sur les grandes collections (10K-100K images)**
+
+- [x] `phash/config.rs` : 3 nouveaux champs `use_exif_thumbnail` (defaut true), `use_bucket_index` (defaut true), `use_sorted_aspect` (defaut true) ; tests mis a jour
+- [x] `phash/cache.rs` : champ `thumbnail_setting: bool` dans `CacheEntry` (invalidation si l'option change) ; `get()` avec 5e parametre `use_exif_thumbnail` ; format binaire `phash_cache.bin` (magic PHCB + entrees compactes ~79 octets vs ~350 en JSON) ; repli JSON en lecture pour retrocompatibilite ; 4 nouveaux tests (binaire ecrit, round-trip avec aspect+thumbnail, repli JSON, binaire prioritaire sur JSON)
+- [x] `scanner/hash.rs` : extraction manuelle du thumbnail EXIF (`try_extract_exif_thumbnail` : scan APP1, parsing TIFF IFD0->IFD1, tags 0x0201/0x0202) ; `compute_two_pass_hashes` avec 4e param `use_exif_thumbnail` ; 3 nouveaux tests (PNG retourne None, JPEG sans APP1, JPEG avec APP1 non-EXIF)
+- [x] `scanner/phash_phase.rs` : `cache.get()` et `compute_two_pass_hashes()` mis a jour avec le nouveau parametre ; `thumbnail_setting` stocke dans `CacheEntry` ; comparaison en 3 branches :
+  - **Bucket index** (`use_bucket_index && coarse_threshold==0`) : HashMap coarse->indices, O(n * bucket_size)
+  - **Tri par aspect** (`use_sorted_aspect && use_aspect_filter`) : sort + partition_point, elimine les paires incompatibles en O(log n)
+  - **Fallback O(n^2)** : code existant inchange
+- [x] `types.ts` : 3 nouveaux champs dans `PHashConfig` (`use_exif_thumbnail`, `use_bucket_index`, `use_sorted_aspect`)
+- [x] `hooks/useScanConfig.ts` : 3 nouvelles valeurs par defaut (toutes true dans `DEFAULT_PHASH_CONFIG`)
+- [x] `i18n.ts` : 8 nouvelles cles bilingues (fastDecoding, exifThumbnail, tipExifThumbnail, compareOptimization, bucketIndex, tipBucketIndex, sortedAspect, tipSortedAspect)
+- [x] `components/AdvancedPanel.tsx` : 2 nouvelles sections avec 3 checkboxes (thumbnail EXIF, bucket index, tri aspect)
+- [x] `src/help/content.ts` : article "advanced-images" mis a jour - 5 optim -> 8 optim, description EXIF/bucket/tri/cache binaire, nouveaux mots-cles
+- [x] Tests Rust : 2 nouveaux tests d'integration (`phash_bucket_index_meme_resultat_que_fallback`, `phash_sorted_aspect_meme_resultat_que_fallback`)
+- [x] Tests TypeScript : 3 nouveaux tests AdvancedPanel (checkbox use_exif_thumbnail, use_bucket_index, use_sorted_aspect)
+- [x] `i18n.ts` : cle `tipCompareOptimization` ajoutee (tooltip section titre)
+- [x] `components/AdvancedPanel.tsx` : tooltip `tipCompareOptimization` sur le titre de section
+- [x] 196 tests Rust / 312 tests TypeScript - tous au vert

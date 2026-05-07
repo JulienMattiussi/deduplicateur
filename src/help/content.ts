@@ -854,36 +854,48 @@ Disable this option if you suspect an issue or want to force a complete scan fro
     sectionId: "advanced",
     title: { fr: "Paramètres avancés - Images", en: "Advanced settings - Images" },
     keywords: {
-      fr: ["avancé", "phash", "hash", "gradient", "seuil", "deux passes", "cache phash", "parallèle", "ratio", "aspect", "dev", "métriques", "perf"],
-      en: ["advanced", "phash", "hash", "gradient", "threshold", "two-pass", "phash cache", "parallel", "ratio", "aspect", "dev", "metrics", "perf"],
+      fr: ["avancé", "phash", "hash", "gradient", "seuil", "deux passes", "cache phash", "parallèle", "ratio", "aspect", "dev", "métriques", "perf", "exif", "thumbnail", "bucket", "tri"],
+      en: ["advanced", "phash", "hash", "gradient", "threshold", "two-pass", "phash cache", "parallel", "ratio", "aspect", "dev", "metrics", "perf", "exif", "thumbnail", "bucket", "sort"],
     },
     body: {
-      fr: `Le panneau avancé (accordéon sous le mode Images) expose 5 optimisations du pipeline pHash :
+      fr: `Le panneau avancé (accordéon sous le mode Images) expose 8 optimisations du pipeline pHash :
 
 **Filtre de taille** : ignore les images plus petites que X Ko. Évite les faux positifs sur les icônes et miniatures système.
 
-**Filtre de ratio d'aspect** : exclut rapidement les paires d'images aux proportions très différentes (paysage vs portrait). Lecture d'en-tête uniquement — très rapide.
+**Filtre de ratio d'aspect** : exclut rapidement les paires d'images aux proportions très différentes (paysage vs portrait). Lecture d'en-tête uniquement - très rapide.
 
 **Hash en 2 passes** : calcule d'abord un hash grossier (empreinte numérique rapide) pour éliminer les paires clairement incompatibles, puis un hash précis seulement sur les candidats restants. Réduit le nombre de décodages d'images complets.
 
-**Cache entre scans** : mémorise les hashes (empreintes numériques) pHash par chemin+mtime. Évite de recalculer à chaque scan.
+**Cache entre scans** : mémorise les hashes pHash par chemin+mtime en format binaire compact (environ 4x plus petit que JSON). Évite de recalculer à chaque scan. Rétrocompatible avec les anciens caches JSON.
 
-**Comparaison parallèle** : utilise tous les cœurs CPU disponibles pour comparer les hashes (empreintes numériques) en parallèle.
+**Comparaison parallèle** : utilise tous les cœurs CPU disponibles pour comparer les hashes en parallèle.
+
+**Décodage rapide (thumbnail EXIF)** : pour les JPEG, utilise le thumbnail embarqué dans les métadonnées EXIF (~160x120 px) pour calculer le hash au lieu de décoder l'image entière. Environ 4x plus rapide. Repli automatique sur le décodage complet si le thumbnail est absent.
+
+**Index par bucket de hash grossier** : regroupe les images par hash grossier identique et ne compare que les images du même groupe. Quasi-linéaire au lieu de O(n²) quand le seuil grossier est 0 (identité exacte).
+
+**Tri par ratio d'aspect** : trie les images par ratio largeur/hauteur et utilise une recherche binaire pour éviter d'itérer les paires dont les proportions sont incompatibles. Élimine ces paires en O(log n) par image.
 
 **Mode développeur** : active deux journaux de débogage. \`phash_perf.jsonl\` enregistre les timings et compteurs de chaque scan similaire (une ligne JSON par scan). \`timing.log\` enregistre les horodatages détaillés de chaque étape du scan en cours (réinitialisé à chaque scan). Les fichiers se trouvent dans le dossier de données de l'application : \`%APPDATA%\\com.yavadeus.deduplicateur\\\` sous Windows, \`~/.local/share/com.yavadeus.deduplicateur/\` sous Linux, \`~/Library/Application Support/com.yavadeus.deduplicateur/\` sous macOS.
 
 **Réinitialiser** : remet toutes les valeurs aux paramètres par défaut optimaux.`,
-      en: `The advanced panel (accordion below Images mode) exposes 5 pHash pipeline optimizations:
+      en: `The advanced panel (accordion below Images mode) exposes 8 pHash pipeline optimizations:
 
 **Size filter**: skips images smaller than X KB. Prevents false positives from system icons and thumbnails.
 
-**Aspect ratio filter**: quickly excludes image pairs with very different proportions (landscape vs portrait). Header-only read — very fast.
+**Aspect ratio filter**: quickly excludes image pairs with very different proportions (landscape vs portrait). Header-only read - very fast.
 
 **Two-pass hash**: computes a coarse hash (quick digital fingerprint) first to eliminate clearly incompatible pairs, then a precise hash only for remaining candidates. Reduces the number of full image decodes.
 
-**Inter-scan cache**: remembers pHash hashes (digital fingerprints) by path+mtime. Avoids recomputing on each scan.
+**Inter-scan cache**: remembers pHash hashes by path+mtime in compact binary format (about 4x smaller than JSON). Avoids recomputing on each scan. Backward-compatible with old JSON caches.
 
-**Parallel comparison**: uses all available CPU cores to compare hashes (digital fingerprints) in parallel.
+**Parallel comparison**: uses all available CPU cores to compare hashes in parallel.
+
+**Fast decoding (EXIF thumbnail)**: for JPEG files, uses the thumbnail embedded in EXIF metadata (~160x120 px) to compute the hash instead of decoding the full image. About 4x faster. Automatically falls back to full decode if the thumbnail is absent.
+
+**Coarse hash bucket index**: groups images by identical coarse hash and only compares images in the same group. Near-linear instead of O(n²) when the coarse threshold is 0 (exact identity).
+
+**Sort by aspect ratio**: sorts images by width/height ratio and uses binary search to avoid iterating pairs with incompatible proportions. Eliminates these pairs in O(log n) per image.
 
 **Developer mode**: enables two debug logs. \`phash_perf.jsonl\` records timings and counters for each similarity scan (one JSON line per scan). \`timing.log\` records detailed timestamps for each step of the current scan (reset on each scan). Files are located in the application data folder: \`%APPDATA%\\com.yavadeus.deduplicateur\\\` on Windows, \`~/.local/share/com.yavadeus.deduplicateur/\` on Linux, \`~/Library/Application Support/com.yavadeus.deduplicateur/\` on macOS.
 

@@ -74,6 +74,33 @@ pub struct PHashConfig {
     /// Defaut : 50.
     pub min_images_parallel_compare: usize,
 
+    // --- Decodage rapide via thumbnail EXIF ---
+
+    /// Utiliser le thumbnail EXIF embarque pour le calcul du pHash (JPEG uniquement).
+    /// Evite de decoder l'image entiere : le thumbnail (~160x120 px) suffit pour un hash 8x8.
+    /// Si absent ou si le fichier n'est pas un JPEG, repli automatique sur le decodage complet.
+    /// Valeur stockee dans le cache pour garantir la coherence inter-scans.
+    /// Defaut : true.
+    pub use_exif_thumbnail: bool,
+
+    // --- Index par bucket de hash grossier ---
+
+    /// Grouper les images par hash grossier exact et ne comparer que les images du meme bucket.
+    /// Efficace uniquement quand le seuil de Hamming grossier est 0 (identite exacte du hash 4x4).
+    /// Reduit la comparaison de O(n^2) a O(n * taille_bucket), soit quasi-lineaire pour n grand.
+    /// Pour les seuils > 0, repli sur la comparaison O(n^2) classique.
+    /// Defaut : true.
+    pub use_bucket_index: bool,
+
+    // --- Tri par ratio d'aspect avant comparaison ---
+
+    /// Trier les images par ratio d'aspect et utiliser une recherche binaire pour trouver
+    /// la plage de paires compatibles. Elimine les paires incompatibles en O(log n) par image
+    /// plutot que O(1) par paire, en evitant d'iterer les paires hors tolerance.
+    /// Activé uniquement si le filtre d'aspect est actif.
+    /// Defaut : true.
+    pub use_sorted_aspect: bool,
+
     // --- Mode developpeur ---
 
     /// Enregistrer les metriques de performance dans <app_data_dir>/phash_perf.jsonl.
@@ -97,6 +124,9 @@ impl Default for PHashConfig {
             cache_enabled: true,
             parallel_compare_enabled: true,
             min_images_parallel_compare: 200,
+            use_exif_thumbnail: true,
+            use_bucket_index: true,
+            use_sorted_aspect: true,
             perf_log_enabled: false,
         }
     }
@@ -135,6 +165,9 @@ mod tests {
         assert!(cfg.min_images_aspect_filter > 0);
         assert!(cfg.min_images_two_pass > 0);
         assert!(cfg.min_images_parallel_compare > 0);
+        assert!(cfg.use_exif_thumbnail);
+        assert!(cfg.use_bucket_index);
+        assert!(cfg.use_sorted_aspect);
     }
 
     #[test]

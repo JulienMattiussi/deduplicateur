@@ -17,6 +17,9 @@ export const DEFAULT_PHASH_CONFIG: PHashConfig = {
   parallel_compare_enabled: true,
   min_images_parallel_compare: 200,
   perf_log_enabled: false,
+  use_exif_thumbnail: true,
+  use_bucket_index: true,
+  use_sorted_aspect: true,
 };
 
 export const DEFAULT_VIDEO_CONFIG: VideoConfig = {

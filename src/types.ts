@@ -81,6 +81,9 @@ export interface PHashConfig {
   parallel_compare_enabled: boolean;
   min_images_parallel_compare: number;
   perf_log_enabled: boolean;
+  use_exif_thumbnail: boolean;
+  use_bucket_index: boolean;
+  use_sorted_aspect: boolean;
 }
 
 export interface ImageMeta {
