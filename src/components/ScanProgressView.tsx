@@ -40,7 +40,7 @@ export function ScanProgressView({ progress, detectionMode, scanArchives, histor
 
   const isReading = !phase || phase === "reading";
   const showBar = !isReading && progress && progress.total > 0;
-  const pct = showBar ? Math.round((progress.current / progress.total) * 100) : 0;
+  const pct = showBar ? Math.min(100, Math.round((progress.current / progress.total) * 100)) : 0;
 
   const fileType: string = phase === "exact" ? t.typeFiles
     : phase === "images" ? t.typeImages

@@ -47,10 +47,10 @@ const baseComparison = {
   },
 };
 
-function renderComparator(onClose = vi.fn()) {
+function renderComparator(onClose = vi.fn(), findSimilar = false) {
   return render(
     <LangProvider>
-      <ArchiveComparator archiveA={archiveA} archiveB={archiveB} onClose={onClose} />
+      <ArchiveComparator archiveA={archiveA} archiveB={archiveB} findSimilar={findSimilar} simThreshold={10} onClose={onClose} />
     </LangProvider>
   );
 }
@@ -144,6 +144,47 @@ describe("ArchiveComparator - pairing greedy quand cardinalites differentes", ()
     // Une seule ligne cote B contient l'entree, les 2 autres sont vides
     const rightEmpties = right.querySelectorAll(".archive-row-empty");
     expect(rightEmpties.length).toBe(2);
+  });
+});
+
+describe("ArchiveComparator - paires similaires (B-min)", () => {
+  it("affiche les entrees similar face-a-face avec score", async () => {
+    const sim = {
+      a: {
+        path: "/x.zip",
+        entries: [
+          { internal_path: "img1.png", size: 1024, status: "similar" as const, duplicate_in: "photo.png", hash: "haa", similarity_score: 95.5 },
+        ],
+      },
+      b: {
+        path: "/y.zip",
+        entries: [
+          { internal_path: "photo.png", size: 1024, status: "similar" as const, duplicate_in: "img1.png", hash: "hbb", similarity_score: 95.5 },
+        ],
+      },
+    };
+    mockInvoke.mockResolvedValue(sim);
+    renderComparator(vi.fn(), true);
+    await waitFor(() => screen.getByTestId("archive-comparator-body"));
+    const left = screen.getByTestId("archive-col-left");
+    const right = screen.getByTestId("archive-col-right");
+    // 1 ligne similar de chaque cote (face-a-face)
+    expect(left.querySelectorAll(".archive-entry-row--similar").length).toBe(1);
+    expect(right.querySelectorAll(".archive-entry-row--similar").length).toBe(1);
+    // Score affiche dans les deux colonnes
+    expect(screen.getAllByText(/96%/).length).toBeGreaterThan(0);
+  });
+
+  it("passe findSimilar et simThreshold a get_archive_comparison", async () => {
+    mockInvoke.mockResolvedValue(baseComparison);
+    renderComparator(vi.fn(), true);
+    await waitFor(() => screen.getByTestId("archive-comparator-body"));
+    expect(mockInvoke).toHaveBeenCalledWith("get_archive_comparison", {
+      pathA: archiveA.path,
+      pathB: archiveB.path,
+      findSimilar: true,
+      simThreshold: 10,
+    });
   });
 });
 

@@ -1,10 +1,10 @@
-import { useState, startTransition, useEffect, useMemo } from "react";
+import { useState, startTransition, useEffect, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { save as dialogSave } from "@tauri-apps/plugin-dialog";
 import "./App.css";
 import { formatSize, formatDuration, VIDEO_EXTS, AUDIO_EXTS } from "./utils";
 import { useLang } from "./LangContext";
-import type { DuplicateGroup, FolderSummary, IgnoreEntry, ScanProfile, ScanSummary, ArchiveGroupResult, ArchiveInGroup } from "./types";
+import type { DuplicateGroup, FolderSummary, IgnoreEntry, ScanProfile, ScanSummary, ArchiveGroupResult, ArchiveInGroup, ArchiveDiskCheck } from "./types";
 import { interp } from "./i18n";
 import { useScanConfig } from "./hooks/useScanConfig";
 import { useScanExecution } from "./hooks/useScanExecution";
@@ -31,6 +31,7 @@ import { MissingToolBanner } from "./components/MissingToolBanner";
 import { ScanProgressView } from "./components/ScanProgressView";
 import { SessionPicker } from "./components/SessionPicker";
 import { ConfirmDeleteModal } from "./components/ConfirmDeleteModal";
+import { DiskSpaceWarningModal } from "./components/DiskSpaceWarningModal";
 import { ArchiveGroupCard } from "./components/ArchiveGroupCard";
 import { ScanResultsToolbar } from "./components/ScanResultsToolbar";
 import { DetectionModeSelector } from "./components/DetectionModeSelector";
@@ -59,6 +60,9 @@ export default function App() {
   const [cacheBytes, setCacheBytes] = useState<number | null>(null);
   const [panelResetKey, setPanelResetKey] = useState(0);
   const [preScanToolMissing, setPreScanToolMissing] = useState<"ffmpeg" | "fpcalc" | null>(null);
+  const [diskWarning, setDiskWarning] = useState<ArchiveDiskCheck | null>(null);
+  const [precheckRunning, setPrecheckRunning] = useState(false);
+  const precheckAbortedRef = useRef(false);
   const [purgeConfirm, setPurgeConfirm] = useState(false);
 
   const config = useScanConfig();
@@ -237,9 +241,50 @@ export default function App() {
       return;
     }
     setPreScanToolMissing(null);
+
+    // Pre-check d'espace disque si on est en mode Image avec scan_archives
+    // (B-revised : extraction temp dir necessaire pour pHash dans archives).
+    if (config.detectionMode === "images" && config.scanArchives) {
+      precheckAbortedRef.current = false;
+      setPrecheckRunning(true);
+      try {
+        const archives = await invoke<string[]>("list_archive_paths", {
+          folder: config.folder,
+          recursive: config.scanMode === "by_folder" || config.scanMode === "compare_folder" ? true : config.recursive,
+        });
+        if (precheckAbortedRef.current) return;
+        if (archives.length > 0) {
+          const check = await invoke<ArchiveDiskCheck>("check_archive_disk_space", { archivePaths: archives });
+          if (precheckAbortedRef.current) return;
+          if (check.needs_warning) {
+            setPrecheckRunning(false);
+            setDiskWarning(check);  // affiche la modale ; user choisira via les handlers
+            return;
+          }
+        }
+      } catch {
+        // En cas d'echec du pre-check (folder invalide, etc.), on continue le scan normal :
+        // l'erreur sera surfacee par scan_folder lui-meme.
+      }
+      setPrecheckRunning(false);
+      if (precheckAbortedRef.current) return;
+    }
+
     setPanelResetKey(k => k + 1);
     resetResults();
     return scanExec.scan(buildScanArgsFromConfig(config, lang));
+  }
+
+  function cancelPrecheck() {
+    precheckAbortedRef.current = true;
+    setPrecheckRunning(false);
+  }
+
+  function continueWithoutArchivePhash() {
+    setDiskWarning(null);
+    setPanelResetKey(k => k + 1);
+    resetResults();
+    scanExec.scan({ ...buildScanArgsFromConfig(config, lang), skipArchivePhash: true });
   }
 
   async function handleIgnoreGroup(groupId: string) {
@@ -315,7 +360,7 @@ export default function App() {
     scanExec.scan(buildScanArgsFromProfile(profile, config.audioConfig));
   }
 
-  const showSessionPicker = !summary && !scanExec.scanning;
+  const showSessionPicker = !summary && !scanExec.scanning && !precheckRunning;
 
   useEffect(() => {
     if (showSessionPicker) {
@@ -472,12 +517,13 @@ export default function App() {
               disabled={scanExec.scanning || config.scanMode === "by_folder" || config.scanMode === "compare_folder"} />
             {t.recursive}
           </label>
-          {config.detectionMode === "files" && !scanExec.scanning && (
+          {(config.detectionMode === "files" || config.detectionMode === "images") && (
             <label className="toggle-recursive" title={t.tipScanArchives} data-testid="scan-archives-label">
               <input
                 type="checkbox"
                 checked={config.scanArchives}
                 onChange={(e) => config.setScanArchives(e.target.checked)}
+                disabled={scanExec.scanning}
                 data-testid="scan-archives-checkbox"
               />
               {t.scanArchives}
@@ -487,8 +533,14 @@ export default function App() {
             <button className="btn-cancel" onClick={scanExec.cancelScan} disabled={scanExec.cancelling}>
               {scanExec.cancelling ? <><span className="btn-spinner" /> {t.cancelling}</> : t.cancel}
             </button>
+          ) : precheckRunning ? (
+            <button className="btn-cancel" onClick={cancelPrecheck} data-testid="cancel-precheck-btn">
+              {t.cancel}
+            </button>
           ) : (
-            <button className="btn-primary" onClick={handleScan} disabled={!config.folder}>{t.analyse}</button>
+            <button className="btn-primary" onClick={handleScan} disabled={!config.folder}>
+              {t.analyse}
+            </button>
           )}
         </div>
 
@@ -725,10 +777,17 @@ export default function App() {
         </div>
       )}
 
-      {!summary && !scanExec.scanning && sessions.length === 0 && (
+      {!summary && !scanExec.scanning && !precheckRunning && sessions.length === 0 && (
         <div className="empty-state">
           <span className="empty-icon">🔍</span>
           <p>{t.pickFolderHint}</p>
+        </div>
+      )}
+
+      {precheckRunning && !scanExec.scanning && (
+        <div className="empty-state" data-testid="precheck-running">
+          <div className="spinner" />
+          <p>{t.precheckMessage}</p>
         </div>
       )}
 
@@ -779,6 +838,8 @@ export default function App() {
         <ArchiveComparator
           archiveA={archiveComparatorPair.a}
           archiveB={archiveComparatorPair.b}
+          findSimilar={summary?.find_similar ?? false}
+          simThreshold={10}
           onClose={() => setArchiveComparatorPair(null)}
         />
       )}
@@ -789,6 +850,16 @@ export default function App() {
           totalSize={selection.selectedSize}
           onCancel={() => selection.setConfirmPending(false)}
           onConfirm={selection.doDelete}
+        />
+      )}
+
+      {diskWarning && (
+        <DiskSpaceWarningModal
+          neededBytes={diskWarning.needed_bytes}
+          availableBytes={diskWarning.available_bytes}
+          deficitBytes={diskWarning.deficit_bytes}
+          onCancel={() => setDiskWarning(null)}
+          onContinueSkipping={continueWithoutArchivePhash}
         />
       )}
 

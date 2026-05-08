@@ -134,6 +134,10 @@ pub struct ScanParams {
     pub groups_counter: Option<Arc<AtomicUsize>>,
     /// Analyser le contenu des archives (ZIP, tar.gz, 7z...) et comparer entre archives.
     pub scan_archives: bool,
+    /// Si true, ignorer la phase pHash sur les images des archives (utilise quand
+    /// l'utilisateur choisit "Continuer sans analyser les images archivees" face a
+    /// l'alerte d'espace disque insuffisant). La phase exact (xxh3) reste active.
+    pub skip_archive_phash: bool,
 }
 
 impl ScanParams {
@@ -169,6 +173,7 @@ impl ScanParams {
             max_modified_timestamp: 0,
             groups_counter: None,
             scan_archives: false,
+            skip_archive_phash: false,
         }
     }
 }

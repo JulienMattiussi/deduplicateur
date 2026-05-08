@@ -1,0 +1,413 @@
+//! Extraction des entrees image d'archives vers un dossier temporaire.
+//!
+//! Permet de reutiliser le pipeline pHash standard (qui travaille sur des chemins disque)
+//! avec ses optimisations (EXIF thumbnail, decodage parallele rayon, etc.) au lieu de
+//! decoder en memoire entree par entree.
+//!
+//! Le `TempDir` est detruit automatiquement quand `ImageExtraction` sort de scope (Drop).
+
+use std::path::{Path, PathBuf};
+use std::fs::File;
+use std::io::Read;
+use tempfile::TempDir;
+use sevenz_rust2::{ArchiveReader, Password};
+
+use crate::archive::{ArchiveFormat, EntryCallback, detect_archive_format};
+use crate::scanner::hash::is_image_path;
+
+/// Une image extraite d'une archive vers un fichier temporaire sur disque.
+pub struct ExtractedImage {
+    /// Index de l'archive source dans la liste passee a `extract_image_entries`.
+    pub archive_idx: usize,
+    /// Chemin interne dans l'archive (ex. "subdir/page01.jpg").
+    pub internal_path: String,
+    /// Chemin sur disque dans le temp dir (valide tant que l'`ImageExtraction` parent vit).
+    pub temp_path: PathBuf,
+}
+
+/// Resultat de l'extraction. Le `temp_dir` est detruit automatiquement quand on drop
+/// cette struct, ce qui supprime tous les fichiers extraits en cascade.
+pub struct ImageExtraction {
+    /// Garde-fou : la destruction de ce TempDir supprime recursivement le dossier
+    /// et tous les fichiers extraits. NE PAS DROP avant d'avoir fini d'utiliser
+    /// les `temp_path` des items.
+    pub _temp_dir: TempDir,
+    pub items: Vec<ExtractedImage>,
+}
+
+/// Sous-dossier "scan_temp" sous le data_dir de l'app, parent de tous les TempDir d'extraction.
+/// Permet le cleanup_orphan au demarrage de l'app : on peut tout supprimer sous ce parent.
+pub fn scan_temp_parent(data_dir: &Path) -> PathBuf {
+    data_dir.join("scan_temp")
+}
+
+/// Estime la taille totale (bytes) qu'occupera l'extraction des entrees image
+/// de ces archives. Lit les headers (central directory pour ZIP, headers tar/7z)
+/// sans decompresser. Tres rapide.
+pub fn estimate_extraction_size(archive_paths: &[String]) -> u64 {
+    let mut total: u64 = 0;
+    for arch_path in archive_paths {
+        let format = match detect_archive_format(Path::new(arch_path)) {
+            Some(f) => f,
+            None => continue,
+        };
+        total += match format {
+            ArchiveFormat::Zip => estimate_zip(arch_path),
+            ArchiveFormat::TarGz | ArchiveFormat::TarBz2 | ArchiveFormat::TarXz | ArchiveFormat::TarZst => {
+                estimate_tar(arch_path, format)
+            }
+            ArchiveFormat::SevenZip => estimate_sevenz(arch_path),
+        };
+    }
+    total
+}
+
+fn estimate_zip(arch_path: &str) -> u64 {
+    let file = match File::open(arch_path) { Ok(f) => f, Err(_) => return 0 };
+    let mut archive = match zip::ZipArchive::new(file) { Ok(a) => a, Err(_) => return 0 };
+    let mut sum = 0u64;
+    for i in 0..archive.len() {
+        let entry = match archive.by_index(i) { Ok(e) => e, Err(_) => continue };
+        if entry.is_dir() || entry.encrypted() { continue; }
+        if !is_image_path(entry.name()) { continue; }
+        sum += entry.size();
+    }
+    sum
+}
+
+fn estimate_tar(arch_path: &str, format: ArchiveFormat) -> u64 {
+    let file = match File::open(arch_path) { Ok(f) => f, Err(_) => return 0 };
+    fn count<R: Read>(mut archive: tar::Archive<R>) -> u64 {
+        let mut sum = 0u64;
+        if let Ok(entries) = archive.entries() {
+            for entry in entries.flatten() {
+                let header = entry.header();
+                match header.entry_type() {
+                    tar::EntryType::Regular | tar::EntryType::Continuous => {}
+                    _ => continue,
+                }
+                if let Ok(p) = entry.path() {
+                    if is_image_path(&p.to_string_lossy()) {
+                        sum += header.size().unwrap_or(0);
+                    }
+                }
+            }
+        }
+        sum
+    }
+    match format {
+        ArchiveFormat::TarGz => count(tar::Archive::new(flate2::read::GzDecoder::new(file))),
+        ArchiveFormat::TarBz2 => count(tar::Archive::new(bzip2::read::BzDecoder::new(file))),
+        ArchiveFormat::TarXz => count(tar::Archive::new(xz2::read::XzDecoder::new(file))),
+        ArchiveFormat::TarZst => match zstd::Decoder::new(file) {
+            Ok(zst) => count(tar::Archive::new(zst)),
+            Err(_) => 0,
+        },
+        _ => 0,
+    }
+}
+
+fn estimate_sevenz(arch_path: &str) -> u64 {
+    let mut reader = match ArchiveReader::open(arch_path, Password::empty()) {
+        Ok(r) => r,
+        Err(_) => return 0,
+    };
+    let mut sum = 0u64;
+    let _ = reader.for_each_entries(|entry, _stream| {
+        if entry.is_directory() || !entry.has_stream() { return Ok(true); }
+        if is_image_path(entry.name()) {
+            sum += entry.size();
+        }
+        Ok(true)
+    });
+    sum
+}
+
+/// Espace disque disponible (bytes) sur le volume contenant `path`.
+pub fn available_disk_space(path: &Path) -> u64 {
+    use fs2::available_space;
+    available_space(path).unwrap_or(0)
+}
+
+/// Extrait toutes les entrees image des archives donnees vers un nouveau dossier
+/// temporaire (sous data_dir/scan_temp/). `on_entry` est appele apres chaque image
+/// extraite ; retourner false interrompt l'extraction.
+pub fn extract_image_entries(
+    archive_paths: &[String],
+    data_dir: &Path,
+    on_entry: EntryCallback,
+) -> std::io::Result<ImageExtraction> {
+    let parent = scan_temp_parent(data_dir);
+    std::fs::create_dir_all(&parent)?;
+    let temp_dir = TempDir::new_in(&parent)?;
+    let mut items = Vec::new();
+
+    for (arch_idx, arch_path) in archive_paths.iter().enumerate() {
+        let format = match detect_archive_format(Path::new(arch_path)) {
+            Some(f) => f,
+            None => continue,
+        };
+        let arch_subdir = temp_dir.path().join(format!("a{}", arch_idx));
+        std::fs::create_dir_all(&arch_subdir)?;
+
+        let result = match format {
+            ArchiveFormat::Zip => extract_zip(arch_path, arch_idx, &arch_subdir, &mut items, on_entry),
+            ArchiveFormat::TarGz | ArchiveFormat::TarBz2 | ArchiveFormat::TarXz | ArchiveFormat::TarZst => {
+                extract_tar(arch_path, format, arch_idx, &arch_subdir, &mut items, on_entry)
+            }
+            ArchiveFormat::SevenZip => extract_sevenz(arch_path, arch_idx, &arch_subdir, &mut items, on_entry),
+        };
+        // En cas d'erreur sur une archive, on continue avec les suivantes (extraction best-effort)
+        let _ = result;
+    }
+
+    Ok(ImageExtraction { _temp_dir: temp_dir, items })
+}
+
+fn safe_filename(idx: usize, original: &str) -> String {
+    let ext = original.rsplit('.').next().unwrap_or("bin").to_lowercase();
+    // Filtrage minimal : on garde juste l'index + l'extension. Les chemins internes
+    // peuvent contenir n'importe quoi, on ne tente pas de les preserver.
+    format!("e{}.{}", idx, ext)
+}
+
+fn extract_zip(
+    arch_path: &str,
+    arch_idx: usize,
+    out_dir: &Path,
+    items: &mut Vec<ExtractedImage>,
+    on_entry: EntryCallback,
+) -> std::io::Result<()> {
+    let file = File::open(arch_path)?;
+    let mut archive = zip::ZipArchive::new(file)
+        .map_err(|e| std::io::Error::other(e.to_string()))?;
+    for i in 0..archive.len() {
+        let mut entry = match archive.by_index(i) {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        if entry.is_dir() || entry.encrypted() { continue; }
+        let name = entry.name().to_string();
+        if !is_image_path(&name) { continue; }
+        let temp_path = out_dir.join(safe_filename(i, &name));
+        let mut out = File::create(&temp_path)?;
+        std::io::copy(&mut entry, &mut out)?;
+        items.push(ExtractedImage {
+            archive_idx: arch_idx,
+            internal_path: name,
+            temp_path,
+        });
+        if !on_entry() { break; }
+    }
+    Ok(())
+}
+
+fn extract_tar(
+    arch_path: &str,
+    format: ArchiveFormat,
+    arch_idx: usize,
+    out_dir: &Path,
+    items: &mut Vec<ExtractedImage>,
+    on_entry: EntryCallback,
+) -> std::io::Result<()> {
+    let file = File::open(arch_path)?;
+    match format {
+        ArchiveFormat::TarGz => extract_tar_inner(tar::Archive::new(flate2::read::GzDecoder::new(file)), arch_idx, out_dir, items, on_entry),
+        ArchiveFormat::TarBz2 => extract_tar_inner(tar::Archive::new(bzip2::read::BzDecoder::new(file)), arch_idx, out_dir, items, on_entry),
+        ArchiveFormat::TarXz => extract_tar_inner(tar::Archive::new(xz2::read::XzDecoder::new(file)), arch_idx, out_dir, items, on_entry),
+        ArchiveFormat::TarZst => {
+            let zst = zstd::Decoder::new(file)?;
+            extract_tar_inner(tar::Archive::new(zst), arch_idx, out_dir, items, on_entry)
+        }
+        _ => Ok(()),
+    }
+}
+
+fn extract_tar_inner<R: Read>(
+    mut archive: tar::Archive<R>,
+    arch_idx: usize,
+    out_dir: &Path,
+    items: &mut Vec<ExtractedImage>,
+    on_entry: EntryCallback,
+) -> std::io::Result<()> {
+    let mut idx = 0;
+    for entry in archive.entries()? {
+        let mut entry = match entry {
+            Ok(e) => e,
+            Err(_) => { idx += 1; continue; }
+        };
+        let header = entry.header();
+        match header.entry_type() {
+            tar::EntryType::Regular | tar::EntryType::Continuous => {}
+            _ => { idx += 1; continue; }
+        }
+        let path = match entry.path() {
+            Ok(p) => p.to_string_lossy().to_string(),
+            Err(_) => { idx += 1; continue; }
+        };
+        if !is_image_path(&path) { idx += 1; continue; }
+        let temp_path = out_dir.join(safe_filename(idx, &path));
+        let mut out = File::create(&temp_path)?;
+        std::io::copy(&mut entry, &mut out)?;
+        items.push(ExtractedImage {
+            archive_idx: arch_idx,
+            internal_path: path,
+            temp_path,
+        });
+        idx += 1;
+        if !on_entry() { break; }
+    }
+    Ok(())
+}
+
+fn extract_sevenz(
+    arch_path: &str,
+    arch_idx: usize,
+    out_dir: &Path,
+    items: &mut Vec<ExtractedImage>,
+    on_entry: EntryCallback,
+) -> std::io::Result<()> {
+    let mut reader = ArchiveReader::open(arch_path, Password::empty())
+        .map_err(|e| std::io::Error::other(e.to_string()))?;
+    let mut idx = 0usize;
+    let mut io_err: Option<std::io::Error> = None;
+    let _ = reader.for_each_entries(|entry, stream| {
+        if entry.is_directory() || !entry.has_stream() {
+            idx += 1;
+            return Ok(true);
+        }
+        let name = entry.name().to_string();
+        if !is_image_path(&name) {
+            idx += 1;
+            return Ok(true);
+        }
+        let temp_path = out_dir.join(safe_filename(idx, &name));
+        let result: std::io::Result<()> = (|| {
+            let mut out = File::create(&temp_path)?;
+            std::io::copy(stream, &mut out)?;
+            Ok(())
+        })();
+        if let Err(e) = result {
+            io_err = Some(e);
+            return Ok(false);
+        }
+        items.push(ExtractedImage {
+            archive_idx: arch_idx,
+            internal_path: name,
+            temp_path,
+        });
+        idx += 1;
+        Ok(on_entry())
+    });
+    if let Some(e) = io_err { return Err(e); }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
+
+    fn make_zip_with_images(entries: &[(&str, &[u8])]) -> NamedTempFile {
+        let mut f = NamedTempFile::with_suffix(".zip").unwrap();
+        {
+            let mut w = zip::ZipWriter::new(std::io::BufWriter::new(f.as_file_mut()));
+            let opts = zip::write::SimpleFileOptions::default();
+            for (name, data) in entries {
+                w.start_file(*name, opts).unwrap();
+                w.write_all(data).unwrap();
+            }
+            w.finish().unwrap();
+        }
+        f
+    }
+
+    #[test]
+    fn extract_filtre_les_non_images() {
+        let zip = make_zip_with_images(&[
+            ("readme.txt", b"texte"),
+            ("page1.jpg", b"\xFF\xD8\xFF"),  // JPEG magic mais pas valide, peu importe
+            ("script.ts", b"code"),
+            ("page2.png", b"\x89PNG"),
+        ]);
+        let tmp = TempDir::new().unwrap();
+        let result = extract_image_entries(
+            &[zip.path().to_str().unwrap().to_string()],
+            tmp.path(),
+            &|| true,
+        ).unwrap();
+        assert_eq!(result.items.len(), 2, "seules les 2 images doivent etre extraites");
+        let paths: Vec<&str> = result.items.iter().map(|i| i.internal_path.as_str()).collect();
+        assert!(paths.contains(&"page1.jpg"));
+        assert!(paths.contains(&"page2.png"));
+    }
+
+    #[test]
+    fn extraction_bytes_correspondent_au_zip_source() {
+        let zip = make_zip_with_images(&[("img.jpg", b"contenu_image_xyz")]);
+        let tmp = TempDir::new().unwrap();
+        let result = extract_image_entries(
+            &[zip.path().to_str().unwrap().to_string()],
+            tmp.path(),
+            &|| true,
+        ).unwrap();
+        assert_eq!(result.items.len(), 1);
+        let bytes = std::fs::read(&result.items[0].temp_path).unwrap();
+        assert_eq!(bytes, b"contenu_image_xyz");
+    }
+
+    #[test]
+    fn temp_dir_supprime_apres_drop() {
+        let zip = make_zip_with_images(&[("img.jpg", b"data")]);
+        let tmp = TempDir::new().unwrap();
+        let temp_path = {
+            let result = extract_image_entries(
+                &[zip.path().to_str().unwrap().to_string()],
+                tmp.path(),
+                &|| true,
+            ).unwrap();
+            result.items[0].temp_path.clone()
+        };
+        // Apres le drop de result, le fichier ne doit plus exister
+        assert!(!temp_path.exists(), "le fichier extrait doit etre supprime apres Drop");
+    }
+
+    #[test]
+    fn estimate_compte_uniquement_les_images() {
+        let zip = make_zip_with_images(&[
+            ("readme.txt", &vec![0u8; 1000]),  // 1000 bytes texte (ignored)
+            ("page1.jpg", &vec![1u8; 500]),    // 500 bytes image
+            ("page2.png", &vec![2u8; 300]),    // 300 bytes image
+        ]);
+        let estimate = estimate_extraction_size(&[zip.path().to_str().unwrap().to_string()]);
+        assert_eq!(estimate, 800, "doit sommer uniquement les entrees image (500 + 300)");
+    }
+
+    #[test]
+    fn estimate_archives_inexistantes_retourne_zero() {
+        let estimate = estimate_extraction_size(&["/chemin/inexistant.zip".to_string()]);
+        assert_eq!(estimate, 0);
+    }
+
+    #[test]
+    fn cancel_via_callback_arrete_l_extraction() {
+        let zip = make_zip_with_images(&[
+            ("img1.jpg", b"a"),
+            ("img2.jpg", b"b"),
+            ("img3.jpg", b"c"),
+        ]);
+        let tmp = TempDir::new().unwrap();
+        let count = std::cell::Cell::new(0);
+        let cancel_after_first: EntryCallback = &|| {
+            count.set(count.get() + 1);
+            count.get() < 1  // false des le 1er = stop apres extraction de la 1ere image
+        };
+        let result = extract_image_entries(
+            &[zip.path().to_str().unwrap().to_string()],
+            tmp.path(),
+            cancel_after_first,
+        ).unwrap();
+        assert_eq!(result.items.len(), 1, "extraction stoppee apres la 1ere image");
+    }
+}

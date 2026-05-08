@@ -1137,7 +1137,7 @@ The notification uses the **active UI language** (FR or EN) at the time the scan
       en: ["archive", "zip", "tar", "gz", "7z", "archives", "content", "duplicate", "comparator"],
     },
     body: {
-      fr: `**Analyser les archives** est une option disponible en mode **Fichiers**. Elle ouvre les archives (ZIP, tar.gz, 7z, CBZ...) trouvées dans le dossier analysé et détecte celles dont le contenu est identique ou partiellement partagé avec une autre archive. Les fichiers \`.cbz\` (Comic Book ZIP) sont traités comme des ZIP. Les \`.cbr\` (Comic Book RAR) et \`.rar\` ne sont pas supportés.
+      fr: `**Analyser les archives** est une option disponible en mode **Fichiers** et en mode **Images**. Elle ouvre les archives (ZIP, tar.gz, 7z, CBZ...) trouvées dans le dossier analysé et détecte celles dont le contenu est identique (même contenu binaire) ou similaire (en mode Images : pHash perceptuel sur les images internes, utile pour des packs de comics ou de photos). Les fichiers \`.cbz\` (Comic Book ZIP) sont traités comme des ZIP. Les \`.cbr\` (Comic Book RAR) et \`.rar\` ne sont pas supportés.
 
 **Activer l'option** : cochez la case "Analyser les archives" dans la barre de configuration, à côté de l'option "Sous-dossiers".
 
@@ -1150,7 +1150,7 @@ The notification uses the **active UI language** (FR or EN) at the time the scan
 **Comparateur d'archives** : cliquez sur **Comparer** pour ouvrir le comparateur plein écran. Les entrées dupliquées entre les deux archives sont affichées **face à face** (mêmes lignes), suivies des entrées uniques côté gauche puis côté droit. Le scroll des deux colonnes est synchronisé. Une case **"Doublons uniquement"** masque les entrées non partagées. En bas de chaque colonne, un bloc de méta affiche le nom, le dossier, la taille, la date et le ratio entrées dupliquées/total de l'archive.
 
 **Supprimer** : utilisez la barre d'outils standard (\`Supprimer N fichiers\`) après avoir coché les archives supprimables. La suppression envoie le fichier dans la corbeille (récupérable).`,
-      en: `**Scan archives** is an option available in **Files** mode. It opens archives (ZIP, tar.gz, 7z, CBZ...) found in the scanned folder and detects those whose content is identical or partially shared with another archive. \`.cbz\` files (Comic Book ZIP) are treated as ZIP archives. \`.cbr\` (Comic Book RAR) and \`.rar\` are not supported.
+      en: `**Scan archives** is an option available in **Files** and **Images** modes. It opens archives (ZIP, tar.gz, 7z, CBZ...) found in the scanned folder and detects those whose content is identical (same binary content) or similar (in Images mode: perceptual pHash on internal images, useful for comic packs or photo archives). \`.cbz\` files (Comic Book ZIP) are treated as ZIP archives. \`.cbr\` (Comic Book RAR) and \`.rar\` are not supported.
 
 **Enable the option**: check the "Scan archives" checkbox in the configuration bar, next to the "Subfolders" option.
 

@@ -174,7 +174,7 @@ fn try_extract_exif_thumbnail(path: &str) -> Option<Vec<u8>> {
 }
 
 /// Calcule les hash grossier et fin depuis une image deja decodee.
-fn compute_hashes_from_image(img: &DynamicImage, coarse_size: u32, fine_size: u32) -> Option<(Vec<u8>, Vec<u8>)> {
+pub fn compute_hashes_from_image(img: &DynamicImage, coarse_size: u32, fine_size: u32) -> Option<(Vec<u8>, Vec<u8>)> {
     let coarse_hasher = HasherConfig::new()
         .hash_alg(HashAlg::Gradient)
         .hash_size(coarse_size, coarse_size)
@@ -186,6 +186,22 @@ fn compute_hashes_from_image(img: &DynamicImage, coarse_size: u32, fine_size: u3
     let coarse = coarse_hasher.hash_image(img);
     let fine = fine_hasher.hash_image(img);
     Some((coarse.as_bytes().to_vec(), fine.as_bytes().to_vec()))
+}
+
+/// Calcule les hash perceptuels (coarse + fine) d'une image stockee en memoire.
+/// Utilise pour les entrees d'archive (zip/7z/tar) : on a deja les bytes en RAM,
+/// pas besoin de passer par un fichier disque.
+pub fn compute_hashes_from_bytes(bytes: &[u8], coarse_size: u32, fine_size: u32) -> Option<(Vec<u8>, Vec<u8>)> {
+    let img = image::load_from_memory(bytes).ok()?;
+    compute_hashes_from_image(&img, coarse_size, fine_size)
+}
+
+/// Vrai si l'extension du nom indique une image supportee par le pipeline pHash.
+pub fn is_image_path(name: &str) -> bool {
+    let ext = name.rsplit('.').next().unwrap_or("").to_lowercase();
+    matches!(ext.as_str(),
+        "jpg" | "jpeg" | "png" | "webp" | "bmp" | "gif" | "tiff" | "tif" | "avif"
+    )
 }
 
 /// Calcule les hash grossier et fin en un seul decodage d'image.

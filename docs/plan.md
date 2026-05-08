@@ -731,7 +731,7 @@ En mode "Comparer avec un autre dossier" : dossier source S et dossier de réfé
 
 ---
 
-### Phase 27B - Mode Image (pHash sur contenu d'archives)
+### Phase 27B - Mode Image (pHash sur contenu d'archives) ✅ (B-min)
 
 **B1. pHash sur entrées d'archives image**
 - `scanner/archive_phase.rs` : si mode Image, après la phase de hachage exact, lancer la phase pHash sur les entrées image des archives
@@ -751,6 +751,40 @@ En mode "Comparer avec un autre dossier" : dossier source S et dossier de réfé
 **B3. Tests Rust et TypeScript**
 - `archive_phase.rs` : deux ZIPs avec la même image en résolutions différentes → groupe similaire
 - `ArchiveComparator.test.tsx` : badge "similaire" avec score, badge "doublon exact" restant
+
+**B-min (livre) - Realise**
+- [x] `ArchiveEntry` Rust etendu avec `phash: Option<(Vec<u8>, Vec<u8>)>`
+- [x] Helpers `compute_hashes_from_bytes` et `is_image_path` exposes dans `scanner::hash`
+- [x] zip_reader, tar_reader, sevenz_reader : decodage in-memory (jusqu'a 50 Mo) pour les entrees image quand `compute_phash=true`
+- [x] `archive_phase::run` : 2e passe d'appariement par pHash sur les entrees image non-matchees en exact, integration au Union-Find
+- [x] `compute_comparison(path_a, path_b, find_similar, sim_threshold)` : appariement greedy par pHash apres l'exact, status="similar" + similarity_score (% sur la taille du hash fin)
+- [x] `ArchiveEntryResult` etendu : `status: "duplicate" | "similar" | "unique"` + `similarity_score: Option<f32>`
+- [x] UI : checkbox "Analyser les archives" disponible aussi en mode Images
+- [x] `ArchiveComparator` : alignEntries gere la 3e categorie "similar" (paires via duplicate_in), badge orange + score % sur les lignes similaires
+- [x] CSS : `.archive-entry-row--similar` (fond orange tres clair) + `.archive-row-score`
+- [x] 2 nouveaux tests Rust (image similaire detectee avec find_similar, non-image ignoree)
+- [x] 2 nouveaux tests TS (similar pairing + passage des params find_similar/sim_threshold a invoke)
+- [x] 231 tests Rust / 412 tests TypeScript - tous au vert
+
+**B-full (differee)** : cache pHash dedie pour archives + thumbnails lazy des entrees image dans le comparateur. A faire si besoin de perfs (re-scan rapide).
+
+**B-revised (livre) - Refonte par extraction temp dir**
+- [x] Module `archive/extractor.rs` : extrait les entrees image vers un sous-dossier de `app_data/scan_temp/<uuid>/`, support ZIP / tar.* / 7z, callback per-entry pour progress + annulation, cleanup automatique via TempDir Drop
+- [x] Helpers `estimate_extraction_size(archives)` (lit headers sans decompresser) et `available_disk_space(path)` (via crate `fs2`)
+- [x] `archive_phase::run` : Phase 1 (xxh3 streaming, in-memory) + Phase 2 (extraction + pHash parallele rayon avec EXIF thumbnail via `compute_two_pass_hashes`) + Phase 3 (Union-Find groups)
+- [x] Pre-check espace disque avant scan : commande Tauri `check_archive_disk_space(archives)` retourne `{ needed_bytes, available_bytes, needs_warning, deficit_bytes }`. Marge de securite 1 Go.
+- [x] Modale `DiskSpaceWarningModal` (FR/EN) : titre, corps avec valeurs Mo/Go adaptatives, boutons "Annuler" / "Continuer sans analyser les images archivees"
+- [x] Flag `skip_archive_phash: bool` dans `ScanParams` : si user opte pour "continuer sans", la Phase 2 est sautee mais Phase 1 (xxh3) reste active
+- [x] Cleanup au boot de l'app : `setup` supprime `app_data/scan_temp/` en entier (silencieux) en cas de temp dir orphelin laisse par un crash
+- [x] Commande `list_archive_paths(folder, recursive)` : list rapide des archives d'un dossier pour le pre-check frontend
+- [x] Tests : `extract_filtre_les_non_images`, `extraction_bytes_correspondent_au_zip_source`, `temp_dir_supprime_apres_drop`, `cancel_via_callback_arrete_l_extraction`, `estimate_compte_uniquement_les_images`, `estimate_archives_inexistantes_retourne_zero`, `skip_phash` dans le test similar
+- [x] 237 tests Rust / 418 tests TypeScript - tous au vert / 0 warning clippy
+
+**Benefices mesurables vs B-min** :
+- Parallelisme rayon sur le decodage pHash → speedup proportionnel au nb de cores
+- EXIF thumbnail (via `compute_two_pass_hashes(use_exif_thumbnail=true)`) → JPEG decodage 5-10x plus rapide
+- Architecture prete pour 27C (audio fpcalc requiert un fichier disque)
+- Cleanup robuste meme apres crash (boot-time cleanup)
 
 ---
 

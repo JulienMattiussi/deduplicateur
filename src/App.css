@@ -2765,6 +2765,19 @@
 .archive-entry-row--unique {
   opacity: 0.55;
 }
+.archive-entry-row--similar {
+  background: color-mix(in srgb, #f39c12 8%, transparent);
+}
+.archive-row-score {
+  flex-shrink: 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #f39c12;
+  white-space: nowrap;
+  padding: 1px 6px;
+  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, #f39c12 40%, transparent);
+}
 .archive-row-empty {
   flex: 1;
   display: block;

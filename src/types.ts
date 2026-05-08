@@ -84,12 +84,22 @@ export interface ArchiveGroupResult {
   shared_entry_count: number;
 }
 
+export interface ArchiveDiskCheck {
+  needed_bytes: number;
+  available_bytes: number;
+  needs_warning: boolean;
+  deficit_bytes: number;
+}
+
 export interface ArchiveEntryResult {
   internal_path: string;
   size: number;
-  status: "duplicate" | "unique";
+  /** "duplicate" = match exact xxh3 ; "similar" = match pHash ; "unique" = sans correspondance. */
+  status: "duplicate" | "similar" | "unique";
   duplicate_in?: string;
   hash: string;
+  /** Score de similarite (0..100, 100 = identique) si status === "similar". */
+  similarity_score?: number;
 }
 
 export interface ArchiveDetail {

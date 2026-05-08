@@ -243,7 +243,7 @@ pub fn select_files_to_delete(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    use commands::archive::{get_archive_comparison, get_archive_groups};
+    use commands::archive::{get_archive_comparison, get_archive_groups, check_archive_disk_space, list_archive_paths};
     use commands::files::{
         check_path_is_dir, delete_files, get_image_meta, get_image_thumbnail, get_video_metadata,
         get_video_thumbnail, open_file, reveal_in_folder,
@@ -263,6 +263,13 @@ pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
             app.manage(MediaServerPort(video::media_server::start()));
+            // Cleanup silencieux des temp dirs orphelins laisses par un crash precedent
+            if let Ok(data_dir) = app.path().app_local_data_dir() {
+                let scan_temp = archive::extractor::scan_temp_parent(&data_dir);
+                if scan_temp.exists() {
+                    let _ = std::fs::remove_dir_all(&scan_temp);
+                }
+            }
             if let Some(window) = app.get_webview_window("main") {
                 let icon_bytes = include_bytes!("../icons/128x128.png");
                 if let Ok(icon) = tauri::image::Image::from_bytes(icon_bytes) {
@@ -316,6 +323,8 @@ pub fn run() {
             purge_cache,
             get_archive_groups,
             get_archive_comparison,
+            check_archive_disk_space,
+            list_archive_paths,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

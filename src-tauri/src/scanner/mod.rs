@@ -1,6 +1,6 @@
 mod types;
 mod fs;
-mod hash;
+pub mod hash;
 mod exact_phase;
 mod phash_phase;
 mod video_phase;
@@ -284,6 +284,10 @@ where
             &cancelled,
             ctx.total_work,
             ctx.total_work + archive_count,
+            params.find_similar,
+            params.sim_threshold,
+            params.data_dir.as_deref(),
+            params.skip_archive_phash,
             &on_progress,
         )
     } else {

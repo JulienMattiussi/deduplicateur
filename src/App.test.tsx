@@ -1038,10 +1038,17 @@ describe("S - option Analyser les archives", () => {
     });
   });
 
-  it("la checkbox n'est pas visible en mode Images", async () => {
+  it("la checkbox est visible en mode Images (Phase 27B - pHash dans archives)", async () => {
     const user = userEvent.setup();
     render(<App />);
     await user.click(screen.getByText("🖼 Images"));
+    expect(screen.getByTestId("scan-archives-checkbox")).toBeInTheDocument();
+  });
+
+  it("la checkbox n'est pas visible en mode Vidéos", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByText("🎬 Vidéos"));
     expect(screen.queryByTestId("scan-archives-checkbox")).not.toBeInTheDocument();
   });
 
@@ -1139,6 +1146,8 @@ describe("S - option Analyser les archives", () => {
       expect(mockInvoke).toHaveBeenCalledWith("get_archive_comparison", {
         pathA: "/data/a.zip",
         pathB: "/data/b.zip",
+        findSimilar: false,
+        simThreshold: 10,
       });
     });
   });

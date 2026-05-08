@@ -3,15 +3,32 @@ use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use rayon::prelude::*;
+
 use crate::archive::{detect_archive_format, hash_archive_entries, count_entries_fast};
+use crate::archive::extractor::{extract_image_entries, ExtractedImage};
+use super::hash::{hamming_distance, compute_two_pass_hashes};
 use super::types::{DuplicateFile, ArchiveGroupResult, ArchiveInGroup};
 use crate::scanner::types::UnionFind;
 
+/// Entree d'archive enrichie avec son indice d'archive parente.
+struct EnrichedEntry {
+    arch_idx: usize,
+    internal_path: String,
+    size: u64,
+    hash: u64,
+}
+
+#[allow(clippy::too_many_arguments)]
 pub fn run(
     files: &[DuplicateFile],
     cancelled: &Arc<AtomicBool>,
     progress_base: usize,
     total_work: usize,
+    find_similar: bool,
+    sim_threshold: u32,
+    data_dir: Option<&str>,
+    skip_phash: bool,
     on_progress: &impl Fn(usize, usize, usize, &str, usize, usize, &str),
 ) -> Vec<ArchiveGroupResult> {
     // Filtrer les archives
@@ -29,75 +46,138 @@ pub fn run(
         .sum();
     let estimated_total = estimated_total.max(1);
 
-    // (archive_idx, internal_path, size) par hash
-    let mut hash_map: HashMap<u64, Vec<(usize, String, u64)>> = HashMap::new();
-    // Compte total par archive : chemin -> nb d'entrees
+    let mut all_entries: Vec<EnrichedEntry> = Vec::new();
+    let mut hash_map: HashMap<u64, Vec<usize>> = HashMap::new();  // hash -> indices dans all_entries
     let mut archive_total_entries: Vec<usize> = vec![0; archives.len()];
-    let mut processed = 0usize;
+    let processed = std::sync::atomic::AtomicUsize::new(0);
 
     for (arch_idx, archive_file) in archives.iter().enumerate() {
         if cancelled.load(Ordering::Relaxed) { break; }
         let path = &archive_file.path;
-        let entries = hash_archive_entries(Path::new(path)).unwrap_or_default();
-        archive_total_entries[arch_idx] = entries.len();
-        for entry in entries {
-            hash_map.entry(entry.hash)
-                .or_default()
-                .push((arch_idx, entry.internal_path, entry.size));
-            processed += 1;
+        // Callback per-entry : remonte le progress en temps reel et permet d'interrompre
+        // mid-archive sur Cancel (sinon on attend la fin de l'archive).
+        let on_entry = || -> bool {
+            if cancelled.load(Ordering::Relaxed) { return false; }
+            let n = processed.fetch_add(1, Ordering::Relaxed) + 1;
             on_progress(
-                progress_base + processed,
+                progress_base + n,
                 total_work,
-                0,  // total_files (pas utilise ici)
+                0,
                 path,
-                processed,
-                estimated_total,
+                n,
+                estimated_total.max(n),  // si on depasse l'estime, decaler la cible
                 "archives",
             );
+            true
+        };
+        // Phase 1 fait juste du xxh3 streaming (pas de pHash in-memory). Le pHash est
+        // calcule plus tard via extraction temp dir + pipeline standard parallele.
+        let entries = hash_archive_entries(Path::new(path), false, &on_entry).unwrap_or_default();
+        archive_total_entries[arch_idx] = entries.len();
+        for entry in entries {
+            let idx = all_entries.len();
+            all_entries.push(EnrichedEntry {
+                arch_idx,
+                internal_path: entry.internal_path,
+                size: entry.size,
+                hash: entry.hash,
+            });
+            hash_map.entry(all_entries[idx].hash).or_default().push(idx);
         }
     }
 
-    // Garder uniquement les hashes qui apparaissent dans 2+ archives differentes
-    #[allow(clippy::type_complexity)]
-    let cross_hashes: Vec<(u64, Vec<(usize, String, u64)>)> = hash_map.into_iter()
-        .filter(|(_, refs)| {
-            let distinct: std::collections::HashSet<usize> = refs.iter().map(|(idx, _, _)| *idx).collect();
-            distinct.len() >= 2
-        })
-        .collect();
-
-    if cross_hashes.is_empty() {
-        return vec![];
-    }
-
-    // Union-Find pour regrouper les archives qui partagent des entrees
     let n = archives.len();
     let mut uf = UnionFind::new(n);
     let mut duplicated_entries: Vec<HashMap<String, u64>> = vec![HashMap::new(); n];
     let mut shared_count_per_pair: HashMap<(usize, usize), usize> = HashMap::new();
 
-    for (_, refs) in &cross_hashes {
-        // Indices d'archives distincts pour ce hash
+    // ── PASSE 1 : appariement EXACT (hash xxh3 identique entre 2+ archives) ──
+    for refs in hash_map.values() {
         let arch_indices: Vec<usize> = {
             let mut seen = std::collections::HashSet::new();
-            refs.iter().filter_map(|(idx, _, _)| {
-                if seen.insert(*idx) { Some(*idx) } else { None }
+            refs.iter().filter_map(|&i| {
+                let a = all_entries[i].arch_idx;
+                if seen.insert(a) { Some(a) } else { None }
             }).collect()
         };
         if arch_indices.len() < 2 { continue; }
-        // Union toutes les archives qui partagent ce hash
         for i in 1..arch_indices.len() {
             uf.union(arch_indices[0], arch_indices[i]);
         }
-        // Marquer les entrees comme dupliquees dans chaque archive
-        for (idx, internal_path, size) in refs {
-            duplicated_entries[*idx].entry(internal_path.clone()).or_insert(*size);
+        for &i in refs {
+            let e = &all_entries[i];
+            duplicated_entries[e.arch_idx].entry(e.internal_path.clone()).or_insert(e.size);
         }
-        // Compter les paires
         let root0 = arch_indices[0];
         for &other in &arch_indices[1..] {
             let key = (root0.min(other), root0.max(other));
             *shared_count_per_pair.entry(key).or_insert(0) += 1;
+        }
+    }
+
+    // ── PASSE 2 : extraction + pHash parallele + appariement SIMILAIRE ──
+    // Strategie : extraire toutes les entrees image vers un temp dir, puis utiliser
+    // le pipeline pHash standard (parallele rayon + EXIF thumbnail pour les JPEG)
+    // pour calculer les hashes. Enfin, matching O(n²) inter-archives sur les images
+    // pas encore dans un groupe exact.
+    if find_similar && !skip_phash && !cancelled.load(Ordering::Relaxed) {
+        if let Some(dir) = data_dir {
+            let archive_paths: Vec<String> = archives.iter().map(|f| f.path.clone()).collect();
+            let extract_cancelled = cancelled.clone();
+            let extract_cb = || -> bool { !extract_cancelled.load(Ordering::Relaxed) };
+            if let Ok(extraction) = extract_image_entries(&archive_paths, Path::new(dir), &extract_cb) {
+                // pHash parallele via rayon. compute_two_pass_hashes utilise EXIF thumbnail
+                // pour les JPEG (decodage thumbnail 160x120 au lieu de l'image complete).
+                let phashes: Vec<Option<(Vec<u8>, Vec<u8>)>> = extraction.items
+                    .par_iter()
+                    .map(|img: &ExtractedImage| {
+                        if extract_cancelled.load(Ordering::Relaxed) { return None; }
+                        let path_str = img.temp_path.to_str().unwrap_or("");
+                        compute_two_pass_hashes(path_str, 8, 16, true)
+                    })
+                    .collect();
+
+                if !cancelled.load(Ordering::Relaxed) {
+                    // Indices des images extraites avec pHash valide ET dont l'entree source
+                    // n'est pas encore dans un groupe exact.
+                    let candidates: Vec<usize> = extraction.items.iter().enumerate()
+                        .filter(|(i, img)| {
+                            phashes[*i].is_some()
+                                && !duplicated_entries[img.archive_idx].contains_key(&img.internal_path)
+                        })
+                        .map(|(i, _)| i)
+                        .collect();
+
+                    // O(n²) inter-archive uniquement
+                    for w in 0..candidates.len() {
+                        if cancelled.load(Ordering::Relaxed) { break; }
+                        for v in (w + 1)..candidates.len() {
+                            let i = candidates[w];
+                            let j = candidates[v];
+                            let img_i = &extraction.items[i];
+                            let img_j = &extraction.items[j];
+                            if img_i.archive_idx == img_j.archive_idx { continue; }
+                            let (ci, fi) = phashes[i].as_ref().unwrap();
+                            let (cj, fj) = phashes[j].as_ref().unwrap();
+                            if hamming_distance(ci, cj) > sim_threshold { continue; }
+                            if hamming_distance(fi, fj) > sim_threshold { continue; }
+                            uf.union(img_i.archive_idx, img_j.archive_idx);
+                            // Recuperer la taille depuis all_entries (par archive + internal_path)
+                            let size_i = all_entries.iter().find(|e|
+                                e.arch_idx == img_i.archive_idx && e.internal_path == img_i.internal_path
+                            ).map(|e| e.size).unwrap_or(0);
+                            let size_j = all_entries.iter().find(|e|
+                                e.arch_idx == img_j.archive_idx && e.internal_path == img_j.internal_path
+                            ).map(|e| e.size).unwrap_or(0);
+                            duplicated_entries[img_i.archive_idx].entry(img_i.internal_path.clone()).or_insert(size_i);
+                            duplicated_entries[img_j.archive_idx].entry(img_j.internal_path.clone()).or_insert(size_j);
+                            let key = (img_i.archive_idx.min(img_j.archive_idx), img_i.archive_idx.max(img_j.archive_idx));
+                            *shared_count_per_pair.entry(key).or_insert(0) += 1;
+                        }
+                    }
+                }
+                // extraction (et son TempDir) est drop ici -> cleanup automatique
+            }
         }
     }
 
@@ -195,7 +275,7 @@ mod tests {
             make_dup_file(zip1.path().to_str().unwrap()),
             make_dup_file(zip2.path().to_str().unwrap()),
         ];
-        let groups = run(&files, &no_cancel(), 0, 100, &no_progress);
+        let groups = run(&files, &no_cancel(), 0, 100, false, 10, None, false, &no_progress);
         assert_eq!(groups.len(), 1);
         assert_eq!(groups[0].archives.len(), 2);
         assert!(groups[0].archives.iter().all(|a| a.can_delete));
@@ -209,7 +289,7 @@ mod tests {
             make_dup_file(zip1.path().to_str().unwrap()),
             make_dup_file(zip2.path().to_str().unwrap()),
         ];
-        let groups = run(&files, &no_cancel(), 0, 100, &no_progress);
+        let groups = run(&files, &no_cancel(), 0, 100, false, 10, None, false, &no_progress);
         assert_eq!(groups.len(), 1);
         assert!(groups[0].archives.iter().all(|a| !a.can_delete));
     }
@@ -222,7 +302,7 @@ mod tests {
             make_dup_file(zip1.path().to_str().unwrap()),
             make_dup_file(zip2.path().to_str().unwrap()),
         ];
-        let groups = run(&files, &no_cancel(), 0, 100, &no_progress);
+        let groups = run(&files, &no_cancel(), 0, 100, false, 10, None, false, &no_progress);
         assert_eq!(groups.len(), 0);
     }
 
@@ -230,7 +310,7 @@ mod tests {
     fn archive_unique_pas_de_groupe() {
         let zip1 = make_zip_file(&[("a.txt", b"content")]);
         let files = vec![make_dup_file(zip1.path().to_str().unwrap())];
-        let groups = run(&files, &no_cancel(), 0, 100, &no_progress);
+        let groups = run(&files, &no_cancel(), 0, 100, false, 10, None, false, &no_progress);
         assert_eq!(groups.len(), 0);
     }
 
@@ -246,7 +326,7 @@ mod tests {
             make_dup_file(zip1.path().to_str().unwrap()),
             make_dup_file(zip2.path().to_str().unwrap()),
         ];
-        let groups = run(&files, &no_cancel(), 0, 100, &no_progress);
+        let groups = run(&files, &no_cancel(), 0, 100, false, 10, None, false, &no_progress);
         assert_eq!(groups.len(), 1);
         // Seules les archives sont dans le groupe, pas le fichier texte
         for g in &groups {
@@ -261,7 +341,7 @@ mod tests {
         // Une archive avec 2 entrees identiques ne forme pas de groupe (comparaison inter-archive seulement)
         let zip1 = make_zip_file(&[("a.txt", b"same"), ("b.txt", b"same")]);
         let files = vec![make_dup_file(zip1.path().to_str().unwrap())];
-        let groups = run(&files, &no_cancel(), 0, 100, &no_progress);
+        let groups = run(&files, &no_cancel(), 0, 100, false, 10, None, false, &no_progress);
         assert_eq!(groups.len(), 0);
     }
 
@@ -273,7 +353,7 @@ mod tests {
         let mut f2 = make_dup_file(zip2.path().to_str().unwrap());
         f1.modified = 1700000000;
         f2.modified = 1700001000;
-        let groups = run(&[f1, f2], &no_cancel(), 0, 100, &no_progress);
+        let groups = run(&[f1, f2], &no_cancel(), 0, 100, false, 10, None, false, &no_progress);
         assert_eq!(groups.len(), 1);
         let archives = &groups[0].archives;
         assert_eq!(archives.len(), 2);
@@ -281,5 +361,81 @@ mod tests {
         assert!(archives.iter().all(|a| a.size > 0));
         assert!(archives.iter().any(|a| a.modified == 1700000000));
         assert!(archives.iter().any(|a| a.modified == 1700001000));
+    }
+
+    /// Crée un PNG 16x16 monochrome de couleur donnée, réencodé pour avoir un xxh3 différent
+    /// mais un pHash très proche entre versions (différence visuelle minime).
+    fn make_png_bytes(color: image::Rgb<u8>, noise: u8) -> Vec<u8> {
+        use image::{ImageBuffer, ImageFormat};
+        use std::io::Cursor;
+        let mut img: ImageBuffer<image::Rgb<u8>, Vec<u8>> = ImageBuffer::new(16, 16);
+        for (x, y, p) in img.enumerate_pixels_mut() {
+            // Petit bruit pour casser xxh3 entre versions, mais structure preservee
+            let n = ((x as u8).wrapping_add(y as u8).wrapping_add(noise)) % 4;
+            *p = image::Rgb([color[0].saturating_add(n), color[1], color[2]]);
+        }
+        let mut buf = Vec::new();
+        img.write_to(&mut Cursor::new(&mut buf), ImageFormat::Png).unwrap();
+        buf
+    }
+
+    #[test]
+    fn deux_zips_avec_image_similaire_donnent_groupe_quand_find_similar_true() {
+        let img_a = make_png_bytes(image::Rgb([100, 50, 30]), 0);
+        let img_b = make_png_bytes(image::Rgb([100, 50, 30]), 1);  // bruit different => xxh3 different
+        // xxh3 different mais pHash quasi identique
+        assert_ne!(img_a, img_b);
+
+        let zip1 = {
+            let mut f = NamedTempFile::with_suffix(".zip").unwrap();
+            {
+                let mut w = zip::ZipWriter::new(std::io::BufWriter::new(f.as_file_mut()));
+                let opts = zip::write::SimpleFileOptions::default();
+                w.start_file("photo.png", opts).unwrap();
+                w.write_all(&img_a).unwrap();
+                w.finish().unwrap();
+            }
+            f
+        };
+        let zip2 = {
+            let mut f = NamedTempFile::with_suffix(".zip").unwrap();
+            {
+                let mut w = zip::ZipWriter::new(std::io::BufWriter::new(f.as_file_mut()));
+                let opts = zip::write::SimpleFileOptions::default();
+                w.start_file("photo.png", opts).unwrap();
+                w.write_all(&img_b).unwrap();
+                w.finish().unwrap();
+            }
+            f
+        };
+        let files = vec![
+            make_dup_file(zip1.path().to_str().unwrap()),
+            make_dup_file(zip2.path().to_str().unwrap()),
+        ];
+        // Sans find_similar : pas de match (xxh3 differents)
+        let g_exact = run(&files, &no_cancel(), 0, 100, false, 10, None, false, &no_progress);
+        assert_eq!(g_exact.len(), 0, "sans find_similar, les images avec bruit ne matchent pas");
+        // Avec find_similar : match par pHash via extraction temp + compute_two_pass_hashes
+        let data_tmp = TempDir::new().unwrap();
+        let g_sim = run(&files, &no_cancel(), 0, 100, true, 10, data_tmp.path().to_str(), false, &no_progress);
+        assert_eq!(g_sim.len(), 1, "avec find_similar + data_dir, les images proches forment un groupe");
+        assert_eq!(g_sim[0].archives.len(), 2);
+        // Avec skip_phash=true : pas de groupe meme avec find_similar
+        let g_skip = run(&files, &no_cancel(), 0, 100, true, 10, data_tmp.path().to_str(), true, &no_progress);
+        assert_eq!(g_skip.len(), 0, "skip_phash=true desactive la phase pHash archives");
+    }
+
+    #[test]
+    fn entrees_non_image_pas_phash_meme_avec_find_similar() {
+        // 2 archives avec un .txt different (xxh3 different) -> pas de groupe meme avec find_similar
+        let zip1 = make_zip_file(&[("doc.txt", b"version 1 of the document")]);
+        let zip2 = make_zip_file(&[("doc.txt", b"version 2 of the document, slightly longer")]);
+        let files = vec![
+            make_dup_file(zip1.path().to_str().unwrap()),
+            make_dup_file(zip2.path().to_str().unwrap()),
+        ];
+        let data_tmp = TempDir::new().unwrap();
+        let groups = run(&files, &no_cancel(), 0, 100, true, 10, data_tmp.path().to_str(), false, &no_progress);
+        assert_eq!(groups.len(), 0, "le pHash ne s'applique pas aux fichiers non-image");
     }
 }

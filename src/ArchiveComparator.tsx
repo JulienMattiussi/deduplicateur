@@ -10,75 +10,97 @@ import type { ArchiveComparison, ArchiveEntryResult, ArchiveInGroup } from "./ty
 interface Props {
   archiveA: ArchiveInGroup;
   archiveB: ArchiveInGroup;
+  findSimilar: boolean;
+  simThreshold: number;
   onClose: () => void;
 }
+
+type MatchType = "exact" | "similar" | "unique";
 
 interface AlignedRow {
   left: ArchiveEntryResult | null;
   right: ArchiveEntryResult | null;
-  isDuplicate: boolean;
+  matchType: MatchType;
 }
 
 /**
- * Apparie les entrees de deux archives pour un affichage face-a-face :
- * - groupe par hash, fait un appariement greedy index-a-index a l'interieur d'un meme hash
- *   (ex. si A a 3 fichiers de hash X et B en a 1, on a 3 lignes avec right=null sur 2 d'entre elles)
- * - les uniques (hash present d'un seul cote) sont en bas, dans une seule colonne
+ * Apparie les entrees de deux archives pour un affichage face-a-face.
+ * Etapes (dans l'ordre) :
+ * 1. Doublons exacts (xxh3 identique) : groupes par hash, appariement greedy index-a-index
+ *    quand plusieurs entrees partagent le meme hash dans une meme archive.
+ * 2. Doublons similaires (status="similar", appariement via duplicate_in) : utilise pour
+ *    les images proches mais pas identiques.
+ * 3. Uniques (sans correspondance) : tail de la liste, une seule colonne par ligne.
  */
 function alignEntries(a: ArchiveEntryResult[], b: ArchiveEntryResult[]): AlignedRow[] {
-  const byHash = (list: ArchiveEntryResult[]) => {
-    const m = new Map<string, ArchiveEntryResult[]>();
-    for (const e of list) {
-      const arr = m.get(e.hash);
-      if (arr) arr.push(e); else m.set(e.hash, [e]);
-    }
-    // Tri stable par chemin interne pour que l'ordre soit reproductible
-    for (const arr of m.values()) arr.sort((x, y) => x.internal_path.localeCompare(y.internal_path));
-    return m;
-  };
-  const aByHash = byHash(a);
-  const bByHash = byHash(b);
-
   const rows: AlignedRow[] = [];
+  const matchedA = new Set<number>();
+  const matchedB = new Set<number>();
 
-  // Hashes presents des deux cotes (= doublons), tries par chemin du 1er element
+  // 1. Exact : groupement par hash
+  const aByHash = new Map<string, number[]>();
+  const bByHash = new Map<string, number[]>();
+  a.forEach((e, i) => {
+    const arr = aByHash.get(e.hash);
+    if (arr) arr.push(i); else aByHash.set(e.hash, [i]);
+  });
+  b.forEach((e, i) => {
+    const arr = bByHash.get(e.hash);
+    if (arr) arr.push(i); else bByHash.set(e.hash, [i]);
+  });
+
   const sharedHashes = [...aByHash.keys()]
     .filter((h) => bByHash.has(h))
-    .sort((h1, h2) => {
-      const p1 = aByHash.get(h1)![0].internal_path;
-      const p2 = aByHash.get(h2)![0].internal_path;
-      return p1.localeCompare(p2);
-    });
+    .sort((h1, h2) => a[aByHash.get(h1)![0]].internal_path.localeCompare(a[aByHash.get(h2)![0]].internal_path));
   for (const hash of sharedHashes) {
-    const listA = aByHash.get(hash)!;
-    const listB = bByHash.get(hash)!;
-    const max = Math.max(listA.length, listB.length);
-    for (let i = 0; i < max; i++) {
-      rows.push({ left: listA[i] ?? null, right: listB[i] ?? null, isDuplicate: true });
+    const idxsA = aByHash.get(hash)!.slice().sort((x, y) => a[x].internal_path.localeCompare(a[y].internal_path));
+    const idxsB = bByHash.get(hash)!.slice().sort((x, y) => b[x].internal_path.localeCompare(b[y].internal_path));
+    const max = Math.max(idxsA.length, idxsB.length);
+    for (let k = 0; k < max; k++) {
+      const ai = idxsA[k];
+      const bi = idxsB[k];
+      if (ai !== undefined) matchedA.add(ai);
+      if (bi !== undefined) matchedB.add(bi);
+      rows.push({
+        left: ai !== undefined ? a[ai] : null,
+        right: bi !== undefined ? b[bi] : null,
+        matchType: "exact",
+      });
     }
   }
 
-  // Uniques cote A (hash absent cote B)
-  const uniqueAHashes = [...aByHash.keys()].filter((h) => !bByHash.has(h));
-  const uniqueA = uniqueAHashes.flatMap((h) => aByHash.get(h)!)
-    .sort((x, y) => x.internal_path.localeCompare(y.internal_path));
-  for (const ea of uniqueA) rows.push({ left: ea, right: null, isDuplicate: false });
+  // 2. Similaire : appariement par duplicate_in
+  for (let i = 0; i < a.length; i++) {
+    if (matchedA.has(i)) continue;
+    const ea = a[i];
+    if (ea.status !== "similar" || !ea.duplicate_in) continue;
+    const j = b.findIndex((eb, idx) => !matchedB.has(idx) && eb.internal_path === ea.duplicate_in);
+    if (j === -1) continue;
+    matchedA.add(i);
+    matchedB.add(j);
+    rows.push({ left: ea, right: b[j], matchType: "similar" });
+  }
 
-  // Uniques cote B (hash absent cote A)
-  const uniqueBHashes = [...bByHash.keys()].filter((h) => !aByHash.has(h));
-  const uniqueB = uniqueBHashes.flatMap((h) => bByHash.get(h)!)
-    .sort((x, y) => x.internal_path.localeCompare(y.internal_path));
-  for (const eb of uniqueB) rows.push({ left: null, right: eb, isDuplicate: false });
+  // 3. Uniques cote A puis cote B
+  for (let i = 0; i < a.length; i++) {
+    if (matchedA.has(i)) continue;
+    rows.push({ left: a[i], right: null, matchType: "unique" });
+  }
+  for (let j = 0; j < b.length; j++) {
+    if (matchedB.has(j)) continue;
+    rows.push({ left: null, right: b[j], matchType: "unique" });
+  }
 
   return rows;
 }
 
-function EntryCell({ entry }: { entry: ArchiveEntryResult | null }) {
+function EntryCell({ entry, score }: { entry: ArchiveEntryResult | null; score?: number }) {
   if (!entry) return <span className="archive-row-empty" />;
   return (
     <span className="archive-row-content">
       <span className="archive-row-icon"><FileTypeIcon path={entry.internal_path} /></span>
       <span className="archive-row-path" title={entry.internal_path}>{entry.internal_path}</span>
+      {score != null && <span className="archive-row-score">{score.toFixed(0)}%</span>}
       <span className="archive-row-size">{formatSize(entry.size)}</span>
     </span>
   );
@@ -123,7 +145,7 @@ function ArchiveMetaBlock({ archive }: { archive: ArchiveInGroup }) {
   );
 }
 
-export function ArchiveComparator({ archiveA, archiveB, onClose }: Props) {
+export function ArchiveComparator({ archiveA, archiveB, findSimilar, simThreshold, onClose }: Props) {
   const { t } = useLang();
   const [comparison, setComparison] = useState<ArchiveComparison | null>(null);
   const [loading, setLoading] = useState(true);
@@ -135,10 +157,15 @@ export function ArchiveComparator({ archiveA, archiveB, onClose }: Props) {
   useEffect(() => {
     setLoading(true);
     setComparison(null);
-    invoke<ArchiveComparison>("get_archive_comparison", { pathA: archiveA.path, pathB: archiveB.path })
+    invoke<ArchiveComparison>("get_archive_comparison", {
+      pathA: archiveA.path,
+      pathB: archiveB.path,
+      findSimilar,
+      simThreshold,
+    })
       .then((c) => { setComparison(c); setLoading(false); })
       .catch(() => setLoading(false));
-  }, [archiveA.path, archiveB.path]);
+  }, [archiveA.path, archiveB.path, findSimilar, simThreshold]);
 
   const rows = useMemo(() => {
     if (!comparison) return [];
@@ -146,7 +173,7 @@ export function ArchiveComparator({ archiveA, archiveB, onClose }: Props) {
   }, [comparison]);
 
   const visibleRows = useMemo(() => {
-    return duplicatesOnly ? rows.filter((r) => r.isDuplicate) : rows;
+    return duplicatesOnly ? rows.filter((r) => r.matchType !== "unique") : rows;
   }, [rows, duplicatesOnly]);
 
   function handleScrollLeft(e: React.UIEvent<HTMLDivElement>) {
@@ -177,6 +204,12 @@ export function ArchiveComparator({ archiveA, archiveB, onClose }: Props) {
     </label>
   );
 
+  function rowClass(matchType: MatchType): string {
+    if (matchType === "exact") return "archive-entry-row archive-entry-row--duplicate";
+    if (matchType === "similar") return "archive-entry-row archive-entry-row--similar";
+    return "archive-entry-row archive-entry-row--unique";
+  }
+
   return (
     <ComparatorBasicShell title={t.archiveComparator} headerExtra={headerExtra} onClose={onClose}>
       {loading ? (
@@ -191,8 +224,8 @@ export function ArchiveComparator({ archiveA, archiveB, onClose }: Props) {
                 <span className="archive-empty-label">-</span>
               ) : (
                 visibleRows.map((row, i) => (
-                  <div key={`l${i}`} className={`archive-entry-row${row.isDuplicate ? " archive-entry-row--duplicate" : " archive-entry-row--unique"}`}>
-                    <EntryCell entry={row.left} />
+                  <div key={`l${i}`} className={rowClass(row.matchType)}>
+                    <EntryCell entry={row.left} score={row.matchType === "similar" ? row.left?.similarity_score : undefined} />
                   </div>
                 ))
               )}
@@ -208,8 +241,8 @@ export function ArchiveComparator({ archiveA, archiveB, onClose }: Props) {
                 <span className="archive-empty-label">-</span>
               ) : (
                 visibleRows.map((row, i) => (
-                  <div key={`r${i}`} className={`archive-entry-row${row.isDuplicate ? " archive-entry-row--duplicate" : " archive-entry-row--unique"}`}>
-                    <EntryCell entry={row.right} />
+                  <div key={`r${i}`} className={rowClass(row.matchType)}>
+                    <EntryCell entry={row.right} score={row.matchType === "similar" ? row.right?.similarity_score : undefined} />
                   </div>
                 ))
               )}

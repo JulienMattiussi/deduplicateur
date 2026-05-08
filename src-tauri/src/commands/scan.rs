@@ -42,6 +42,7 @@ pub async fn scan_folder(
     min_modified_timestamp: Option<u64>,
     max_modified_timestamp: Option<u64>,
     scan_archives: bool,
+    skip_archive_phash: Option<bool>,
 ) -> Result<ScanSummary, String> {
     let app = window.app_handle().clone();
     let cancelled = {
@@ -124,6 +125,7 @@ pub async fn scan_folder(
             max_modified_timestamp: max_modified_timestamp.unwrap_or(0),
             groups_counter: Some(Arc::clone(&groups_counter)),
             scan_archives,
+            skip_archive_phash: skip_archive_phash.unwrap_or(false),
         };
         do_scan(params, cancelled, move |current, total, total_files, file: &str, phase_current, phase_total, phase: &str| {
             *progress_for_scan.lock().unwrap() = Some((current, total, total_files, file.to_string(), phase_current, phase_total, phase.to_string()));
