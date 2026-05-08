@@ -9,6 +9,13 @@ use crate::{format_notification_body, save_session, should_notify};
 use crate::ignore_list::IgnoreList;
 use crate::scanner::{scan_folder as do_scan, ScanParams};
 
+/// Etat de progression partage entre le thread de scan (rayon) et la tache d'emission Tauri.
+/// Tuple : (current, total, scanned_files, file_name, phase_current, phase_total, phase_label).
+type ProgressState = Arc<Mutex<Option<(usize, usize, usize, String, usize, usize, String)>>>;
+
+// Les arguments viennent du frontend Tauri : impossible de les regrouper dans un struct
+// sans perdre le binding camelCase->snake_case automatique de Tauri 2.
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn scan_folder(
     window: tauri::Window,
@@ -57,8 +64,7 @@ pub async fn scan_folder(
         .map(|d| IgnoreList::load(std::path::Path::new(d)).keys_set())
         .unwrap_or_default();
 
-    let progress_state: Arc<Mutex<Option<(usize, usize, usize, String, usize, usize, String)>>> =
-        Arc::new(Mutex::new(None));
+    let progress_state: ProgressState = Arc::new(Mutex::new(None));
     let progress_for_scan = Arc::clone(&progress_state);
     let progress_for_emit = Arc::clone(&progress_state);
 

@@ -1,5 +1,8 @@
 use std::path::Path;
 
+// Fonction utilitaire de filtrage : 9 criteres independants, regrouper dans un struct
+// rendrait l'appel moins lisible aux call sites.
+#[allow(clippy::too_many_arguments)]
 pub fn passes_filters(
     path: &Path,
     size: u64,

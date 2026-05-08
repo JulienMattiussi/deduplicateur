@@ -240,6 +240,8 @@ pub fn filter_exact_candidates(
 /// Construit des groupes de similarite depuis une liste de paires `(i, j)` via Union-Find.
 /// `get_file` recupere le DuplicateFile a l'indice i.
 /// `folder_key` calcule la cle de dossier pour un groupe (None = mode "tout le dossier").
+// Helper interne au moteur : flags + closures permettent une seule fonction pour 4 phases (exact/phash/video/audio).
+#[allow(clippy::too_many_arguments)]
 pub fn build_similar_groups(
     n: usize,
     pairs: Vec<(usize, usize)>,

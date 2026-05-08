@@ -58,6 +58,7 @@ pub fn run(
     }
 
     // Garder uniquement les hashes qui apparaissent dans 2+ archives differentes
+    #[allow(clippy::type_complexity)]
     let cross_hashes: Vec<(u64, Vec<(usize, String, u64)>)> = hash_map.into_iter()
         .filter(|(_, refs)| {
             let distinct: std::collections::HashSet<usize> = refs.iter().map(|(idx, _, _)| *idx).collect();

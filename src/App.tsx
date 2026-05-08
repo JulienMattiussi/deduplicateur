@@ -2,12 +2,13 @@ import { useState, startTransition, useEffect, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { save as dialogSave } from "@tauri-apps/plugin-dialog";
 import "./App.css";
-import { formatSize, formatDuration, toHammingThreshold, VIDEO_EXTS, AUDIO_EXTS } from "./utils";
+import { formatSize, formatDuration, VIDEO_EXTS, AUDIO_EXTS } from "./utils";
 import { useLang } from "./LangContext";
 import type { DuplicateGroup, FolderSummary, IgnoreEntry, ScanProfile, ScanSummary, ArchiveGroupResult, ArchiveInGroup } from "./types";
 import { interp } from "./i18n";
 import { useScanConfig } from "./hooks/useScanConfig";
 import { useScanExecution } from "./hooks/useScanExecution";
+import { buildScanArgsFromConfig, buildScanArgsFromProfile, checkRequiredTools } from "./hooks/useScanLauncher";
 import { useResults } from "./hooks/useResults";
 import { useSelectionState, type SmartMode } from "./hooks/useSelectionState";
 import { useDragDrop } from "./hooks/useDragDrop";
@@ -32,6 +33,7 @@ import { SessionPicker } from "./components/SessionPicker";
 import { ConfirmDeleteModal } from "./components/ConfirmDeleteModal";
 import { ArchiveGroupCard } from "./components/ArchiveGroupCard";
 import { ScanResultsToolbar } from "./components/ScanResultsToolbar";
+import { DetectionModeSelector } from "./components/DetectionModeSelector";
 
 // ----- Composant principal -----
 
@@ -229,52 +231,15 @@ export default function App() {
   }
 
   async function handleScan() {
-    if (config.detectionMode === "videos" || config.detectionMode === "audio") {
-      const tools = await invoke<{ ffmpeg_available: boolean; fpcalc_available: boolean }>("check_tools");
-      if (config.detectionMode === "videos" && !tools.ffmpeg_available) {
-        setPreScanToolMissing("ffmpeg");
-        return;
-      }
-      if (config.detectionMode === "audio" && !tools.fpcalc_available) {
-        setPreScanToolMissing("fpcalc");
-        return;
-      }
+    const missingTool = await checkRequiredTools(config.detectionMode);
+    if (missingTool) {
+      setPreScanToolMissing(missingTool);
+      return;
     }
     setPreScanToolMissing(null);
     setPanelResetKey(k => k + 1);
     resetResults();
-    const effectiveRecursive = (config.scanMode === "by_folder" || config.scanMode === "compare_folder") ? true : config.recursive;
-    const minModifiedTimestamp = config.minModifiedDate
-      ? Math.floor(new Date(config.minModifiedDate).getTime() / 1000)
-      : 0;
-    const maxModifiedTimestamp = config.maxModifiedDate
-      ? Math.floor(new Date(config.maxModifiedDate + "T23:59:59").getTime() / 1000)
-      : 0;
-    return scanExec.scan({
-      path: config.folder,
-      recursive: effectiveRecursive,
-      excluded: config.excluded,
-      byFolder: config.scanMode === "by_folder",
-      findSimilar: config.detectionMode === "images",
-      simThreshold: toHammingThreshold(config.simSimilarity),
-      findSimilarVideos: config.detectionMode === "videos",
-      videoSimThreshold: toHammingThreshold(config.videoSimilarity),
-      findSimilarAudio: config.detectionMode === "audio",
-      audioSimThreshold: 100 - config.audioSimilarity,
-      audioCacheEnabled: config.audioConfig.cache_enabled,
-      audioDurationTolerance: config.audioConfig.duration_tolerance,
-      exactCacheEnabled: config.exactCacheEnabled,
-      excludeExtensions: config.excludeExtensions,
-      includeExtensions: config.includeExtensions,
-      minFileSizeKb: config.minFileSizeKb,
-      maxFileSizeKb: config.maxFileSizeKb,
-      notificationThresholdSecs: 10,
-      notificationLang: lang,
-      secondaryFolder: config.scanMode === "compare_folder" ? (config.secondaryFolder || null) : null,
-      minModifiedTimestamp: minModifiedTimestamp || undefined,
-      maxModifiedTimestamp: maxModifiedTimestamp || undefined,
-      scanArchives: config.scanArchives || undefined,
-    });
+    return scanExec.scan(buildScanArgsFromConfig(config, lang));
   }
 
   async function handleIgnoreGroup(groupId: string) {
@@ -347,26 +312,7 @@ export default function App() {
     handleProfileLoad(profile);
     setPanelResetKey(k => k + 1);
     resetResults();
-    const effectiveRecursive = profile.scan_mode === "by_folder" ? true : profile.recursive;
-    scanExec.scan({
-      path: profile.folder,
-      recursive: effectiveRecursive,
-      excluded: profile.excluded,
-      byFolder: profile.scan_mode === "by_folder",
-      findSimilar: profile.detection_mode === "images",
-      simThreshold: toHammingThreshold(profile.sim_similarity),
-      findSimilarVideos: profile.detection_mode === "videos",
-      videoSimThreshold: toHammingThreshold(profile.video_similarity),
-      findSimilarAudio: profile.detection_mode === "audio",
-      audioSimThreshold: 100 - (profile.audio_similarity ?? 80),
-      audioCacheEnabled: config.audioConfig.cache_enabled,
-      audioDurationTolerance: config.audioConfig.duration_tolerance,
-      exactCacheEnabled: profile.exact_cache_enabled,
-      excludeExtensions: profile.exclude_extensions,
-      includeExtensions: profile.include_extensions,
-      minFileSizeKb: profile.min_file_size_kb,
-      maxFileSizeKb: profile.max_file_size_kb,
-    });
+    scanExec.scan(buildScanArgsFromProfile(profile, config.audioConfig));
   }
 
   const showSessionPicker = !summary && !scanExec.scanning;
@@ -561,43 +507,17 @@ export default function App() {
           </div>
         )}
 
-        <div className="similar-options-row">
-          <div className="detection-mode-selector">
-            {(["files", "images", "videos", "audio"] as const).map((mode) => (
-              <button key={mode}
-                className={`detection-mode-btn${config.detectionMode === mode ? " detection-mode-btn--active" : ""}`}
-                onClick={() => { config.setDetectionMode(mode); setPreScanToolMissing(null); }}
-                disabled={scanExec.scanning}
-                title={mode === "files" ? t.tipModeFiles : mode === "images" ? t.tipModeImages : mode === "videos" ? t.tipModeVideos : t.tipModeAudio}>
-                {mode === "files" ? t.modeFiles : mode === "images" ? t.modeImages : mode === "videos" ? t.modeVideos : t.modeAudio}
-              </button>
-            ))}
-          </div>
-          {config.detectionMode === "images" && (
-            <label className="slider-threshold" title={t.tipSimilarityThreshold}>
-              {t.minSimilarity}&nbsp;: <strong>{config.simSimilarity}&nbsp;%</strong>
-              <input type="range" min={60} max={100} step={1} value={config.simSimilarity}
-                onChange={(e) => config.setSimSimilarity(Number(e.target.value))}
-                disabled={scanExec.scanning} className="threshold-slider" />
-            </label>
-          )}
-          {config.detectionMode === "videos" && (
-            <label className="slider-threshold" title={t.tipSimilarityThreshold}>
-              {t.minSimilarity}&nbsp;: <strong>{config.videoSimilarity}&nbsp;%</strong>
-              <input type="range" min={60} max={100} step={1} value={config.videoSimilarity}
-                onChange={(e) => config.setVideoSimilarity(Number(e.target.value))}
-                disabled={scanExec.scanning} className="threshold-slider" />
-            </label>
-          )}
-          {config.detectionMode === "audio" && (
-            <label className="slider-threshold" title={t.tipSimilarityThreshold}>
-              {t.minSimilarity}&nbsp;: <strong>{config.audioSimilarity}&nbsp;%</strong>
-              <input type="range" min={60} max={100} step={1} value={config.audioSimilarity}
-                onChange={(e) => config.setAudioSimilarity(Number(e.target.value))}
-                disabled={scanExec.scanning} className="threshold-slider" />
-            </label>
-          )}
-        </div>
+        <DetectionModeSelector
+          detectionMode={config.detectionMode}
+          onSetDetectionMode={(m) => { config.setDetectionMode(m); setPreScanToolMissing(null); }}
+          simSimilarity={config.simSimilarity}
+          onSetSimSimilarity={config.setSimSimilarity}
+          videoSimilarity={config.videoSimilarity}
+          onSetVideoSimilarity={config.setVideoSimilarity}
+          audioSimilarity={config.audioSimilarity}
+          onSetAudioSimilarity={config.setAudioSimilarity}
+          disabled={scanExec.scanning}
+        />
 
         {config.detectionMode === "images" && (
           <AdvancedPanel key={`adv-images-${panelResetKey}`} config={config.phashConfig} onChange={config.updatePhashConfig} disabled={scanExec.scanning} />

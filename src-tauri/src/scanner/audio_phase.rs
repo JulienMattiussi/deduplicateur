@@ -16,6 +16,8 @@ struct AudioData {
     duration_secs: f64,
 }
 
+// Phase audio : 9 args + type intermediaire complexe (miss_results).
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 pub(super) fn run<F>(
     params: &ScanParams,
     ctx: &Ctx,

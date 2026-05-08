@@ -32,6 +32,9 @@ pub fn is_image(path: &str) -> bool {
     )
 }
 
+// 10 parametres : tous des criteres de filtrage independants.
+// Refactorer en struct casserait la lisibilite des call sites (callers passent des litteraux).
+#[allow(clippy::too_many_arguments)]
 pub fn collect_files(
     folder: &Path,
     recursive: bool,

@@ -16,6 +16,8 @@ struct VideoData {
     metadata: VideoMetadata,
 }
 
+// Phase video : 9 args, signature stable pour matcher les autres phases.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn run<F>(
     params: &ScanParams,
     ctx: &Ctx,

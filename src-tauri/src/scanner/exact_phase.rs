@@ -11,6 +11,8 @@ use super::hash::{hash_partial, hash_full};
 use super::types::{DuplicateFile, DuplicateGroup, FileSource, ScanParams};
 use super::Ctx;
 
+// Phase de hash exact : signature stable pour matcher l'orchestration scanner/mod.rs.
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 pub(super) fn run<F>(
     params: &ScanParams,
     ctx: &Ctx,

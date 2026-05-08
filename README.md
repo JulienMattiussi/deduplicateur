@@ -180,7 +180,7 @@ Chaque scan produit un fichier JSON dans `~/.local/share/deduplicateur/sessions/
 | CI/CD | GitHub Actions | Build Windows automatique sur push |
 | Similarité audio | fpcalc/chromaprint (subprocess) | Empreinte acoustique, distance de Hamming sur vecteurs i32, cache inter-scans |
 | Tests Rust | cargo test + tempfile | 229 tests unitaires sur le moteur |
-| Tests TS | Vitest + jsdom + React Testing Library | 399 tests (utilitaires + i18n + App + ImageComparator + VideoComparator + AudioComparator + MissingToolBanner + FileThumbnail + AdvancedPanelWrapper + IgnoredPanel + FolderSection + HelpPanel + AdvancedPanel + AudioAdvancedPanel + VideoAdvancedPanel + ProfilesPanel + ProgressETA + GroupCard + ArchiveGroupCard + ArchiveComparator) |
+| Tests TS | Vitest + jsdom + React Testing Library | 409 tests (utilitaires + i18n + App + ImageComparator + VideoComparator + AudioComparator + MissingToolBanner + FileThumbnail + AdvancedPanelWrapper + IgnoredPanel + FolderSection + HelpPanel + AdvancedPanel + AudioAdvancedPanel + VideoAdvancedPanel + ProfilesPanel + ProgressETA + GroupCard + ArchiveGroupCard + ArchiveComparator) |
 
 ---
 
@@ -261,7 +261,7 @@ npm run build:full
 # Moteur Rust (229 tests)
 cargo test --manifest-path src-tauri/Cargo.toml
 
-# TypeScript - utilitaires + i18n + composants React (399 tests)
+# TypeScript - utilitaires + i18n + composants React (409 tests)
 npm test
 ```
 

@@ -14,6 +14,9 @@ use super::hash::{get_image_dimensions, compute_two_pass_hashes, hamming_distanc
 use super::types::{DuplicateFile, DuplicateGroup, ImageData, ScanParams, build_similar_groups, filter_exact_candidates};
 use super::Ctx;
 
+// Phase pHash : 9 args + types intermediaires complexes (cache_results, miss_hashes).
+// Boucles a indices conservees pour rester en O(n²) avec fenetre coulissante optimisee.
+#[allow(clippy::too_many_arguments, clippy::type_complexity, clippy::needless_range_loop)]
 pub(super) fn run<F>(
     params: &ScanParams,
     ctx: &Ctx,
