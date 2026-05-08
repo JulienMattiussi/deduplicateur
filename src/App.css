@@ -1575,6 +1575,32 @@
   flex-shrink: 0;
 }
 
+.archive-thumb-wrap {
+  position: relative;
+  display: inline-flex;
+}
+.archive-thumb-overlay-spinner {
+  position: absolute;
+  inset: 0;
+  display: block;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+.archive-thumb-overlay-spinner::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 16px;
+  height: 16px;
+  margin: -8px 0 0 -8px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
 .video-thumb-meta {
   font-size: 10px;
   color: var(--text-5);
@@ -2735,25 +2761,19 @@
   flex: 1;
   overflow: hidden;
   display: flex;
-  align-items: stretch;
-}
-.archive-col {
-  flex: 1;
-  display: flex;
   flex-direction: column;
-  overflow: hidden;
-  padding: 0;
-  min-width: 0;
 }
-.archive-col-entries {
+.archive-grid {
   flex: 1;
   overflow-y: auto;
   padding: 0;
 }
 .archive-entry-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr 64px 1fr;
   align-items: center;
   padding: 0.4rem 0.75rem;
+  gap: 0.5rem;
   font-size: 0.82rem;
   border-bottom: 1px solid var(--border);
   height: 44px;
@@ -2768,27 +2788,21 @@
 .archive-entry-row--similar {
   background: color-mix(in srgb, #f39c12 8%, transparent);
 }
-.archive-row-score {
-  flex-shrink: 0;
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: #f39c12;
-  white-space: nowrap;
-  padding: 1px 6px;
-  border-radius: 3px;
-  border: 1px solid color-mix(in srgb, #f39c12 40%, transparent);
-}
 .archive-row-empty {
-  flex: 1;
   display: block;
   height: 100%;
 }
 .archive-row-content {
-  flex: 1;
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 1rem;
+}
+.archive-row-content--left {
+  justify-content: flex-start;
+}
+.archive-row-content--right {
+  justify-content: flex-end;
 }
 .archive-row-icon {
   flex-shrink: 0;
@@ -2811,11 +2825,44 @@
   direction: rtl;
   text-align: left;
 }
+.archive-row-content--right .archive-row-path {
+  text-align: right;
+}
 .archive-row-size {
+  color: var(--text-3, var(--text-2));
+  white-space: nowrap;
+  font-size: 0.72rem;
+  font-style: italic;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+.archive-score-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.78rem;
+  font-weight: 600;
   color: var(--text-2);
   white-space: nowrap;
-  font-size: 0.78rem;
+}
+.archive-score-cell--similar {
+  color: #f39c12;
+}
+.archive-score-cell--empty {
+  visibility: hidden;
+}
+.archive-footers {
   flex-shrink: 0;
+  display: flex;
+  border-top: 1px solid var(--border);
+}
+.archive-footer-cell {
+  flex: 1;
+  border-top: none;
+  min-width: 0;
+}
+.archive-footer-cell + .archive-footer-cell {
+  border-left: 1px solid var(--border);
 }
 .archive-empty-label {
   display: block;

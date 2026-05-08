@@ -102,6 +102,8 @@ export function ScanProgressView({ progress, detectionMode, scanArchives, histor
         scanStartRef={scanStartRef}
         isLastPhase={isLastPhase}
         progress={{ current: progress?.current ?? 0, total: progress?.total ?? 0 }}
+        phaseCurrent={progress?.phase_current ?? 0}
+        phaseTotal={progress?.phase_total ?? 0}
         t={t}
       />
     </div>

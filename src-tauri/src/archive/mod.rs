@@ -1,5 +1,5 @@
 // Types publics
-pub use types::{ArchiveComparison, ArchiveDetail, ArchiveEntryResult};
+pub use types::{ArchiveComparison, ArchiveDetail, ArchiveEntryHash, ArchiveEntryResult};
 
 mod types;
 mod zip_reader;
@@ -107,6 +107,137 @@ pub fn hash_bytes(bytes: &[u8]) -> u64 {
     hasher.digest()
 }
 
+/// Lit les bytes d'une entree donnee d'une archive en memoire. Utilise pour la
+/// generation de miniatures a la volee dans le comparateur (pas de stockage persistant).
+///
+/// Performance :
+/// - ZIP : random access par chemin (rapide)
+/// - 7z : iteration via for_each_entries jusqu'a la cible
+/// - tar.* : decompression sequentielle jusqu'a l'entree cible
+pub fn read_archive_entry_bytes(archive_path: &Path, internal_path: &str) -> Result<Vec<u8>, String> {
+    let format = detect_archive_format(archive_path)
+        .ok_or_else(|| format!("format non supporte: {}", archive_path.display()))?;
+    match format {
+        ArchiveFormat::Zip => {
+            let file = std::fs::File::open(archive_path).map_err(|e| e.to_string())?;
+            let mut archive = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
+            let mut entry = archive.by_name(internal_path).map_err(|e| e.to_string())?;
+            if entry.is_dir() || entry.encrypted() {
+                return Err("entree invalide (dossier ou chiffree)".to_string());
+            }
+            let mut buf = Vec::with_capacity(entry.size() as usize);
+            entry.read_to_end(&mut buf).map_err(|e| e.to_string())?;
+            Ok(buf)
+        }
+        ArchiveFormat::SevenZip => {
+            use sevenz_rust2::{ArchiveReader, Password};
+            let mut reader = ArchiveReader::open(archive_path, Password::empty())
+                .map_err(|e| e.to_string())?;
+            let mut found: Option<Vec<u8>> = None;
+            reader.for_each_entries(|entry, stream| {
+                if found.is_some() { return Ok(false); }
+                if entry.is_directory() || !entry.has_stream() { return Ok(true); }
+                if entry.name() == internal_path {
+                    let mut buf = Vec::with_capacity(entry.size() as usize);
+                    if stream.read_to_end(&mut buf).is_err() {
+                        return Ok(false);
+                    }
+                    found = Some(buf);
+                    return Ok(false);
+                }
+                Ok(true)
+            }).map_err(|e| e.to_string())?;
+            found.ok_or_else(|| "entree introuvable".to_string())
+        }
+        ArchiveFormat::TarGz => read_tar_entry(archive_path, internal_path, |f| Box::new(flate2::read::GzDecoder::new(f))),
+        ArchiveFormat::TarBz2 => read_tar_entry(archive_path, internal_path, |f| Box::new(bzip2::read::BzDecoder::new(f))),
+        ArchiveFormat::TarXz => read_tar_entry(archive_path, internal_path, |f| Box::new(xz2::read::XzDecoder::new(f))),
+        ArchiveFormat::TarZst => {
+            let file = std::fs::File::open(archive_path).map_err(|e| e.to_string())?;
+            let zst = zstd::Decoder::new(file).map_err(|e| e.to_string())?;
+            read_tar_entry_inner(tar::Archive::new(zst), internal_path)
+        }
+    }
+}
+
+fn read_tar_entry(
+    archive_path: &Path,
+    internal_path: &str,
+    decoder: impl FnOnce(std::fs::File) -> Box<dyn Read>,
+) -> Result<Vec<u8>, String> {
+    let file = std::fs::File::open(archive_path).map_err(|e| e.to_string())?;
+    let stream = decoder(file);
+    read_tar_entry_inner(tar::Archive::new(stream), internal_path)
+}
+
+fn read_tar_entry_inner<R: Read>(mut archive: tar::Archive<R>, internal_path: &str) -> Result<Vec<u8>, String> {
+    for entry in archive.entries().map_err(|e| e.to_string())? {
+        let mut entry = match entry {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        let path = match entry.path() {
+            Ok(p) => p.to_string_lossy().to_string(),
+            Err(_) => continue,
+        };
+        if path == internal_path {
+            let size = entry.header().size().unwrap_or(0);
+            let mut buf = Vec::with_capacity(size as usize);
+            entry.read_to_end(&mut buf).map_err(|e| e.to_string())?;
+            return Ok(buf);
+        }
+    }
+    Err("entree introuvable".to_string())
+}
+
+/// Compte les entrees image d'une archive en lisant uniquement ses headers.
+/// Utilise pour estimer le travail de la phase pHash archives upfront, afin que
+/// `total_work` du scanner inclue cette phase et que la barre de progression
+/// avance de maniere monotone et fiable.
+///
+/// - ZIP/7z : count exact via central directory / table d'entrees (rapide)
+/// - tar.* : approximation = `count_entries_fast / 3` (fraction typique d'images)
+///   pour eviter de decompresser le flux entier
+pub fn count_archive_image_entries(path: &Path) -> usize {
+    use crate::scanner::hash::is_image_path;
+    let format = match detect_archive_format(path) {
+        Some(f) => f,
+        None => return 0,
+    };
+    match format {
+        ArchiveFormat::Zip => {
+            let file = match std::fs::File::open(path) { Ok(f) => f, Err(_) => return 0 };
+            let mut archive = match zip::ZipArchive::new(file) { Ok(a) => a, Err(_) => return 0 };
+            let mut n = 0;
+            for i in 0..archive.len() {
+                if let Ok(entry) = archive.by_index(i) {
+                    if !entry.is_dir() && !entry.encrypted() && is_image_path(entry.name()) {
+                        n += 1;
+                    }
+                }
+            }
+            n
+        }
+        ArchiveFormat::SevenZip => {
+            let mut reader = match sevenz_rust2::ArchiveReader::open(path, sevenz_rust2::Password::empty()) {
+                Ok(r) => r,
+                Err(_) => return 0,
+            };
+            let mut n = 0;
+            let _ = reader.for_each_entries(|entry, _| {
+                if !entry.is_directory() && entry.has_stream() && is_image_path(entry.name()) {
+                    n += 1;
+                }
+                Ok(true)
+            });
+            n
+        }
+        // tar.* : decompresser pour compter precisement serait prohibitif. Heuristique :
+        // un tiers des entrees sont des images. Conservateur sans surdimensionner.
+        _ => count_entries_fast(path) / 3,
+    }
+}
+
 pub fn count_entries_fast(path: &Path) -> usize {
     let format = match detect_archive_format(path) {
         Some(f) => f,
@@ -185,6 +316,94 @@ fn build_result(e: &ArchiveEntry, other: Option<&ArchiveEntry>) -> ArchiveEntryR
             duplicate_in: None,
             hash: hash_hex,
             similarity_score: None,
+        }
+    }
+}
+
+/// Re-ouvre les archives manquantes du cache pour calculer leurs entrees + hashes.
+/// Utilise pour les sessions creees avant l'introduction du cache d'entrees.
+/// Modifie `entries_cache` en place pour y ajouter les archives nouvellement hashees.
+pub fn ensure_cache_for_groups(
+    groups: &[crate::scanner::ArchiveGroupResult],
+    entries_cache: &mut std::collections::HashMap<String, Vec<ArchiveEntryHash>>,
+) {
+    let no_op: EntryCallback = &|| true;
+    for group in groups {
+        for arch in &group.archives {
+            if entries_cache.contains_key(&arch.path) { continue; }
+            if !std::path::Path::new(&arch.path).exists() { continue; }
+            let entries = hash_archive_entries(std::path::Path::new(&arch.path), true, no_op)
+                .unwrap_or_default();
+            let entries_hash: Vec<ArchiveEntryHash> = entries.into_iter()
+                .map(|e| ArchiveEntryHash {
+                    internal_path: e.internal_path,
+                    size: e.size,
+                    xxh3_hex: format!("{:x}", e.hash),
+                    phash_coarse: e.phash.as_ref().map(|p| p.0.clone()),
+                    phash_fine: e.phash.map(|p| p.1),
+                })
+                .collect();
+            entries_cache.insert(arch.path.clone(), entries_hash);
+        }
+    }
+}
+
+/// Recalcule `duplicated_entries` et `can_delete` pour chaque archive d'un groupe
+/// en utilisant le cache (xxh3 + pHash). Une entree est consideree dupliquee si elle
+/// matche au moins une entree dans une autre archive du meme groupe (xxh3 identique
+/// ou pHash dans le seuil de Hamming).
+///
+/// Necessaire pour deux raisons :
+/// 1. Sessions creees avant que Phase 2 (similaires) compte les similaires dans
+///    `duplicated_entries` : la GroupCard affichait 61/90 au lieu de 90/90.
+/// 2. Coherence : le comparateur (lazy) refait son propre matching, on s'assure que
+///    le compteur affiche est exactement ce que verra l'utilisateur dans le comparateur.
+pub fn recompute_group_duplicated_entries(
+    groups: &mut [crate::scanner::ArchiveGroupResult],
+    entries_cache: &std::collections::HashMap<String, Vec<ArchiveEntryHash>>,
+    sim_threshold: u32,
+) {
+    use crate::scanner::hash::hamming_distance;
+    for group in groups.iter_mut() {
+        for arch_idx in 0..group.archives.len() {
+            let my_path = group.archives[arch_idx].path.clone();
+            let my_entries = match entries_cache.get(&my_path) {
+                Some(e) => e,
+                None => continue,  // pas de cache : laisse le compteur tel quel
+            };
+            let mut matched: std::collections::HashSet<usize> = std::collections::HashSet::new();
+            for other_idx in 0..group.archives.len() {
+                if other_idx == arch_idx { continue; }
+                let other_entries = match entries_cache.get(&group.archives[other_idx].path) {
+                    Some(e) => e,
+                    None => continue,
+                };
+                for (my_idx, my_e) in my_entries.iter().enumerate() {
+                    if matched.contains(&my_idx) { continue; }
+                    // Match xxh3 exact
+                    if other_entries.iter().any(|o| o.xxh3_hex == my_e.xxh3_hex) {
+                        matched.insert(my_idx);
+                        continue;
+                    }
+                    // Match pHash similar
+                    if let (Some(mc), Some(mf)) = (&my_e.phash_coarse, &my_e.phash_fine) {
+                        for o in other_entries {
+                            if let (Some(oc), Some(of)) = (&o.phash_coarse, &o.phash_fine) {
+                                if hamming_distance(mc, oc) <= sim_threshold
+                                    && hamming_distance(mf, of) <= sim_threshold
+                                {
+                                    matched.insert(my_idx);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            let dup_count = matched.len();
+            let total = group.archives[arch_idx].total_entries;
+            group.archives[arch_idx].duplicated_entries = dup_count;
+            group.archives[arch_idx].can_delete = total > 0 && dup_count == total;
         }
     }
 }
@@ -392,6 +611,93 @@ mod tests {
         let e_sz = hash_archive_entries(sz.path(), false, &|| true).unwrap();
         let e_zip = hash_archive_entries(zip.path(), false, &|| true).unwrap();
         assert_eq!(e_sz[0].hash, e_zip[0].hash);
+    }
+
+    #[test]
+    fn read_archive_entry_bytes_zip_retourne_contenu() {
+        let zip = make_zip(&[("a.txt", b"hello world"), ("b.txt", b"another")]);
+        let bytes = read_archive_entry_bytes(zip.path(), "a.txt").unwrap();
+        assert_eq!(bytes, b"hello world");
+        let bytes_b = read_archive_entry_bytes(zip.path(), "b.txt").unwrap();
+        assert_eq!(bytes_b, b"another");
+    }
+
+    #[test]
+    fn read_archive_entry_bytes_zip_entree_inexistante_donne_erreur() {
+        let zip = make_zip(&[("a.txt", b"hello")]);
+        assert!(read_archive_entry_bytes(zip.path(), "missing.txt").is_err());
+    }
+
+    #[test]
+    fn read_archive_entry_bytes_sevenz_retourne_contenu() {
+        let sz = make_sevenz(&[("a.txt", b"sevenz content"), ("b.txt", b"second")]);
+        let bytes = read_archive_entry_bytes(sz.path(), "a.txt").unwrap();
+        assert_eq!(bytes, b"sevenz content");
+    }
+
+    #[test]
+    fn recompute_corrige_compteur_obsolete_avec_similaires() {
+        use crate::scanner::{ArchiveGroupResult, ArchiveInGroup};
+        use std::collections::HashMap;
+
+        // Cache simulant 2 archives de 2 entrees : 1 paire xxh3 identique + 1 paire pHash proche
+        let mut cache: HashMap<String, Vec<ArchiveEntryHash>> = HashMap::new();
+        cache.insert("/a.zip".to_string(), vec![
+            ArchiveEntryHash {
+                internal_path: "exact.txt".to_string(),
+                size: 10,
+                xxh3_hex: "deadbeef".to_string(),
+                phash_coarse: None,
+                phash_fine: None,
+            },
+            ArchiveEntryHash {
+                internal_path: "img.png".to_string(),
+                size: 1000,
+                xxh3_hex: "111".to_string(),
+                phash_coarse: Some(vec![0u8; 8]),
+                phash_fine: Some(vec![0u8; 32]),
+            },
+        ]);
+        cache.insert("/b.zip".to_string(), vec![
+            ArchiveEntryHash {
+                internal_path: "exact.txt".to_string(),
+                size: 10,
+                xxh3_hex: "deadbeef".to_string(),
+                phash_coarse: None,
+                phash_fine: None,
+            },
+            ArchiveEntryHash {
+                internal_path: "img2.png".to_string(),
+                size: 1100,
+                xxh3_hex: "222".to_string(),
+                phash_coarse: Some(vec![0u8; 8]),
+                phash_fine: Some(vec![0u8; 32]),  // pHash identique a img.png
+            },
+        ]);
+
+        // Groupe avec compteur obsolete : 1 (seulement les exacts) au lieu de 2 (exacts + similaires)
+        let mut groups = vec![ArchiveGroupResult {
+            id: "g1".to_string(),
+            archives: vec![
+                ArchiveInGroup {
+                    path: "/a.zip".to_string(), size: 0, modified: 0,
+                    total_entries: 2, duplicated_entries: 1, can_delete: false, wasted_bytes: 0,
+                },
+                ArchiveInGroup {
+                    path: "/b.zip".to_string(), size: 0, modified: 0,
+                    total_entries: 2, duplicated_entries: 1, can_delete: false, wasted_bytes: 0,
+                },
+            ],
+            shared_entry_count: 1,
+        }];
+
+        recompute_group_duplicated_entries(&mut groups, &cache, 10);
+
+        // Apres recompute : 2 entrees matchees (1 exacte + 1 similaire) sur 2 totales
+        assert_eq!(groups[0].archives[0].duplicated_entries, 2);
+        assert_eq!(groups[0].archives[1].duplicated_entries, 2);
+        assert!(groups[0].archives[0].can_delete);
+        assert!(groups[0].archives[1].can_delete);
     }
 
     #[test]

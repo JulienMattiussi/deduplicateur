@@ -5,18 +5,30 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use rayon::prelude::*;
 
-use crate::archive::{detect_archive_format, hash_archive_entries, count_entries_fast};
+use crate::archive::{detect_archive_format, hash_archive_entries, count_entries_fast, ArchiveEntryHash};
 use crate::archive::extractor::{extract_image_entries, ExtractedImage};
 use super::hash::{hamming_distance, compute_two_pass_hashes};
 use super::types::{DuplicateFile, ArchiveGroupResult, ArchiveInGroup};
 use crate::scanner::types::UnionFind;
 
+/// Resultat de la phase archives : groupes + cache d'entrees indexe par chemin d'archive.
+/// Le cache permet au comparateur (lazy, lance au clic utilisateur) d'eviter le recalcul
+/// complet de hash_archive_entries(compute_phash=true), qui peut prendre plusieurs minutes
+/// sur une archive contenant beaucoup d'images.
+pub struct ArchivePhaseResult {
+    pub groups: Vec<ArchiveGroupResult>,
+    pub entries_cache: HashMap<String, Vec<ArchiveEntryHash>>,
+}
+
 /// Entree d'archive enrichie avec son indice d'archive parente.
+/// `phash` est rempli en Phase 2 pour les entrees image (sera persiste dans le cache
+/// pour eviter le recalcul lors du clic Comparer).
 struct EnrichedEntry {
     arch_idx: usize,
     internal_path: String,
     size: u64,
     hash: u64,
+    phash: Option<(Vec<u8>, Vec<u8>)>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -30,14 +42,14 @@ pub fn run(
     data_dir: Option<&str>,
     skip_phash: bool,
     on_progress: &(impl Fn(usize, usize, usize, &str, usize, usize, &str) + Send + Sync),
-) -> Vec<ArchiveGroupResult> {
+) -> ArchivePhaseResult {
     // Filtrer les archives
     let archives: Vec<&DuplicateFile> = files.iter()
         .filter(|f| detect_archive_format(Path::new(&f.path)).is_some())
         .collect();
 
     if archives.len() < 2 {
-        return vec![];
+        return ArchivePhaseResult { groups: vec![], entries_cache: HashMap::new() };
     }
 
     // Estimer le total d'entrees pour la progression
@@ -81,6 +93,7 @@ pub fn run(
                 internal_path: entry.internal_path,
                 size: entry.size,
                 hash: entry.hash,
+                phash: None,  // rempli en Phase 2 si l'entree est une image
             });
             hash_map.entry(all_entries[idx].hash).or_default().push(idx);
         }
@@ -124,40 +137,31 @@ pub fn run(
         if let Some(dir) = data_dir {
             let archive_paths: Vec<String> = archives.iter().map(|f| f.path.clone()).collect();
             let extract_cancelled = cancelled.clone();
-            // Estimation phase 2 : on ne sait pas encore le nb d'images, mais une borne raisonnable
-            // est ~30% du nb total d'entrees archive (fraction images typique). Sera ajustee a la
-            // hausse au fur et a mesure pour eviter de "depasser 100%" comme on a deja le mecanisme.
-            let p2_estimate_initial = (estimated_total / 3).max(10);
+            // Estimation phase 2 : count d'images deja calcule en amont (scanner/mod.rs) et
+            // ajoute a total_work. Ici on estime localement avec la meme regle pour avoir
+            // un denominateur de phase coherent. Le pHash parallele emet ensuite chaque etape.
             let p2_done = std::sync::atomic::AtomicUsize::new(0);
-            let p2_total_dyn = std::sync::atomic::AtomicUsize::new(p2_estimate_initial);
 
             let extract_cb = || -> bool {
                 if extract_cancelled.load(Ordering::Relaxed) { return false; }
                 let n2 = p2_done.fetch_add(1, Ordering::Relaxed) + 1;
                 let n_overall = processed.fetch_add(1, Ordering::Relaxed) + 1;
-                // Si on depasse l'estimation phase 2, on l'ajuste (bar reste fluide a 100%)
-                let cur_total = p2_total_dyn.load(Ordering::Relaxed);
-                if n2 > cur_total {
-                    p2_total_dyn.store(n2, Ordering::Relaxed);
-                }
                 on_progress(
                     progress_base + n_overall,
-                    total_work.max(progress_base + n_overall),
+                    total_work,
                     0,
-                    "",
+                    "",  // extraction : pas de fichier specifique a remonter (rapide)
                     n2,
-                    p2_total_dyn.load(Ordering::Relaxed),
+                    estimated_total.max(n_overall),  // cap defensif si on depasse l'estimate
                     "archives_phash",
                 );
                 true
             };
             if let Ok(extraction) = extract_image_entries(&archive_paths, Path::new(dir), &extract_cb) {
-                // Maintenant on connait le nb reel d'images : on fixe le total pour la passe pHash
-                // a 2x (extraction faite + pHash a faire). Reset du compteur pour la phase pHash.
                 let images_count = extraction.items.len();
-                let p2_real_total = images_count * 2;
-                p2_total_dyn.store(p2_real_total, Ordering::Relaxed);
-                let phash_done = std::sync::atomic::AtomicUsize::new(images_count);  // extraction = 1ere moitie deja faite
+                // p2_real_total = extraction (deja faite) + pHash (a faire) = images_count * 2
+                let p2_real_total = (images_count * 2).max(p2_done.load(Ordering::Relaxed));
+                let phash_done = std::sync::atomic::AtomicUsize::new(images_count);
 
                 // pHash parallele via rayon. compute_two_pass_hashes utilise EXIF thumbnail
                 // pour les JPEG (decodage thumbnail 160x120 au lieu de l'image complete).
@@ -171,9 +175,9 @@ pub fn run(
                         let n_overall = processed.fetch_add(1, Ordering::Relaxed) + 1;
                         on_progress(
                             progress_base + n_overall,
-                            total_work.max(progress_base + n_overall),
+                            total_work,
                             0,
-                            "",
+                            &img.internal_path,  // chemin interne de l'image en cours de hash
                             n2,
                             p2_real_total,
                             "archives_phash",
@@ -181,6 +185,20 @@ pub fn run(
                         hash
                     })
                     .collect();
+
+                // Persister les pHash dans all_entries via index (arch_idx, internal_path).
+                // Permet de remplir le cache `entries_cache` en fin de phase pour le comparateur.
+                let mut entry_index_by_key: HashMap<(usize, String), usize> = HashMap::new();
+                for (i, e) in all_entries.iter().enumerate() {
+                    entry_index_by_key.insert((e.arch_idx, e.internal_path.clone()), i);
+                }
+                for (i, img) in extraction.items.iter().enumerate() {
+                    if let Some(ph) = &phashes[i] {
+                        if let Some(&entry_i) = entry_index_by_key.get(&(img.archive_idx, img.internal_path.clone())) {
+                            all_entries[entry_i].phash = Some(ph.clone());
+                        }
+                    }
+                }
 
                 if !cancelled.load(Ordering::Relaxed) {
                     // Indices des images extraites avec pHash valide ET dont l'entree source
@@ -269,7 +287,25 @@ pub fn run(
         });
     }
 
-    results
+    // Construire le cache : pour chaque archive, la liste de ses entrees avec hashes.
+    // Le comparateur (clic Comparer) utilisera ce cache au lieu de relire/redecoder.
+    let mut entries_cache: HashMap<String, Vec<ArchiveEntryHash>> = HashMap::new();
+    for entry in &all_entries {
+        let arch_path = archives[entry.arch_idx].path.clone();
+        let (phash_coarse, phash_fine) = match &entry.phash {
+            Some((c, f)) => (Some(c.clone()), Some(f.clone())),
+            None => (None, None),
+        };
+        entries_cache.entry(arch_path).or_default().push(ArchiveEntryHash {
+            internal_path: entry.internal_path.clone(),
+            size: entry.size,
+            xxh3_hex: format!("{:x}", entry.hash),
+            phash_coarse,
+            phash_fine,
+        });
+    }
+
+    ArchivePhaseResult { groups: results, entries_cache }
 }
 
 #[cfg(test)]
@@ -320,7 +356,7 @@ mod tests {
             make_dup_file(zip1.path().to_str().unwrap()),
             make_dup_file(zip2.path().to_str().unwrap()),
         ];
-        let groups = run(&files, &no_cancel(), 0, 100, false, 10, None, false, &no_progress);
+        let groups = run(&files, &no_cancel(), 0, 100, false, 10, None, false, &no_progress).groups;
         assert_eq!(groups.len(), 1);
         assert_eq!(groups[0].archives.len(), 2);
         assert!(groups[0].archives.iter().all(|a| a.can_delete));
@@ -334,7 +370,7 @@ mod tests {
             make_dup_file(zip1.path().to_str().unwrap()),
             make_dup_file(zip2.path().to_str().unwrap()),
         ];
-        let groups = run(&files, &no_cancel(), 0, 100, false, 10, None, false, &no_progress);
+        let groups = run(&files, &no_cancel(), 0, 100, false, 10, None, false, &no_progress).groups;
         assert_eq!(groups.len(), 1);
         assert!(groups[0].archives.iter().all(|a| !a.can_delete));
     }
@@ -347,7 +383,7 @@ mod tests {
             make_dup_file(zip1.path().to_str().unwrap()),
             make_dup_file(zip2.path().to_str().unwrap()),
         ];
-        let groups = run(&files, &no_cancel(), 0, 100, false, 10, None, false, &no_progress);
+        let groups = run(&files, &no_cancel(), 0, 100, false, 10, None, false, &no_progress).groups;
         assert_eq!(groups.len(), 0);
     }
 
@@ -355,7 +391,7 @@ mod tests {
     fn archive_unique_pas_de_groupe() {
         let zip1 = make_zip_file(&[("a.txt", b"content")]);
         let files = vec![make_dup_file(zip1.path().to_str().unwrap())];
-        let groups = run(&files, &no_cancel(), 0, 100, false, 10, None, false, &no_progress);
+        let groups = run(&files, &no_cancel(), 0, 100, false, 10, None, false, &no_progress).groups;
         assert_eq!(groups.len(), 0);
     }
 
@@ -371,7 +407,7 @@ mod tests {
             make_dup_file(zip1.path().to_str().unwrap()),
             make_dup_file(zip2.path().to_str().unwrap()),
         ];
-        let groups = run(&files, &no_cancel(), 0, 100, false, 10, None, false, &no_progress);
+        let groups = run(&files, &no_cancel(), 0, 100, false, 10, None, false, &no_progress).groups;
         assert_eq!(groups.len(), 1);
         // Seules les archives sont dans le groupe, pas le fichier texte
         for g in &groups {
@@ -386,7 +422,7 @@ mod tests {
         // Une archive avec 2 entrees identiques ne forme pas de groupe (comparaison inter-archive seulement)
         let zip1 = make_zip_file(&[("a.txt", b"same"), ("b.txt", b"same")]);
         let files = vec![make_dup_file(zip1.path().to_str().unwrap())];
-        let groups = run(&files, &no_cancel(), 0, 100, false, 10, None, false, &no_progress);
+        let groups = run(&files, &no_cancel(), 0, 100, false, 10, None, false, &no_progress).groups;
         assert_eq!(groups.len(), 0);
     }
 
@@ -398,7 +434,7 @@ mod tests {
         let mut f2 = make_dup_file(zip2.path().to_str().unwrap());
         f1.modified = 1700000000;
         f2.modified = 1700001000;
-        let groups = run(&[f1, f2], &no_cancel(), 0, 100, false, 10, None, false, &no_progress);
+        let groups = run(&[f1, f2], &no_cancel(), 0, 100, false, 10, None, false, &no_progress).groups;
         assert_eq!(groups.len(), 1);
         let archives = &groups[0].archives;
         assert_eq!(archives.len(), 2);
@@ -458,16 +494,65 @@ mod tests {
             make_dup_file(zip2.path().to_str().unwrap()),
         ];
         // Sans find_similar : pas de match (xxh3 differents)
-        let g_exact = run(&files, &no_cancel(), 0, 100, false, 10, None, false, &no_progress);
+        let g_exact = run(&files, &no_cancel(), 0, 100, false, 10, None, false, &no_progress).groups;
         assert_eq!(g_exact.len(), 0, "sans find_similar, les images avec bruit ne matchent pas");
         // Avec find_similar : match par pHash via extraction temp + compute_two_pass_hashes
         let data_tmp = TempDir::new().unwrap();
-        let g_sim = run(&files, &no_cancel(), 0, 100, true, 10, data_tmp.path().to_str(), false, &no_progress);
+        let g_sim = run(&files, &no_cancel(), 0, 100, true, 10, data_tmp.path().to_str(), false, &no_progress).groups;
         assert_eq!(g_sim.len(), 1, "avec find_similar + data_dir, les images proches forment un groupe");
         assert_eq!(g_sim[0].archives.len(), 2);
         // Avec skip_phash=true : pas de groupe meme avec find_similar
-        let g_skip = run(&files, &no_cancel(), 0, 100, true, 10, data_tmp.path().to_str(), true, &no_progress);
+        let g_skip = run(&files, &no_cancel(), 0, 100, true, 10, data_tmp.path().to_str(), true, &no_progress).groups;
         assert_eq!(g_skip.len(), 0, "skip_phash=true desactive la phase pHash archives");
+    }
+
+    #[test]
+    fn similaires_comptes_dans_duplicated_entries() {
+        // Bug: l'utilisateur voit 61/90 dans la GroupCard alors que toutes les entrees
+        // sont matchees (61 exactes + 29 similaires). Phase 2 doit incrementer
+        // duplicated_entries pour les similaires aussi, sinon la GroupCard sous-estime.
+        let img_a = make_png_bytes(image::Rgb([100, 50, 30]), 0);
+        let img_b = make_png_bytes(image::Rgb([100, 50, 30]), 1);
+        let zip1 = {
+            let mut f = NamedTempFile::with_suffix(".zip").unwrap();
+            {
+                let mut w = zip::ZipWriter::new(std::io::BufWriter::new(f.as_file_mut()));
+                let opts = zip::write::SimpleFileOptions::default();
+                w.start_file("photo.png", opts).unwrap();
+                w.write_all(&img_a).unwrap();
+                w.finish().unwrap();
+            }
+            f
+        };
+        let zip2 = {
+            let mut f = NamedTempFile::with_suffix(".zip").unwrap();
+            {
+                let mut w = zip::ZipWriter::new(std::io::BufWriter::new(f.as_file_mut()));
+                let opts = zip::write::SimpleFileOptions::default();
+                w.start_file("photo.png", opts).unwrap();
+                w.write_all(&img_b).unwrap();
+                w.finish().unwrap();
+            }
+            f
+        };
+        let files = vec![
+            make_dup_file(zip1.path().to_str().unwrap()),
+            make_dup_file(zip2.path().to_str().unwrap()),
+        ];
+        let data_tmp = TempDir::new().unwrap();
+        let groups = run(&files, &no_cancel(), 0, 100, true, 10, data_tmp.path().to_str(), false, &no_progress).groups;
+        assert_eq!(groups.len(), 1);
+        let g = &groups[0];
+        // Chaque archive a 1 entree au total, et son seul fichier est match (similaire) avec l'autre
+        // -> duplicated_entries doit etre 1 sur chacune, can_delete=true.
+        for a in &g.archives {
+            assert_eq!(a.total_entries, 1);
+            assert_eq!(
+                a.duplicated_entries, 1,
+                "duplicated_entries doit compter les similaires aussi (path={})", a.path
+            );
+            assert!(a.can_delete, "archive entierement matchee doit etre supprimable (path={})", a.path);
+        }
     }
 
     #[test]
@@ -480,7 +565,7 @@ mod tests {
             make_dup_file(zip2.path().to_str().unwrap()),
         ];
         let data_tmp = TempDir::new().unwrap();
-        let groups = run(&files, &no_cancel(), 0, 100, true, 10, data_tmp.path().to_str(), false, &no_progress);
+        let groups = run(&files, &no_cancel(), 0, 100, true, 10, data_tmp.path().to_str(), false, &no_progress).groups;
         assert_eq!(groups.len(), 0, "le pHash ne s'applique pas aux fichiers non-image");
     }
 }

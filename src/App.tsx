@@ -839,7 +839,7 @@ export default function App() {
           archiveA={archiveComparatorPair.a}
           archiveB={archiveComparatorPair.b}
           findSimilar={summary?.find_similar ?? false}
-          simThreshold={10}
+          simThreshold={summary?.sim_threshold ?? 10}
           onClose={() => setArchiveComparatorPair(null)}
         />
       )}

@@ -75,6 +75,10 @@ pub struct ScanResult {
     pub fpcalc_missing: bool,
     #[serde(default)]
     pub archive_groups: Vec<ArchiveGroupResult>,
+    /// Cache des hashes d'entrees d'archives (xxh3 + pHash). Clé = chemin de l'archive.
+    /// Permet au comparateur d'eviter de recalculer ces hashes.
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub archive_entries_cache: std::collections::HashMap<String, Vec<crate::archive::ArchiveEntryHash>>,
 }
 
 /// Parametres d'un scan. Utiliser `ScanParams::new(folder)` pour les valeurs par defaut.

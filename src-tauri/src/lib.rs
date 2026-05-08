@@ -27,6 +27,8 @@ pub struct LoadedSession {
     pub summary: ScanSummary,
     pub groups: Vec<DuplicateGroup>,
     pub archive_groups: Vec<crate::scanner::ArchiveGroupResult>,
+    /// Cache des entrees d'archive (xxh3 + pHash) pour le comparateur lazy.
+    pub archive_entries_cache: std::collections::HashMap<String, Vec<crate::archive::ArchiveEntryHash>>,
 }
 
 pub struct ScanCache(pub Mutex<Option<LoadedSession>>);
@@ -88,6 +90,9 @@ pub struct SessionFile {
     pub groups: Vec<DuplicateGroup>,
     #[serde(default)]
     pub archive_groups: Vec<crate::scanner::ArchiveGroupResult>,
+    /// Cache des entrees d'archive (xxh3 + pHash) - rétro-compatible via #[serde(default)].
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub archive_entries_cache: std::collections::HashMap<String, Vec<crate::archive::ArchiveEntryHash>>,
 }
 
 // ── Helpers de session ─────────────────────────────────────────────────────
@@ -113,12 +118,14 @@ pub fn save_session(
     summary: &ScanSummary,
     groups: &[DuplicateGroup],
     archive_groups: &[crate::scanner::ArchiveGroupResult],
+    archive_entries_cache: &std::collections::HashMap<String, Vec<crate::archive::ArchiveEntryHash>>,
 ) {
     if let Some(path) = session_path(app, &summary.id) {
         if let Ok(json) = serde_json::to_string(&SessionFile {
             summary: summary.clone(),
             groups: groups.to_vec(),
             archive_groups: archive_groups.to_vec(),
+            archive_entries_cache: archive_entries_cache.clone(),
         }) {
             let _ = std::fs::write(&path, json);
         }
@@ -256,8 +263,9 @@ pub fn select_files_to_delete(
 pub fn run() {
     use commands::archive::{get_archive_comparison, get_archive_groups, check_archive_disk_space, list_archive_paths};
     use commands::files::{
-        check_path_is_dir, delete_files, get_image_meta, get_image_thumbnail, get_video_metadata,
-        get_video_thumbnail, open_file, reveal_in_folder,
+        check_path_is_dir, delete_files, get_archive_entry_thumbnail, get_image_meta,
+        get_image_thumbnail, get_video_metadata, get_video_thumbnail, open_archive_entry,
+        open_file, reveal_in_folder,
     };
     use commands::ignore::{clear_all_ignored, clear_ignore_entry, get_ignore_list, ignore_group};
     use commands::scan::{cancel_scan, scan_folder};
@@ -279,6 +287,13 @@ pub fn run() {
                 let scan_temp = archive::extractor::scan_temp_parent(&data_dir);
                 if scan_temp.exists() {
                     let _ = std::fs::remove_dir_all(&scan_temp);
+                }
+                // Purge des previsualisations d'entrees d'archive ouvertes au session precedente.
+                // Les fichiers temporaires ne sont pas supprimes apres `open_file_default`
+                // (le viewer externe les lit en asynchrone), mais ils sont nettoyes au boot.
+                let archive_preview = data_dir.join("archive_preview");
+                if archive_preview.exists() {
+                    let _ = std::fs::remove_dir_all(&archive_preview);
                 }
             }
             if let Some(window) = app.get_webview_window("main") {
@@ -311,6 +326,8 @@ pub fn run() {
             open_file,
             get_image_thumbnail,
             get_video_thumbnail,
+            get_archive_entry_thumbnail,
+            open_archive_entry,
             get_phash_config,
             set_phash_config,
             get_video_config,
@@ -399,7 +416,7 @@ mod tests {
                 },
             ],
         }];
-        let file = SessionFile { summary, groups: vec![], archive_groups };
+        let file = SessionFile { summary, groups: vec![], archive_groups, archive_entries_cache: std::collections::HashMap::new() };
         let json = serde_json::to_string(&file).unwrap();
         let restored: SessionFile = serde_json::from_str(&json).unwrap();
         assert_eq!(restored.archive_groups.len(), 1);

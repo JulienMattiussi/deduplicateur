@@ -1,9 +1,9 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useLang } from "./LangContext";
 import { formatSize, formatDate, dirname, basename } from "./utils";
 import { revealInFolder } from "./fileActions";
-import { FileTypeIcon } from "./components/FileThumbnail";
+import { ArchiveEntryThumbnail } from "./components/FileThumbnail";
 import { ComparatorBasicShell } from "./comparatorShared";
 import type { ArchiveComparison, ArchiveEntryResult, ArchiveInGroup } from "./types";
 
@@ -94,16 +94,43 @@ function alignEntries(a: ArchiveEntryResult[], b: ArchiveEntryResult[]): Aligned
   return rows;
 }
 
-function EntryCell({ entry, score }: { entry: ArchiveEntryResult | null; score?: number }) {
+/**
+ * Cellule pour une entree d'archive dans une des deux colonnes.
+ * `side` controle l'ordre des elements pour que la miniature/icone soit toujours
+ * du cote interne (proche de la colonne centrale des scores) :
+ * - left  : [taille] [chemin] [thumb]
+ * - right : [thumb] [chemin] [taille]
+ */
+function EntryCell({
+  entry,
+  archivePath,
+  side,
+}: {
+  entry: ArchiveEntryResult | null;
+  archivePath: string;
+  side: "left" | "right";
+}) {
   if (!entry) return <span className="archive-row-empty" />;
-  return (
-    <span className="archive-row-content">
-      <span className="archive-row-icon"><FileTypeIcon path={entry.internal_path} /></span>
-      <span className="archive-row-path" title={entry.internal_path}>{entry.internal_path}</span>
-      {score != null && <span className="archive-row-score">{score.toFixed(0)}%</span>}
-      <span className="archive-row-size">{formatSize(entry.size)}</span>
+  const sizeEl = <span className="archive-row-size">{formatSize(entry.size)}</span>;
+  const pathEl = <span className="archive-row-path" title={entry.internal_path}>{entry.internal_path}</span>;
+  const thumbEl = (
+    <span className="archive-row-icon">
+      <ArchiveEntryThumbnail archivePath={archivePath} internalPath={entry.internal_path} />
     </span>
   );
+  return (
+    <span className={`archive-row-content archive-row-content--${side}`}>
+      {side === "left" ? <>{sizeEl}{pathEl}{thumbEl}</> : <>{thumbEl}{pathEl}{sizeEl}</>}
+    </span>
+  );
+}
+
+function ScoreCell({ matchType, score }: { matchType: MatchType; score?: number | null }) {
+  if (matchType === "exact") return <span className="archive-score-cell">100%</span>;
+  if (matchType === "similar" && score != null) {
+    return <span className="archive-score-cell archive-score-cell--similar">{score.toFixed(0)}%</span>;
+  }
+  return <span className="archive-score-cell archive-score-cell--empty" />;
 }
 
 function ArchiveMetaBlock({ archive }: { archive: ArchiveInGroup }) {
@@ -150,9 +177,6 @@ export function ArchiveComparator({ archiveA, archiveB, findSimilar, simThreshol
   const [comparison, setComparison] = useState<ArchiveComparison | null>(null);
   const [loading, setLoading] = useState(true);
   const [duplicatesOnly, setDuplicatesOnly] = useState(false);
-  const leftRef = useRef<HTMLDivElement>(null);
-  const rightRef = useRef<HTMLDivElement>(null);
-  const syncingRef = useRef(false);
 
   useEffect(() => {
     setLoading(true);
@@ -175,23 +199,6 @@ export function ArchiveComparator({ archiveA, archiveB, findSimilar, simThreshol
   const visibleRows = useMemo(() => {
     return duplicatesOnly ? rows.filter((r) => r.matchType !== "unique") : rows;
   }, [rows, duplicatesOnly]);
-
-  function handleScrollLeft(e: React.UIEvent<HTMLDivElement>) {
-    if (syncingRef.current) { syncingRef.current = false; return; }
-    const right = rightRef.current;
-    if (right && right.scrollTop !== e.currentTarget.scrollTop) {
-      syncingRef.current = true;
-      right.scrollTop = e.currentTarget.scrollTop;
-    }
-  }
-  function handleScrollRight(e: React.UIEvent<HTMLDivElement>) {
-    if (syncingRef.current) { syncingRef.current = false; return; }
-    const left = leftRef.current;
-    if (left && left.scrollTop !== e.currentTarget.scrollTop) {
-      syncingRef.current = true;
-      left.scrollTop = e.currentTarget.scrollTop;
-    }
-  }
 
   const headerExtra = (
     <label className="comparator-filter-toggle" data-testid="archive-only-duplicates-toggle">
@@ -218,36 +225,27 @@ export function ArchiveComparator({ archiveA, archiveB, findSimilar, simThreshol
         </div>
       ) : comparison ? (
         <div className="comparator-body archive-comparator-body" data-testid="archive-comparator-body">
-          <div className="comparator-panel archive-col">
-            <div className="archive-col-entries" ref={leftRef} onScroll={handleScrollLeft} data-testid="archive-col-left">
-              {visibleRows.length === 0 ? (
-                <span className="archive-empty-label">-</span>
-              ) : (
-                visibleRows.map((row, i) => (
-                  <div key={`l${i}`} className={rowClass(row.matchType)}>
-                    <EntryCell entry={row.left} score={row.matchType === "similar" ? row.left?.similarity_score : undefined} />
-                  </div>
-                ))
-              )}
-            </div>
-            <div className="comparator-footer">
+          <div className="archive-grid" data-testid="archive-comparator-grid">
+            {visibleRows.length === 0 ? (
+              <span className="archive-empty-label">-</span>
+            ) : (
+              visibleRows.map((row, i) => (
+                <div key={i} className={rowClass(row.matchType)}>
+                  <EntryCell entry={row.left} archivePath={archiveA.path} side="left" />
+                  <ScoreCell
+                    matchType={row.matchType}
+                    score={row.matchType === "similar" ? (row.left?.similarity_score ?? row.right?.similarity_score) : null}
+                  />
+                  <EntryCell entry={row.right} archivePath={archiveB.path} side="right" />
+                </div>
+              ))
+            )}
+          </div>
+          <div className="archive-footers">
+            <div className="comparator-footer archive-footer-cell">
               <ArchiveMetaBlock archive={archiveA} />
             </div>
-          </div>
-          <div className="comparator-divider" />
-          <div className="comparator-panel archive-col">
-            <div className="archive-col-entries" ref={rightRef} onScroll={handleScrollRight} data-testid="archive-col-right">
-              {visibleRows.length === 0 ? (
-                <span className="archive-empty-label">-</span>
-              ) : (
-                visibleRows.map((row, i) => (
-                  <div key={`r${i}`} className={rowClass(row.matchType)}>
-                    <EntryCell entry={row.right} score={row.matchType === "similar" ? row.right?.similarity_score : undefined} />
-                  </div>
-                ))
-              )}
-            </div>
-            <div className="comparator-footer">
+            <div className="comparator-footer archive-footer-cell">
               <ArchiveMetaBlock archive={archiveB} />
             </div>
           </div>

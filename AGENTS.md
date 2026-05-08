@@ -77,6 +77,74 @@ Voir [docs/plan.md](docs/plan.md) pour le plan complet et l'avancement des phase
 - Chaque sous-dossier est analysé indépendamment
 - Suppression toujours vers la corbeille (récupérable)
 
+## Règle impérative - Vision d'ensemble avant patch local
+
+**Quand un retour utilisateur signale un problème UX, ne PAS patcher localement le symptôme.**
+Toujours :
+1. Comprendre l'architecture concernée et **relire les principes établis** (ce fichier, design existant)
+2. Identifier la cause racine (souvent un principe brisé en amont, pas le bug visible)
+3. Proposer un fix qui **restaure le principe**, pas qui empile un cataplasme
+
+**Symptômes typiques de patches locaux empilés** : conditions ad-hoc multipliées, valeurs gelées/trompées pour faire croire à un état, hacks `Math.min/max` côté affichage pour cacher des incohérences backend.
+
+Quand l'utilisateur dit "tu casses ce qui marchait avant", c'est probablement parce qu'on a violé un principe sans le réaliser. Faire un état des lieux honnête, regarder l'historique git si besoin, et **revenir au design**.
+
+## Règle impérative - Sémantique de la progression de scan (`scan:progress`)
+
+L'événement `scan:progress` a une sémantique stricte que **toutes les phases doivent respecter** :
+
+| Champ | Sémantique stricte |
+|---|---|
+| `current` | Position absolue dans `total_work`. **Strictement monotone croissant** sur toute la durée du scan. JAMAIS reset, JAMAIS gelé. Sert au heartbeat affiché ("X opérations traitées") et au calcul d'ETA. |
+| `total` | `total_work` calculé **upfront** au début du scan (somme des estimations de toutes les phases). Fixé une fois pour toutes, **jamais modifié dynamiquement** pendant le scan. |
+| `phase` | Identifiant de la phase actuelle (`reading`, `exact`, `images`, `videos`, `audio`, `archives`, `archives_phash`). Change uniquement aux transitions. |
+| `phase_current` / `phase_total` | Compteur LOCAL à la phase ("1234 / 5000 images"). |
+| `file` | Nom du fichier en cours de traitement. **Toujours rempli** en pleine phase (sinon la zone affichée saute). |
+
+Conséquences :
+- Pour ajouter une phase nouvelle (ex. archive Phase 2), il faut **étendre `total_work` upfront** avec une estimation de son travail. Si on ne sait pas estimer précisément, surestimer (la barre s'arrête à 95% au lieu de 100%, c'est moins grave qu'un dépassement).
+- Si une phase est silencieuse (pas d'évènements), la barre reste figée pendant son exécution, l'ETA ne peut pas être calculé. **Toujours émettre des évènements** régulièrement (par item traité, par itération du `par_iter` rayon, etc.).
+- Le frontend `ProgressETA` est conçu pour **ne PAS afficher d'info trompeuse** quand `current` ne bouge pas (rate=0 → pas de "presque fini", pas de "X min restantes"). C'est intentionnel. Si l'ETA disparaît, c'est que `current` est bloqué, pas un bug du frontend.
+- Le frontend cap déjà `pct = Math.min(100, current/total)` côté affichage. C'est un garde-fou défensif, **pas une excuse pour laisser current dépasser total**.
+
+**Ce qu'il ne faut JAMAIS faire** :
+- Modifier `total_work` pendant le scan (`total_work.max(current)` etc.)
+- Geler `current` pour faire avancer le heartbeat autrement
+- Faire lire `phase_current` au heartbeat à la place de `current`
+- Émettre `file=""` en pleine phase
+
+## Règle impérative - Architecture cache pour opérations lazy
+
+Quand le frontend déclenche une opération coûteuse en post-scan (ex. ouverture d'un comparateur), **ne JAMAIS recalculer ce qui a été calculé pendant le scan**.
+
+Pattern :
+1. Pendant le scan, calculer les données nécessaires (hashes, métadonnées) et les stocker dans le résultat
+2. Propager jusque `LoadedSession` (état mémoire) et `SessionFile` (persistance disque, rétro-compatible via `#[serde(default)]`)
+3. La commande lazy (ex. `get_archive_comparison`) **lit le cache en priorité**, fallback uniquement si absent (sessions pré-cache)
+4. Quand la session est supprimée ou des fichiers sont retirés, **purger le cache correspondant**
+
+Voir `archive_entries_cache` (HashMap path → entrées avec hashes) comme exemple de référence.
+
+## Règle impérative - Cohérence des seuils entre scan et opérations post-scan
+
+Tout paramètre qui influence un calcul (seuil de similarité, tolérance, etc.) doit être **partagé entre toutes les phases qui s'en servent**. Si la phase de scan utilise un seuil et qu'une opération post-scan (comparateur, recompute, export) utilise un seuil différent, le compteur affiché à l'utilisateur ne correspond plus à ce qu'il voit dans le détail.
+
+Exemple vécu : `ArchiveComparator` hardcodait `simThreshold={10}` alors que le scan utilisait `summary.sim_threshold` (potentiellement 0 si l'utilisateur avait choisi 100% de similarité). Résultat : `duplicated_entries=61/90` dans la GroupCard mais 90 paires affichées dans le comparateur (29 à 99% via le seuil 10 hardcodé). Avec le fix `simThreshold={summary?.sim_threshold ?? 10}`, les 29 entrées qui ne matchent plus apparaissent désormais comme **lignes isolées** (cellule opposée vide) du côté de leur archive, ce qui est cohérent avec le compteur 61/90.
+
+Pattern : la source de vérité d'un seuil est `summary` (ou `params` pendant le scan). Toute commande qui prend ce seuil en paramètre **lit toujours la même source**, jamais une constante hardcodée différente.
+
+## Règle impérative - Diagnostic par logs avant code
+
+Quand un bug ne reproduit pas ou que la cause n'est pas évidente après lecture du code, **ajouter des logs ciblés et faire reproduire l'utilisateur** est plus rapide et plus fiable que de spéculer en boucle. Pattern :
+
+1. Identifier les valeurs clés à observer (état du cache, seuils, compteurs avant/après une transformation)
+2. Ajouter des `eprintln!("[fonction] ...")` aux points de décision
+3. Recompiler, faire reproduire, lire les logs
+4. Diagnostic immédiat (ou nouvelle hypothèse à tester avec d'autres logs)
+5. **Retirer les logs avant commit**
+
+Exemple vécu : recompute des compteurs d'archives qui ne marchait pas. 3 itérations de spéculations infructueuses. Un seul jeu de logs (état du cache + seuil + compteurs avant/après) a révélé `sim_threshold=0` dans la session — root cause invisible depuis le code seul. À adopter dès qu'un fix "logique" ne suffit pas.
+
 ## Pièges Tauri 2 rencontrés
 
 ### Permissions manquantes → clic sans effet
@@ -417,6 +485,28 @@ rame l'UI au chargement d'un gros scan. Utiliser `IntersectionObserver` avec
 declenche que quand le placeholder entre dans la zone etendue. En test (jsdom), mocker
 `IntersectionObserver` pour qu'il declenche immediatement `isIntersecting: true` dans
 `src/test-setup.ts` - sinon tous les tests de thumbnails echouent (invoke jamais appele).
+
+### Phase silencieuse → barre de progression "morte" + ETA cassé
+Quand une phase de scan ne fait pas d'émissions `on_progress` régulières, le frontend voit `progress.current` figé et :
+- Le heartbeat ne bouge plus (impression de freeze)
+- `ProgressETA` calcule `rate = 0`, n'affiche plus "X min restantes"
+- La barre semble bloquée à un pourcentage
+
+C'est arrivé avec la phase 2 archives (extraction tempdir + pHash parallèle rayon) qui n'émettait rien pendant son exécution. Le fix correct n'est pas de bricoler côté frontend, mais d'**émettre depuis chaque iteration**, y compris depuis le `par_iter` rayon. Pour cela la signature de `on_progress` doit avoir `+ Send + Sync`. Pattern :
+```rust
+// Dans la fonction phase :
+on_progress: &(impl Fn(...) + Send + Sync),
+
+// Dans le par_iter :
+let phashes: Vec<_> = items.par_iter().map(|item| {
+    let n = counter.fetch_add(1, Ordering::Relaxed) + 1;
+    on_progress(progress_base + n, total_work, ..., n, phase_total, "phase_label");
+    compute(item)
+}).collect();
+```
+
+### `count_archive_image_entries` pour les estimations upfront
+Pour qu'une nouvelle phase respecte la règle "total_work fixé upfront", il faut pouvoir estimer son travail avant que le scan démarre. Pour les phases archives, `archive::count_archive_image_entries(path)` lit les headers (rapide pour ZIP/7z) ou utilise une heuristique (1/3 du nb d'entrées pour tar.* afin d'éviter la décompression). Voir `scanner/mod.rs` pour le calcul de `archive_phase1_estimate` + `archive_phase2_estimate` ajoutés à `total_work`.
 
 ### Scan d'archives 7z : utiliser sevenz-rust2, pas sevenz-rust
 `sevenz-rust` (version 0.6) expose `for_each_entries` avec une signature HRTB

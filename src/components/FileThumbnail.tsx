@@ -163,3 +163,83 @@ export function FileThumbnail({ file, mode }: { file: DuplicateFile; mode: "imag
   }
   return <span ref={placeholderRef} className="file-thumb-spinner" />;
 }
+
+const IMAGE_EXTS = new Set([
+  "jpg", "jpeg", "png", "gif", "bmp", "webp", "tiff", "tif",
+  "ico", "jfif", "heic", "heif", "avif",
+]);
+
+function isImagePath(p: string): boolean {
+  const ext = p.split(".").pop()?.toLowerCase() ?? "";
+  return IMAGE_EXTS.has(ext);
+}
+
+/**
+ * Miniature pour une entree d'archive. Charge a la volee via la commande backend
+ * `get_archive_entry_thumbnail` quand l'element entre dans la zone visible (IntersectionObserver).
+ * - Pour une entree non-image : affiche directement l'icone de type de fichier (pas d'invoke).
+ * - En cas d'erreur de decodage : repli sur l'icone de type de fichier.
+ */
+export function ArchiveEntryThumbnail({
+  archivePath,
+  internalPath,
+}: {
+  archivePath: string;
+  internalPath: string;
+}) {
+  const isImage = isImagePath(internalPath);
+  const [thumb, setThumb] = useState<string | null>(null);
+  const [near, setNear] = useState(false);
+  const [opening, setOpening] = useState(false);
+  const placeholderRef = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    if (!isImage) return;
+    const el = placeholderRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) setNear(true); },
+      { rootMargin: `${PRELOAD_MARGIN} 0px` }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [isImage]);
+
+  useEffect(() => {
+    if (!near || !isImage) return;
+    invoke<string>("get_archive_entry_thumbnail", {
+      archivePath,
+      internalPath,
+      maxSize: 64,
+    })
+      .then(setThumb)
+      .catch(() => setThumb("error"));
+  }, [near, isImage, archivePath, internalPath]);
+
+  function openEntry(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (opening) return;
+    setOpening(true);
+    invoke("open_archive_entry", { archivePath, internalPath })
+      .finally(() => setOpening(false));
+  }
+
+  if (!isImage || thumb === "error") {
+    return <FileTypeIcon path={internalPath} />;
+  }
+  if (thumb) {
+    return (
+      <span className="archive-thumb-wrap">
+        <img
+          src={thumb}
+          alt=""
+          data-testid="archive-thumb-img"
+          className="file-thumb-img"
+          onClick={openEntry}
+        />
+        {opening && <span className="archive-thumb-overlay-spinner" />}
+      </span>
+    );
+  }
+  return <span ref={placeholderRef} className="file-thumb-spinner" />;
+}

@@ -1,7 +1,7 @@
 use tauri::Manager;
 
 use crate::{GroupsPage, LoadedSession, ScanCache, ScanSummary, SessionFile};
-use crate::{read_session_file, recalc_wasted_bytes, save_session, select_files_to_delete};
+use crate::{read_session_file, save_session, select_files_to_delete};
 use crate::scanner::DuplicateGroup;
 
 #[derive(serde::Serialize)]
@@ -163,7 +163,7 @@ pub fn list_sessions(app: tauri::AppHandle) -> Vec<ScanSummary> {
 }
 
 #[tauri::command]
-pub fn load_session(app: tauri::AppHandle, id: String) -> Result<ScanSummary, String> {
+pub async fn load_session(app: tauri::AppHandle, id: String) -> Result<ScanSummary, String> {
     {
         let cache = app.state::<ScanCache>();
         let guard = cache.0.lock().unwrap();
@@ -177,33 +177,70 @@ pub fn load_session(app: tauri::AppHandle, id: String) -> Result<ScanSummary, St
     let file = read_session_file(&app, &id)
         .ok_or_else(|| "Session introuvable".to_string())?;
 
-    let mut groups = file.groups;
-    let mut summary = file.summary;
-    let mut archive_groups = file.archive_groups;
+    // Le re-hashing potentiel des archives (ensure_cache_for_groups) peut prendre plusieurs
+    // secondes ; on libere le thread Tauri pendant pour ne pas geler l'UI.
+    let (groups, summary, archive_groups, archive_entries_cache, dirty) = tauri::async_runtime::spawn_blocking(move || {
+        let mut groups = file.groups;
+        let mut summary = file.summary;
+        let mut archive_groups = file.archive_groups;
+        let mut archive_entries_cache = file.archive_entries_cache;
 
-    let before = groups.len();
-    for group in groups.iter_mut() {
-        group.files.retain(|f| std::path::Path::new(&f.path).exists());
-    }
-    groups.retain(|g| g.files.len() >= 2);
+        let before = groups.len();
+        for group in groups.iter_mut() {
+            group.files.retain(|f| std::path::Path::new(&f.path).exists());
+        }
+        groups.retain(|g| g.files.len() >= 2);
 
-    // Filtre defensif sur les archives : retirer celles dont le fichier n'existe plus sur disque
-    let archives_before = archive_groups.len();
-    for ag in archive_groups.iter_mut() {
-        ag.archives.retain(|a| std::path::Path::new(&a.path).exists());
-    }
-    archive_groups.retain(|ag| ag.archives.len() >= 2);
+        let archives_before = archive_groups.len();
+        for ag in archive_groups.iter_mut() {
+            ag.archives.retain(|a| std::path::Path::new(&a.path).exists());
+        }
+        archive_groups.retain(|ag| ag.archives.len() >= 2);
+        archive_entries_cache.retain(|path, _| std::path::Path::new(path).exists());
 
-    let dirty = groups.len() != before || archive_groups.len() != archives_before;
+        // Recalcule duplicated_entries / can_delete a partir du cache : les sessions sauvees
+        // avant la prise en compte des similaires dans le compteur affichaient 61/90.
+        // Pour les sessions encore plus anciennes ou archive_entries_cache n'existait pas,
+        // ensure_cache_for_groups re-ouvre les archives pour repeupler le cache.
+        let cache_was_empty = archive_entries_cache.is_empty() && !archive_groups.is_empty();
+        crate::archive::ensure_cache_for_groups(&archive_groups, &mut archive_entries_cache);
+
+        let counts_before: Vec<Vec<usize>> = archive_groups.iter()
+            .map(|ag| ag.archives.iter().map(|a| a.duplicated_entries).collect())
+            .collect();
+        let sim_threshold = summary.sim_threshold.unwrap_or(10);
+        crate::archive::recompute_group_duplicated_entries(
+            &mut archive_groups,
+            &archive_entries_cache,
+            sim_threshold,
+        );
+        let counts_changed = archive_groups.iter().zip(counts_before.iter())
+            .any(|(ag, prev)| ag.archives.iter().zip(prev.iter())
+                .any(|(a, b)| a.duplicated_entries != *b));
+
+        let dirty = groups.len() != before || archive_groups.len() != archives_before
+            || counts_changed || cache_was_empty;
+        if dirty {
+            summary.total_groups = groups.len();
+            summary.total_wasted_bytes = crate::recalc_wasted_bytes(&groups);
+            summary.archive_groups_count = archive_groups.len();
+        }
+        (groups, summary, archive_groups, archive_entries_cache, dirty)
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
     if dirty {
-        summary.total_groups = groups.len();
-        summary.total_wasted_bytes = recalc_wasted_bytes(&groups);
-        summary.archive_groups_count = archive_groups.len();
-        save_session(&app, &summary, &groups, &archive_groups);
+        save_session(&app, &summary, &groups, &archive_groups, &archive_entries_cache);
     }
 
     let result = summary.clone();
-    *app.state::<ScanCache>().0.lock().unwrap() = Some(LoadedSession { summary, groups, archive_groups });
+    *app.state::<ScanCache>().0.lock().unwrap() = Some(LoadedSession {
+        summary,
+        groups,
+        archive_groups,
+        archive_entries_cache,
+    });
     Ok(result)
 }
 

@@ -11,11 +11,15 @@ function renderETA({
   history,
   scanStartMs,
   isLastPhase,
+  phaseCurrent,
+  phaseTotal,
 }: {
   progress: { current: number; total: number };
   history: { time: number; current: number }[];
   scanStartMs?: number;
   isLastPhase?: boolean;
+  phaseCurrent?: number;
+  phaseTotal?: number;
 }) {
   function Wrapper() {
     const historyRef = useRef(history);
@@ -26,6 +30,8 @@ function renderETA({
         historyRef={historyRef}
         scanStartRef={scanStartRef}
         isLastPhase={isLastPhase ?? true}
+        phaseCurrent={phaseCurrent ?? 0}
+        phaseTotal={phaseTotal ?? 0}
         t={t}
       />
     );
@@ -64,21 +70,60 @@ describe("ProgressETA", () => {
     expect(screen.getByText(/écoul/i)).toBeInTheDocument();
   });
 
-  it("affiche 'c'est presque fini' quand pct >= 0.95", () => {
-    const now = Date.now();
-    const history = [
-      { time: now - 5000, current: 900 },
-      { time: now - 1000, current: 970 },
-    ];
-    renderETA({ progress: { current: 980, total: 1000 }, history, isLastPhase: true });
+  it("affiche 'c'est presque fini' quand il reste < 10 items dans la derniere phase", () => {
+    renderETA({
+      progress: { current: 980, total: 1000 },
+      history: [],
+      isLastPhase: true,
+      phaseCurrent: 995,
+      phaseTotal: 1000,
+    });
     expect(screen.getByText(t.almostDone)).toBeInTheDocument();
   });
 
-  it("ne montre PAS 'presque fini' si la barre est bloquee (rate=0) meme a 95%", () => {
-    // Cas reel : Phase 2 archive (extraction + pHash) qui n'emet pas de progress.
-    // Sans garde-fou, pct >= 0.95 declenchait "presque fini" pendant toute la phase silencieuse.
+  it("ne montre PAS 'presque fini' si on n'est pas en derniere phase, meme si phase_total - phase_current < 10", () => {
+    renderETA({
+      progress: { current: 980, total: 1000 },
+      history: [],
+      isLastPhase: false,
+      phaseCurrent: 995,
+      phaseTotal: 1000,
+      scanStartMs: Date.now() - 30_000,
+    });
+    expect(screen.queryByText(t.almostDone)).not.toBeInTheDocument();
+  });
+
+  it("ne montre PAS 'presque fini' si phaseTotal=0 (phase pas encore demarree)", () => {
+    renderETA({
+      progress: { current: 980, total: 1000 },
+      history: [],
+      isLastPhase: true,
+      phaseCurrent: 0,
+      phaseTotal: 0,
+    });
+    expect(screen.queryByText(t.almostDone)).not.toBeInTheDocument();
+  });
+
+  it("affiche le temps restant en phase intermediaire (estimation globale)", () => {
     const now = Date.now();
-    // Historique avec 2 points au MEME current = pas de progression
+    // Phase intermediaire (isLastPhase=false) : on a 6 min ecoulees, 6% de progres,
+    // donc ~94 min restantes par extrapolation globale.
+    renderETA({
+      progress: { current: 6, total: 100 },
+      history: [{ time: now - 60_000, current: 0 }, { time: now - 1_000, current: 5 }],
+      scanStartMs: now - 6 * 60_000,
+      isLastPhase: false,
+    });
+    const eta = screen.getByText(/écoul/i);
+    expect(eta.textContent).toContain("écoul");
+    // Devrait inclure une estimation de temps restant (en min ou h)
+    expect(eta.textContent).toMatch(/min|h/);
+  });
+
+  it("ne montre PAS 'presque fini' s'il reste >= 10 items dans la phase, meme a 98% global", () => {
+    // Cas reel : pourcentage global trompeur (estimation total_work imprecise) mais
+    // la phase n'est pas pres de finir. Le declencheur ne doit pas se baser sur le global.
+    const now = Date.now();
     const history = [
       { time: now - 60_000, current: 980 },
       { time: now - 1_000, current: 980 },
@@ -88,9 +133,10 @@ describe("ProgressETA", () => {
       history,
       scanStartMs: now - 60_000,
       isLastPhase: true,
+      phaseCurrent: 100,
+      phaseTotal: 1000,
     });
     expect(screen.queryByText(t.almostDone)).not.toBeInTheDocument();
-    // Affiche elapsed + remaining ou juste elapsed
     expect(screen.getByText(/écoul/i)).toBeInTheDocument();
   });
 

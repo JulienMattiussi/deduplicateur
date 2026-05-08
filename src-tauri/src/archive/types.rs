@@ -1,5 +1,22 @@
 use serde::{Deserialize, Serialize};
 
+/// Cache des hashes d'une entree d'archive, calcules pendant le scan.
+/// Permet a `compute_comparison` (lazy, lance au clic Comparer) de retrouver les
+/// hashes sans relire ni redecoder l'archive.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ArchiveEntryHash {
+    pub internal_path: String,
+    pub size: u64,
+    /// xxh3 du contenu, en hex.
+    pub xxh3_hex: String,
+    /// pHash coarse (8x8 = 64 bits) si l'entree est une image, sinon None.
+    #[serde(default)]
+    pub phash_coarse: Option<Vec<u8>>,
+    /// pHash fine (16x16 = 256 bits) si l'entree est une image, sinon None.
+    #[serde(default)]
+    pub phash_fine: Option<Vec<u8>>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ArchiveEntryResult {
     pub internal_path: String,

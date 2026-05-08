@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ArchiveComparator } from "./ArchiveComparator";
 import { LangProvider } from "./LangContext";
@@ -76,27 +76,36 @@ describe("ArchiveComparator - affichage", () => {
     expect(screen.getByText("archive_b.zip")).toBeInTheDocument();
   });
 
-  it("aligne les doublons face-a-face dans les deux colonnes", async () => {
+  it("aligne les doublons face-a-face dans la grille a 3 colonnes", async () => {
     mockInvoke.mockResolvedValue(baseComparison);
     renderComparator();
     await waitFor(() => screen.getByTestId("archive-comparator-body"));
-    const left = screen.getByTestId("archive-col-left");
-    const right = screen.getByTestId("archive-col-right");
-    const leftRows = left.querySelectorAll(".archive-entry-row");
-    const rightRows = right.querySelectorAll(".archive-entry-row");
-    // 2 doublons + 1 unique cote A => 3 lignes alignees
-    expect(leftRows.length).toBe(3);
-    expect(rightRows.length).toBe(3);
+    const grid = screen.getByTestId("archive-comparator-grid");
+    const rows = grid.querySelectorAll(".archive-entry-row");
+    // 2 doublons + 1 unique cote A => 3 lignes
+    expect(rows.length).toBe(3);
   });
 
   it("la ligne unique de A a une cellule vide en face cote B", async () => {
     mockInvoke.mockResolvedValue(baseComparison);
     renderComparator();
     await waitFor(() => screen.getByTestId("archive-comparator-body"));
-    const right = screen.getByTestId("archive-col-right");
-    const rows = right.querySelectorAll(".archive-entry-row");
-    const lastRowEmpty = rows[rows.length - 1].querySelector(".archive-row-empty");
-    expect(lastRowEmpty).toBeInTheDocument();
+    const grid = screen.getByTestId("archive-comparator-grid");
+    const rows = grid.querySelectorAll(".archive-entry-row");
+    // La derniere ligne (unique cote A) doit avoir un .archive-row-empty cote droit
+    const lastRow = rows[rows.length - 1];
+    expect(lastRow.querySelector(".archive-row-empty")).toBeInTheDocument();
+  });
+
+  it("affiche le score dans la colonne centrale uniquement (pas duplique de chaque cote)", async () => {
+    mockInvoke.mockResolvedValue(baseComparison);
+    renderComparator();
+    await waitFor(() => screen.getByTestId("archive-comparator-body"));
+    const grid = screen.getByTestId("archive-comparator-grid");
+    // 2 lignes "duplicate" → 2 cellules "100%" (au centre)
+    const scores = grid.querySelectorAll(".archive-score-cell");
+    const exactScores = Array.from(scores).filter((s) => s.textContent === "100%");
+    expect(exactScores.length).toBe(2);
   });
 
   it("n'affiche pas de badge unique/doublon (l'alignement parle pour lui)", async () => {
@@ -137,13 +146,11 @@ describe("ArchiveComparator - pairing greedy quand cardinalites differentes", ()
     mockInvoke.mockResolvedValue(skewed);
     renderComparator();
     await waitFor(() => screen.getByTestId("archive-comparator-body"));
-    const left = screen.getByTestId("archive-col-left");
-    const right = screen.getByTestId("archive-col-right");
-    expect(left.querySelectorAll(".archive-entry-row").length).toBe(3);
-    expect(right.querySelectorAll(".archive-entry-row").length).toBe(3);
-    // Une seule ligne cote B contient l'entree, les 2 autres sont vides
-    const rightEmpties = right.querySelectorAll(".archive-row-empty");
-    expect(rightEmpties.length).toBe(2);
+    const grid = screen.getByTestId("archive-comparator-grid");
+    const rows = grid.querySelectorAll(".archive-entry-row");
+    expect(rows.length).toBe(3);
+    // 2 lignes ont leur cote droit vide (les 2 entrees A sans pendant cote B)
+    expect(grid.querySelectorAll(".archive-row-empty").length).toBe(2);
   });
 });
 
@@ -166,13 +173,11 @@ describe("ArchiveComparator - paires similaires (B-min)", () => {
     mockInvoke.mockResolvedValue(sim);
     renderComparator(vi.fn(), true);
     await waitFor(() => screen.getByTestId("archive-comparator-body"));
-    const left = screen.getByTestId("archive-col-left");
-    const right = screen.getByTestId("archive-col-right");
-    // 1 ligne similar de chaque cote (face-a-face)
-    expect(left.querySelectorAll(".archive-entry-row--similar").length).toBe(1);
-    expect(right.querySelectorAll(".archive-entry-row--similar").length).toBe(1);
-    // Score affiche dans les deux colonnes
-    expect(screen.getAllByText(/96%/).length).toBeGreaterThan(0);
+    const grid = screen.getByTestId("archive-comparator-grid");
+    // 1 ligne similar dans la grille (couvre les deux cotes)
+    expect(grid.querySelectorAll(".archive-entry-row--similar").length).toBe(1);
+    // Score affiche une seule fois dans la colonne centrale
+    expect(screen.getAllByText(/96%/).length).toBe(1);
   });
 
   it("passe findSimilar et simThreshold a get_archive_comparison", async () => {
@@ -197,19 +202,6 @@ describe("ArchiveComparator - filtre doublons", () => {
     expect(screen.getByText("only_in_a.txt")).toBeInTheDocument();
     await user.click(screen.getByLabelText(/Doublons uniquement/));
     expect(screen.queryByText("only_in_a.txt")).not.toBeInTheDocument();
-  });
-});
-
-describe("ArchiveComparator - scroll synchronise", () => {
-  it("propage le scrollTop de gauche vers droite", async () => {
-    mockInvoke.mockResolvedValue(baseComparison);
-    renderComparator();
-    await waitFor(() => screen.getByTestId("archive-comparator-body"));
-    const left = screen.getByTestId("archive-col-left") as HTMLDivElement;
-    const right = screen.getByTestId("archive-col-right") as HTMLDivElement;
-    Object.defineProperty(left, "scrollTop", { value: 50, writable: true });
-    fireEvent.scroll(left);
-    expect(right.scrollTop).toBe(50);
   });
 });
 

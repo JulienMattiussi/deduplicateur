@@ -87,19 +87,20 @@ pub fn delete_files(app: tauri::AppHandle, paths: Vec<String>) -> Result<(), Str
         let mut guard = cache.0.lock().unwrap();
         guard.as_mut().map(|loaded| {
             purge_deleted_from_session(&mut loaded.groups, &deleted);
-            // Purge des archives supprimees (memes paths que les fichiers supprimes)
             for ag in loaded.archive_groups.iter_mut() {
                 ag.archives.retain(|a| !deleted.contains(&a.path));
             }
             loaded.archive_groups.retain(|ag| ag.archives.len() >= 2);
+            // Purger aussi le cache d'entrees pour les archives supprimees
+            loaded.archive_entries_cache.retain(|path, _| !deleted.contains(path));
             loaded.summary.total_groups = loaded.groups.len();
             loaded.summary.total_wasted_bytes = recalc_wasted_bytes(&loaded.groups);
             loaded.summary.archive_groups_count = loaded.archive_groups.len();
-            (loaded.summary.clone(), loaded.groups.clone(), loaded.archive_groups.clone())
+            (loaded.summary.clone(), loaded.groups.clone(), loaded.archive_groups.clone(), loaded.archive_entries_cache.clone())
         })
     };
-    if let Some((summary, groups, archive_groups)) = session_to_save {
-        save_session(&app, &summary, &groups, &archive_groups);
+    if let Some((summary, groups, archive_groups, entries_cache)) = session_to_save {
+        save_session(&app, &summary, &groups, &archive_groups, &entries_cache);
     }
     Ok(())
 }
@@ -114,10 +115,83 @@ pub fn open_file(path: String) -> Result<(), String> {
     open_file_default(&path).map_err(|e| e.to_string())
 }
 
+/// Sous-dossier de previsualisation des entrees d'archive : chaque clic sur une miniature
+/// y ecrit l'entree extraite, qui est ensuite ouverte avec le viewer par defaut. Le dossier
+/// est purge au demarrage de l'app (voir `lib.rs::run` setup) pour eviter l'accumulation.
+fn archive_preview_dir(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
+    let dir = app.path().app_local_data_dir().ok()?.join("archive_preview");
+    std::fs::create_dir_all(&dir).ok()?;
+    Some(dir)
+}
+
+/// Extrait une entree d'archive vers un fichier temporaire et l'ouvre avec le viewer
+/// par defaut. Utilise pour permettre le clic sur les miniatures du comparateur d'archives.
+/// Le fichier temporaire reste sur disque jusqu'au prochain demarrage de l'app
+/// (purge de `archive_preview/` au boot) ; on ne peut pas le supprimer immediatement
+/// apres `open_file_default` puisque le viewer externe le lit en asynchrone.
+#[tauri::command]
+pub async fn open_archive_entry(
+    app: tauri::AppHandle,
+    archive_path: String,
+    internal_path: String,
+) -> Result<(), String> {
+    let dir = archive_preview_dir(&app).ok_or_else(|| "data_dir indisponible".to_string())?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let bytes = crate::archive::read_archive_entry_bytes(
+            std::path::Path::new(&archive_path),
+            &internal_path,
+        )?;
+        // Nom unique a partir du nom interne pour que le viewer affiche un titre lisible,
+        // prefixe d'un id court pour eviter les collisions entre plusieurs ouvertures.
+        let leaf = std::path::Path::new(&internal_path)
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "entry".to_string());
+        let id = uuid::Uuid::new_v4().simple().to_string();
+        let safe = format!("{}_{}", &id[..8], leaf);
+        let out_path = dir.join(safe);
+        std::fs::write(&out_path, &bytes).map_err(|e| e.to_string())?;
+        open_file_default(&out_path.to_string_lossy()).map_err(|e| e.to_string())?;
+        Ok::<(), String>(())
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn get_image_thumbnail(path: String, max_size: u32) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let img = image::open(&path).map_err(|e| e.to_string())?;
+        let thumb = img.thumbnail(max_size, max_size);
+        let mut buf = Vec::new();
+        thumb
+            .write_to(&mut std::io::Cursor::new(&mut buf), image::ImageOutputFormat::Jpeg(75))
+            .map_err(|e| e.to_string())?;
+        use base64::Engine;
+        let encoded = base64::engine::general_purpose::STANDARD.encode(&buf);
+        Ok(format!("data:image/jpeg;base64,{}", encoded))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Genere a la volee une miniature pour une entree image situee dans une archive.
+/// On extrait les bytes de l'entree en memoire, on decode via le crate `image`,
+/// puis on encode en JPEG base64 (data URL). Pas de cache disque ; le frontend
+/// utilise un IntersectionObserver pour ne charger que les vignettes visibles.
+#[tauri::command]
+pub async fn get_archive_entry_thumbnail(
+    archive_path: String,
+    internal_path: String,
+    max_size: u32,
+) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let bytes = crate::archive::read_archive_entry_bytes(
+            std::path::Path::new(&archive_path),
+            &internal_path,
+        )?;
+        let img = image::load_from_memory(&bytes).map_err(|e| e.to_string())?;
         let thumb = img.thumbnail(max_size, max_size);
         let mut buf = Vec::new();
         thumb

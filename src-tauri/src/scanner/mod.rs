@@ -180,7 +180,37 @@ where
         .sum();
 
     let phash_compare_estimate = phash_estimate;
-    let total_work = total_to_hash + phash_estimate + phash_compare_estimate + video_estimate + audio_estimate;
+
+    // Estimation du travail des phases archives, INCLUSE dans total_work upfront pour que
+    // la barre de progression avance de maniere monotone tout au long du scan.
+    // - archive_phase1 : xxh3 sur toutes les entrees (count_entries_fast)
+    // - archive_phase2 : extraction + pHash sur les images (image_count * 2 etapes)
+    let (archive_phase1_estimate, archive_phase2_estimate) = if params.scan_archives {
+        let archive_files: Vec<&DuplicateFile> = all_files_for_archives.iter()
+            .filter(|f| archive::detect_archive_format(std::path::Path::new(&f.path)).is_some())
+            .collect();
+        if archive_files.len() < 2 {
+            (0usize, 0usize)
+        } else {
+            let p1: usize = archive_files.iter()
+                .map(|f| archive::count_entries_fast(std::path::Path::new(&f.path)))
+                .sum::<usize>().max(1);
+            let p2 = if params.find_similar && !params.skip_archive_phash {
+                let images: usize = archive_files.iter()
+                    .map(|f| archive::count_archive_image_entries(std::path::Path::new(&f.path)))
+                    .sum();
+                images * 2  // etape extraction + etape pHash
+            } else { 0 };
+            (p1, p2)
+        }
+    } else {
+        (0, 0)
+    };
+
+    let total_work = total_to_hash
+        + phash_estimate + phash_compare_estimate
+        + video_estimate + audio_estimate
+        + archive_phase1_estimate + archive_phase2_estimate;
 
     let ctx = Ctx {
         total_to_hash,
@@ -273,25 +303,24 @@ where
     }
 
     // --- Phase 5 : archives (comparaison de contenu entre archives) ---
-    let archive_groups = if params.scan_archives && !was_cancelled {
-        let archive_count: usize = all_files_for_archives.iter()
-            .filter(|f| archive::detect_archive_format(std::path::Path::new(&f.path)).is_some())
-            .map(|f| archive::count_entries_fast(std::path::Path::new(&f.path)))
-            .sum::<usize>()
-            .max(1);
-        archive_phase::run(
+    let (archive_groups, archive_entries_cache) = if params.scan_archives && !was_cancelled {
+        let archive_progress_base = total_to_hash
+            + phash_estimate + phash_compare_estimate
+            + video_estimate + audio_estimate;
+        let res = archive_phase::run(
             &all_files_for_archives,
             &cancelled,
+            archive_progress_base,
             ctx.total_work,
-            ctx.total_work + archive_count,
             params.find_similar,
             params.sim_threshold,
             params.data_dir.as_deref(),
             params.skip_archive_phash,
             &on_progress,
-        )
+        );
+        (res.groups, res.entries_cache)
     } else {
-        vec![]
+        (vec![], std::collections::HashMap::new())
     };
 
     if params.by_folder {
@@ -333,6 +362,7 @@ where
         ffmpeg_missing,
         fpcalc_missing,
         archive_groups,
+        archive_entries_cache,
     })
 }
 

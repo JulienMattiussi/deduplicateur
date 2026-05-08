@@ -174,11 +174,12 @@ pub async fn scan_folder(
         audio_sim_threshold: if find_similar_audio { Some(audio_sim_threshold) } else { None },
     };
 
-    save_session(&app, &summary, &result.groups, &result.archive_groups);
+    save_session(&app, &summary, &result.groups, &result.archive_groups, &result.archive_entries_cache);
     *app.state::<ScanCache>().0.lock().unwrap() = Some(LoadedSession {
         summary: summary.clone(),
         groups: result.groups,
         archive_groups: result.archive_groups,
+        archive_entries_cache: result.archive_entries_cache,
     });
 
     let threshold = notification_threshold_secs.unwrap_or(10);
