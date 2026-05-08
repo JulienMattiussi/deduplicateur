@@ -187,8 +187,8 @@ where
 
     let images: Vec<ImageData> = candidates
         .into_iter()
-        .zip(all_hashes.into_iter())
-        .zip(dimensions.into_iter())
+        .zip(all_hashes)
+        .zip(dimensions)
         .filter_map(|((file, hash_opt), aspect)| {
             let (coarse, fine) = hash_opt?;
             Some(ImageData { file, coarse, fine, aspect })
@@ -228,8 +228,8 @@ where
     let similar_pairs: Vec<(usize, usize)> = if use_bucket {
         // Grouper par hash grossier exact : O(n * taille_bucket) au lieu de O(n^2)
         let mut buckets: HashMap<Vec<u8>, Vec<usize>> = HashMap::new();
-        for i in 0..n {
-            buckets.entry(images[i].coarse.clone()).or_default().push(i);
+        for (i, img) in images.iter().enumerate().take(n) {
+            buckets.entry(img.coarse.clone()).or_default().push(i);
         }
         let bucket_vecs: Vec<Vec<usize>> = buckets.into_values().collect();
 

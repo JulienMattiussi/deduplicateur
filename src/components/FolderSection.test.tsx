@@ -41,6 +41,38 @@ function renderSection(onIgnore?: (id: string) => void) {
   return onExpand;
 }
 
+describe("FolderSection - libelle dossier racine", () => {
+  it("affiche le libelle 'Dossier racine' en italique pour folder_key vide", () => {
+    const rootSummary: FolderSummary = { folder_key: "", group_count: 1, total_wasted_bytes: 100 };
+    render(
+      <LangProvider>
+        <FolderSection
+          summary={rootSummary} groups={[]} loading={false} hasMore={false}
+          selected={new Set()} onToggle={vi.fn()} onExpand={vi.fn()} onLoadMore={vi.fn()}
+        />
+      </LangProvider>
+    );
+    const label = screen.getByTestId("root-folder-label");
+    expect(label.tagName).toBe("EM");
+    expect(label.textContent).toMatch(/Dossier racine/);
+  });
+
+  it("n'affiche pas le tag em pour un dossier nomme", () => {
+    const namedSummary: FolderSummary = { folder_key: "Dossier racine", group_count: 1, total_wasted_bytes: 100 };
+    render(
+      <LangProvider>
+        <FolderSection
+          summary={namedSummary} groups={[]} loading={false} hasMore={false}
+          selected={new Set()} onToggle={vi.fn()} onExpand={vi.fn()} onLoadMore={vi.fn()}
+        />
+      </LangProvider>
+    );
+    expect(screen.queryByTestId("root-folder-label")).not.toBeInTheDocument();
+    // Le texte "Dossier racine" est present en tant que nom de dossier reel, sans em
+    expect(screen.getByText(/Dossier racine/)).toBeInTheDocument();
+  });
+});
+
 describe("FolderSection - onIgnore", () => {
   it("le bouton ignorer est absent quand onIgnore n'est pas fourni", async () => {
     const user = userEvent.setup();

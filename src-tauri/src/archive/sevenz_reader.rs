@@ -12,10 +12,10 @@ pub fn hash_sevenz_entries(path: &Path) -> Result<Vec<ArchiveEntry>, String> {
         }
         let name = entry.name().to_string();
         let size = entry.size();
-        match hash_reader(stream) {
-            Ok(hash) => entries.push(ArchiveEntry { internal_path: name, size, hash }),
-            Err(_) => {}  // entree corrompue : skip silencieux
+        if let Ok(hash) = hash_reader(stream) {
+            entries.push(ArchiveEntry { internal_path: name, size, hash });
         }
+        // sinon entree corrompue : skip silencieux
         Ok(true)
     }).map_err(|e| e.to_string())?;
     Ok(entries)

@@ -9,8 +9,13 @@ mod archive_phase;
 
 pub use types::{
     DuplicateFile, DuplicateGroup, FileSource, ScanParams, ScanResult,
-    ArchiveGroupResult, ArchiveInGroup,
+    ArchiveGroupResult,
 };
+// `ArchiveInGroup` est utilise par les tests du crate (lib.rs) ; la re-export
+// declenche un warning "unused" en build prod, donc on l'expose seulement
+// pour les tests via cfg(test).
+#[cfg(test)]
+pub use types::ArchiveInGroup;
 
 use std::collections::HashMap;
 use std::io::Write;
@@ -25,7 +30,7 @@ use crate::video::is_ffmpeg_available;
 use fs::{collect_files, first_level_subdir, size_candidates, is_image, is_video};
 
 /// Donnees partagees entre les phases (calculees une seule fois dans scan_folder).
-pub(self) struct Ctx {
+struct Ctx {
     pub total_to_hash: usize,
     pub phash_estimate: usize,
     pub phash_compare_estimate: usize,
@@ -36,7 +41,7 @@ pub(self) struct Ctx {
     pub compare_mode: bool,
 }
 
-pub(self) fn timing_log(enabled: bool, data_dir: Option<&str>, t_start: &Instant, msg: &str) {
+fn timing_log(enabled: bool, data_dir: Option<&str>, t_start: &Instant, msg: &str) {
     if !enabled { return; }
     let Some(dir) = data_dir else { return };
     let elapsed = t_start.elapsed().as_secs();

@@ -46,7 +46,7 @@ export function FolderSection({
       <button className="folder-section-header" onClick={toggle}>
         <span className="folder-section-chevron">{expanded ? "▾" : "▸"}</span>
         <span className="folder-section-name">
-          📁 {summary.folder_key === "" ? t.rootFolder : summary.folder_key}
+          📁 {summary.folder_key === "" ? <em data-testid="root-folder-label">{t.rootFolder}</em> : summary.folder_key}
         </span>
         <span className="folder-section-stats">
           {summary.group_count} {summary.group_count > 1 ? t.groups : t.group} · {formatSize(summary.total_wasted_bytes)} {t.duplicate}

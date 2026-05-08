@@ -202,7 +202,7 @@ pub fn dtw_distance(a: &[u64], b: &[u64]) -> f64 {
     let inf = f64::INFINITY;
     let mut dp = vec![vec![inf; m]; n];
     for i in 0..n {
-        let j_lo = if i > window { i - window } else { 0 };
+        let j_lo = i.saturating_sub(window);
         let j_hi = (i + window + 1).min(m);
         for j in j_lo..j_hi {
             let cost = (a[i] ^ b[j]).count_ones() as f64;

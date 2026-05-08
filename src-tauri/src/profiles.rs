@@ -61,7 +61,7 @@ pub fn list_profiles(data_dir: &Path) -> Vec<ScanProfile> {
             serde_json::from_str(&data).ok()
         })
         .collect();
-    profiles.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+    profiles.sort_by_key(|p| std::cmp::Reverse(p.created_at));
     profiles
 }
 

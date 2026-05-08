@@ -54,7 +54,7 @@ impl IgnoreList {
 
     pub fn entries_sorted(&self) -> Vec<IgnoreEntry> {
         let mut v: Vec<IgnoreEntry> = self.entries.values().cloned().collect();
-        v.sort_by(|a, b| b.ignored_at.cmp(&a.ignored_at));
+        v.sort_by_key(|e| std::cmp::Reverse(e.ignored_at));
         v
     }
 

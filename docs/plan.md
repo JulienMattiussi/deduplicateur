@@ -708,15 +708,26 @@ En mode "Comparer avec un autre dossier" : dossier source S et dossier de réfé
 - `README.md` : fonctionnalité ajoutée dans la section Fonctionnalités
 
 **Réalisé**
-- [x] Module `src-tauri/src/archive/` : zip_reader, tar_reader (gz/bz2/xz/zst), sevenz_reader (stub), mod avec detect_format + hash_archive_entries
+- [x] Module `src-tauri/src/archive/` : zip_reader, tar_reader (gz/bz2/xz/zst), sevenz_reader, mod avec detect_format + hash_archive_entries
 - [x] `scanner/archive_phase.rs` : Union-Find inter-archives, can_delete, progress
 - [x] Commandes Tauri : `get_archive_groups`, `get_archive_comparison`
 - [x] `ArchiveGroupCard.tsx` + `ArchiveComparator.tsx` + leurs tests
-- [x] `App.tsx` : section archives, checkbox UI, modal comparateur
-- [x] `i18n.ts` : 9 clés bilingues (archive*)
+- [x] `App.tsx` : groupes d'archives integres dans la liste principale (pas de section separee), tries par espace gaspille au meme titre que les autres doublons
+- [x] `i18n.ts` : 13 cles bilingues (archive*) + `phaseArchives` + `typeArchives` ("fichiers archives")
 - [x] `src/help/content.ts` : article "archive-scan" bilingue
-- [x] 223 tests Rust / 334 tests TypeScript - tous au vert
-- [x] 7z fonctionnel via `sevenz-rust2` (fork de sevenz-rust qui resout les contraintes HRTB) - hash et comparaison entre archives 7z et autres formats
+- [x] 7z fonctionnel via `sevenz-rust2` (fork actif de sevenz-rust qui resout les contraintes HRTB)
+- [x] Format `.cbz` (Comic Book ZIP) traite comme ZIP. `.cbr` ignore comme `.rar`
+
+**Ameliorations post-merge (correctifs)**
+- [x] **Bug session** : `archive_groups` n'etaient pas persistes. `SessionFile` etendu avec `archive_groups: Vec<ArchiveGroupResult>` (rétrocompatible via `#[serde(default)]`), `save_session` les ecrit, `load_session` les restaure avec filtre defensif sur les chemins inexistants. `delete_files` purge aussi `archive_groups` du cache et du disque. 2 tests de round-trip ajoutes.
+- [x] **Bug pairing** : `compute_comparison` utilisait une `HashMap<u64, &ArchiveEntry>` qui ecrasait les entrees ayant le meme hash. Resultat : si A avait 3 fichiers identiques et B en avait 1, l'UI affichait 3 fois la meme entree B. Fix : ajout du champ `hash: String` (hex) dans `ArchiveEntryResult`, refactor de `alignEntries` pour faire un pairing greedy par hash.
+- [x] **Bug progression** : la phase `archives` n'etait pas dans `ScanPhase` cote TS, donc le label tombait sur "fichiers audio" en fallback. Ajout du type + clés i18n + insertion conditionnelle dans `relevantPhases` selon `scanArchives`.
+- [x] **Bug bulles de progression** : flex-wrap causait des sauts de ligne en cours de scan. CSS passe a `flex-wrap: nowrap`, `phaseExact` renomme "Comparaisons exactes" pour gagner de la place.
+- [x] **Refonte du comparateur d'archives** : plein ecran via nouveau `ComparatorBasicShell` (factorise dans `comparatorShared.tsx`), alignement face-a-face des doublons par hash avec lignes vides pour combler, scroll synchronise entre les 2 colonnes, footer méta par cote (nom/dossier/taille/date/ratio), filtre "Doublons uniquement", icones type de fichier colorees par categorie, ellipsis a gauche sur les chemins.
+- [x] **Refonte ArchiveGroupCard** : layout identique a GroupCard (memes classes CSS), case a cocher seulement si `can_delete=true` sinon icone 🚫 avec tooltip sur toute la cellule.
+- [x] **Factorisation** : `basename()` extrait dans `utils.ts`, `toMediaUrl()` et `KeepButton` extraits dans `comparatorShared.tsx`, `FolderIcon` extrait dans `components/icons.tsx`, `FileTypeIcon` exporte depuis `FileThumbnail.tsx`. ~50 lignes de duplication supprimees.
+- [x] **Decoupage App.tsx** : 1056 -> 825 lignes via extraction de `ScanProgressView`, `SessionPicker`, `ScanResultsToolbar`, `ConfirmDeleteModal` (composants) + `useDragDrop`, `useKeyboardShortcuts` (hooks).
+- [x] 229 tests Rust / 397 tests TypeScript - tous au vert
 
 ---
 

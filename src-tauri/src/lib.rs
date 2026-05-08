@@ -232,7 +232,7 @@ pub fn select_files_to_delete(
             group
                 .files
                 .iter()
-                .filter(|f| keep.map_or(true, |k| k.path != f.path))
+                .filter(|f| keep.is_none_or(|k| k.path != f.path))
                 .map(|f| f.path.clone())
                 .collect::<Vec<_>>()
         })
