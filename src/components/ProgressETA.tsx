@@ -34,7 +34,10 @@ export function ProgressETA({
   const pct = progress.current / progress.total;
   const recentRef = hist.length >= 2 ? hist[Math.max(0, hist.length - 20)] : null;
   const recentRate = recentRef ? (progress.current - recentRef.current) / (now - recentRef.time) : 0;
-  if (pct >= 0.95 || (recentRate > 0 && (progress.total - progress.current) / recentRate < 15_000)) {
+  // "presque fini" seulement si on a un VRAI signal de progression recent. Sans ce garde-fou,
+  // une phase silencieuse (ex. Phase 2 archive : extraction + pHash sans emission) qui se
+  // produit alors que pct >= 95% laisserait le message visible pendant toute la phase.
+  if (recentRate > 0 && (pct >= 0.95 || (progress.total - progress.current) / recentRate < 15_000)) {
     return <span className="progress-eta">{t.almostDone}</span>;
   }
 

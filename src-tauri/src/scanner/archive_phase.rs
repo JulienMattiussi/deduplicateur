@@ -29,7 +29,7 @@ pub fn run(
     sim_threshold: u32,
     data_dir: Option<&str>,
     skip_phash: bool,
-    on_progress: &impl Fn(usize, usize, usize, &str, usize, usize, &str),
+    on_progress: &(impl Fn(usize, usize, usize, &str, usize, usize, &str) + Send + Sync),
 ) -> Vec<ArchiveGroupResult> {
     // Filtrer les archives
     let archives: Vec<&DuplicateFile> = files.iter()
@@ -124,8 +124,41 @@ pub fn run(
         if let Some(dir) = data_dir {
             let archive_paths: Vec<String> = archives.iter().map(|f| f.path.clone()).collect();
             let extract_cancelled = cancelled.clone();
-            let extract_cb = || -> bool { !extract_cancelled.load(Ordering::Relaxed) };
+            // Estimation phase 2 : on ne sait pas encore le nb d'images, mais une borne raisonnable
+            // est ~30% du nb total d'entrees archive (fraction images typique). Sera ajustee a la
+            // hausse au fur et a mesure pour eviter de "depasser 100%" comme on a deja le mecanisme.
+            let p2_estimate_initial = (estimated_total / 3).max(10);
+            let p2_done = std::sync::atomic::AtomicUsize::new(0);
+            let p2_total_dyn = std::sync::atomic::AtomicUsize::new(p2_estimate_initial);
+
+            let extract_cb = || -> bool {
+                if extract_cancelled.load(Ordering::Relaxed) { return false; }
+                let n2 = p2_done.fetch_add(1, Ordering::Relaxed) + 1;
+                let n_overall = processed.fetch_add(1, Ordering::Relaxed) + 1;
+                // Si on depasse l'estimation phase 2, on l'ajuste (bar reste fluide a 100%)
+                let cur_total = p2_total_dyn.load(Ordering::Relaxed);
+                if n2 > cur_total {
+                    p2_total_dyn.store(n2, Ordering::Relaxed);
+                }
+                on_progress(
+                    progress_base + n_overall,
+                    total_work.max(progress_base + n_overall),
+                    0,
+                    "",
+                    n2,
+                    p2_total_dyn.load(Ordering::Relaxed),
+                    "archives_phash",
+                );
+                true
+            };
             if let Ok(extraction) = extract_image_entries(&archive_paths, Path::new(dir), &extract_cb) {
+                // Maintenant on connait le nb reel d'images : on fixe le total pour la passe pHash
+                // a 2x (extraction faite + pHash a faire). Reset du compteur pour la phase pHash.
+                let images_count = extraction.items.len();
+                let p2_real_total = images_count * 2;
+                p2_total_dyn.store(p2_real_total, Ordering::Relaxed);
+                let phash_done = std::sync::atomic::AtomicUsize::new(images_count);  // extraction = 1ere moitie deja faite
+
                 // pHash parallele via rayon. compute_two_pass_hashes utilise EXIF thumbnail
                 // pour les JPEG (decodage thumbnail 160x120 au lieu de l'image complete).
                 let phashes: Vec<Option<(Vec<u8>, Vec<u8>)>> = extraction.items
@@ -133,7 +166,19 @@ pub fn run(
                     .map(|img: &ExtractedImage| {
                         if extract_cancelled.load(Ordering::Relaxed) { return None; }
                         let path_str = img.temp_path.to_str().unwrap_or("");
-                        compute_two_pass_hashes(path_str, 8, 16, true)
+                        let hash = compute_two_pass_hashes(path_str, 8, 16, true);
+                        let n2 = phash_done.fetch_add(1, Ordering::Relaxed) + 1;
+                        let n_overall = processed.fetch_add(1, Ordering::Relaxed) + 1;
+                        on_progress(
+                            progress_base + n_overall,
+                            total_work.max(progress_base + n_overall),
+                            0,
+                            "",
+                            n2,
+                            p2_real_total,
+                            "archives_phash",
+                        );
+                        hash
                     })
                     .collect();
 

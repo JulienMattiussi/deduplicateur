@@ -43,23 +43,32 @@ pub fn scan_temp_parent(data_dir: &Path) -> PathBuf {
 
 /// Estime la taille totale (bytes) qu'occupera l'extraction des entrees image
 /// de ces archives. Lit les headers (central directory pour ZIP, headers tar/7z)
-/// sans decompresser. Tres rapide.
+/// sans decompresser le contenu des entrees.
+///
+/// **Performance** :
+/// - ZIP/7z : lecture de la table d'entrees uniquement, tres rapide
+/// - tar.* : on doit decompresser TOUT le flux pour atteindre chaque header (limite
+///   du format tar). Pour eviter de bloquer plusieurs minutes sur un dossier avec
+///   plusieurs gros tar.gz, on utilise une **estimation approximative** = taille
+///   compressee * 4 (ratio typique gz/xz/zst) sans decompresser.
+/// - Parallelisation : toutes les archives sont traitees en parallele via rayon.
 pub fn estimate_extraction_size(archive_paths: &[String]) -> u64 {
-    let mut total: u64 = 0;
-    for arch_path in archive_paths {
-        let format = match detect_archive_format(Path::new(arch_path)) {
-            Some(f) => f,
-            None => continue,
-        };
-        total += match format {
-            ArchiveFormat::Zip => estimate_zip(arch_path),
-            ArchiveFormat::TarGz | ArchiveFormat::TarBz2 | ArchiveFormat::TarXz | ArchiveFormat::TarZst => {
-                estimate_tar(arch_path, format)
+    use rayon::prelude::*;
+    archive_paths.par_iter()
+        .map(|arch_path| {
+            let format = match detect_archive_format(Path::new(arch_path)) {
+                Some(f) => f,
+                None => return 0u64,
+            };
+            match format {
+                ArchiveFormat::Zip => estimate_zip(arch_path),
+                ArchiveFormat::TarGz | ArchiveFormat::TarBz2 | ArchiveFormat::TarXz | ArchiveFormat::TarZst => {
+                    estimate_tar_fast(arch_path)
+                }
+                ArchiveFormat::SevenZip => estimate_sevenz(arch_path),
             }
-            ArchiveFormat::SevenZip => estimate_sevenz(arch_path),
-        };
-    }
-    total
+        })
+        .sum()
 }
 
 fn estimate_zip(arch_path: &str) -> u64 {
@@ -75,36 +84,15 @@ fn estimate_zip(arch_path: &str) -> u64 {
     sum
 }
 
-fn estimate_tar(arch_path: &str, format: ArchiveFormat) -> u64 {
-    let file = match File::open(arch_path) { Ok(f) => f, Err(_) => return 0 };
-    fn count<R: Read>(mut archive: tar::Archive<R>) -> u64 {
-        let mut sum = 0u64;
-        if let Ok(entries) = archive.entries() {
-            for entry in entries.flatten() {
-                let header = entry.header();
-                match header.entry_type() {
-                    tar::EntryType::Regular | tar::EntryType::Continuous => {}
-                    _ => continue,
-                }
-                if let Ok(p) = entry.path() {
-                    if is_image_path(&p.to_string_lossy()) {
-                        sum += header.size().unwrap_or(0);
-                    }
-                }
-            }
-        }
-        sum
-    }
-    match format {
-        ArchiveFormat::TarGz => count(tar::Archive::new(flate2::read::GzDecoder::new(file))),
-        ArchiveFormat::TarBz2 => count(tar::Archive::new(bzip2::read::BzDecoder::new(file))),
-        ArchiveFormat::TarXz => count(tar::Archive::new(xz2::read::XzDecoder::new(file))),
-        ArchiveFormat::TarZst => match zstd::Decoder::new(file) {
-            Ok(zst) => count(tar::Archive::new(zst)),
-            Err(_) => 0,
-        },
-        _ => 0,
-    }
+/// Estimation conservative pour tar compresse : on NE decompresse PAS (cout prohibitif).
+/// On retourne `compressed_size * 4` comme borne superieure realiste : un tar.gz typique
+/// se decompresse en 2-5x, on prend 4 comme moyenne. Si l'archive ne contient aucune
+/// image, on surestime ; mais le but est juste de detecter "espace insuffisant", pas
+/// d'etre precis. La phase 2 reelle (extraction) ne fait que les images.
+fn estimate_tar_fast(arch_path: &str) -> u64 {
+    std::fs::metadata(arch_path)
+        .map(|m| m.len().saturating_mul(4))
+        .unwrap_or(0)
 }
 
 fn estimate_sevenz(arch_path: &str) -> u64 {

@@ -64,9 +64,29 @@ describe("L - SessionCard", () => {
     expect(screen.getByText("par dossier")).toBeInTheDocument();
   });
 
-  it("sessionTags : tag 'recursif' quand recursive est vrai et by_folder faux", () => {
+  it("sessionTags : tag 'sous-dossiers' quand recursive est vrai et by_folder faux", () => {
     renderSession({ recursive: true, by_folder: false });
-    expect(screen.getByText("récursif")).toBeInTheDocument();
+    expect(screen.getByText("sous-dossiers")).toBeInTheDocument();
+  });
+
+  it("sessionTags : tag 'archives' affiche quand scan_archives=true", () => {
+    renderSession({ scan_archives: true });
+    expect(screen.getByText("archives")).toBeInTheDocument();
+  });
+
+  it("sessionTags : pas de tag 'archives' quand scan_archives=false", () => {
+    renderSession({ scan_archives: false });
+    expect(screen.queryByText("archives")).not.toBeInTheDocument();
+  });
+
+  it("sessionTags : pourcentage affiche pour images similaires quand sim_threshold present", () => {
+    renderSession({ find_similar: true, sim_threshold: 6 });  // 6/64 → 91%
+    expect(screen.getByText(/similarité images \(91 %\)/)).toBeInTheDocument();
+  });
+
+  it("sessionTags : pourcentage audio (100 - threshold)", () => {
+    renderSession({ find_similar_audio: true, audio_sim_threshold: 20 });
+    expect(screen.getByText(/similarité audio \(80 %\)/)).toBeInTheDocument();
   });
 
   it("sessionTags : tag 'dossier plat' quand ni by_folder ni recursive", () => {

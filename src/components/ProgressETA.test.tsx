@@ -74,6 +74,26 @@ describe("ProgressETA", () => {
     expect(screen.getByText(t.almostDone)).toBeInTheDocument();
   });
 
+  it("ne montre PAS 'presque fini' si la barre est bloquee (rate=0) meme a 95%", () => {
+    // Cas reel : Phase 2 archive (extraction + pHash) qui n'emet pas de progress.
+    // Sans garde-fou, pct >= 0.95 declenchait "presque fini" pendant toute la phase silencieuse.
+    const now = Date.now();
+    // Historique avec 2 points au MEME current = pas de progression
+    const history = [
+      { time: now - 60_000, current: 980 },
+      { time: now - 1_000, current: 980 },
+    ];
+    renderETA({
+      progress: { current: 980, total: 1000 },
+      history,
+      scanStartMs: now - 60_000,
+      isLastPhase: true,
+    });
+    expect(screen.queryByText(t.almostDone)).not.toBeInTheDocument();
+    // Affiche elapsed + remaining ou juste elapsed
+    expect(screen.getByText(/écoul/i)).toBeInTheDocument();
+  });
+
   it("affiche elapsed et remaining apres 15s de donnees en derniere phase", () => {
     const now = Date.now();
     const history = [

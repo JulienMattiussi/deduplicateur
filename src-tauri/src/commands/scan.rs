@@ -168,6 +168,10 @@ pub async fn scan_folder(
         find_similar_audio,
         fpcalc_missing: result.fpcalc_missing,
         archive_groups_count: result.archive_groups.len(),
+        scan_archives,
+        sim_threshold: if find_similar { Some(sim_threshold) } else { None },
+        video_sim_threshold: if find_similar_videos { Some(video_sim_threshold) } else { None },
+        audio_sim_threshold: if find_similar_audio { Some(audio_sim_threshold) } else { None },
     };
 
     save_session(&app, &summary, &result.groups, &result.archive_groups);

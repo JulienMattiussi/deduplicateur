@@ -1,4 +1,4 @@
-export type ScanPhase = "reading" | "exact" | "images" | "videos" | "audio" | "archives";
+export type ScanPhase = "reading" | "exact" | "images" | "videos" | "audio" | "archives" | "archives_phash";
 
 export interface ScanProgress {
   current: number;
@@ -66,6 +66,10 @@ export interface ScanSummary {
   find_similar_audio?: boolean;
   fpcalc_missing?: boolean;
   archive_groups_count?: number;
+  scan_archives?: boolean;
+  sim_threshold?: number;
+  video_sim_threshold?: number;
+  audio_sim_threshold?: number;
 }
 
 export interface ArchiveInGroup {

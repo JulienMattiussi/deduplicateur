@@ -14,15 +14,31 @@ function relativeDate(id: string, t: Translations): string {
   return interp(t.daysAgo, { n: days });
 }
 
+/** Convertit un seuil Hamming sur 64 bits (images/videos) en pourcentage de similarite. */
+function pctFromHammingThreshold(threshold: number): number {
+  return Math.round(100 - (threshold * 100) / 64);
+}
+
 function sessionTags(session: ScanSummary, t: Translations): string[] {
   const tags: string[] = [];
   if (session.by_folder) tags.push(t.tagByFolder);
   else if (session.recursive) tags.push(t.tagRecursive);
   else tags.push(t.tagFlat);
-  if (session.find_similar) tags.push(t.tagSimilarImages);
-  if (session.find_similar_videos) tags.push(t.tagSimilarVideos);
-  if (session.find_similar_audio) tags.push(t.tagSimilarAudio);
+  if (session.find_similar) {
+    const pct = session.sim_threshold != null ? pctFromHammingThreshold(session.sim_threshold) : null;
+    tags.push(pct != null ? `${t.tagSimilarImages} (${pct} %)` : t.tagSimilarImages);
+  }
+  if (session.find_similar_videos) {
+    const pct = session.video_sim_threshold != null ? pctFromHammingThreshold(session.video_sim_threshold) : null;
+    tags.push(pct != null ? `${t.tagSimilarVideos} (${pct} %)` : t.tagSimilarVideos);
+  }
+  if (session.find_similar_audio) {
+    // Audio threshold est deja en % (cote frontend : threshold = 100 - similarite)
+    const pct = session.audio_sim_threshold != null ? 100 - session.audio_sim_threshold : null;
+    tags.push(pct != null ? `${t.tagSimilarAudio} (${pct} %)` : t.tagSimilarAudio);
+  }
   if (!session.find_similar && !session.find_similar_videos && !session.find_similar_audio) tags.push(t.tagExact);
+  if (session.scan_archives) tags.push(t.tagArchives);
   return tags;
 }
 

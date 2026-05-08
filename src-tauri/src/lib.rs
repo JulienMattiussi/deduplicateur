@@ -61,6 +61,17 @@ pub struct ScanSummary {
     pub fpcalc_missing: bool,
     #[serde(default)]
     pub archive_groups_count: usize,
+    #[serde(default)]
+    pub scan_archives: bool,
+    /// Seuil de similarite Hamming utilise pour les images (None = scan exact).
+    #[serde(default)]
+    pub sim_threshold: Option<u32>,
+    /// Seuil de similarite Hamming utilise pour les videos (None = scan exact).
+    #[serde(default)]
+    pub video_sim_threshold: Option<u32>,
+    /// Seuil de difference fingerprint audio (None = scan exact). En %, pas en bits Hamming.
+    #[serde(default)]
+    pub audio_sim_threshold: Option<u32>,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -359,6 +370,10 @@ mod tests {
             find_similar_audio: false,
             fpcalc_missing: false,
             archive_groups_count: 1,
+            scan_archives: true,
+            sim_threshold: None,
+            video_sim_threshold: None,
+            audio_sim_threshold: None,
         };
         let archive_groups = vec![ArchiveGroupResult {
             id: "ag1".to_string(),
