@@ -227,23 +227,22 @@ where
     // Utilises pour le sync de fin de phase qui force le compteur global a sa valeur exacte,
     // garantissant la monotonie : meme si une phase emet moins que son budget (ex. cache warm,
     // exclusions par filtres), on rattrape la difference avant la phase suivante.
+    // Le budget apres archives_phash est total_work par construction (derniere phase).
     let budget_after_exact = total_to_hash * EMITS_EXACT;
     let budget_after_images = budget_after_exact + phash_estimate * EMITS_IMAGES;
     let budget_after_videos = budget_after_images + video_estimate * EMITS_VIDEOS;
     let budget_after_audio = budget_after_videos + audio_estimate * EMITS_AUDIO;
-    let budget_after_arch_p1 = budget_after_audio + archive_phase1_count * EMITS_ARCH_P1;
-    let _budget_after_arch_p2 = budget_after_arch_p1 + archive_phase2_image_count * EMITS_ARCH_P2;
 
-    // Compteur global d'emits. Chaque emit incrementede 1, peu importe sa sous-phase.
+    // Compteur global d'emits. Chaque emit incremente de 1, peu importe sa sous-phase.
     // Le wrapper `wrapped_on_progress` ignore le `current` calcule par les phases et
     // utilise ce compteur a la place. Garantit la monotonie absolue : current ne fait
     // que monter, jamais redescendre, meme aux frontieres entre sous-phases.
     let progress_counter = Arc::new(AtomicUsize::new(0));
 
-    // Garde l'ancienne struct Ctx pour ne pas casser les phases qui s'en servent encore
-    // (phash_compare_estimate notamment, utilise comme offset interne dans phash_phase).
-    // Les valeurs sont re-utilisees par les phases qui calculent encore leur `current` local,
-    // mais ce `current` est ECRASE par le wrapper avant de partir vers le frontend.
+    // Ctx contient encore phash_compare_estimate / phash_estimate / video_estimate utilises
+    // par video_phase et audio_phase pour calculer un offset local. Cet offset alimente le
+    // `current` envoye a on_progress, mais notre wrapper l'ECRASE avec le compteur global.
+    // Donc ces valeurs sont dead-flow ; on les laisse pour ne pas modifier les phases.
     let ctx = Ctx {
         total_to_hash,
         phash_estimate,

@@ -102,14 +102,18 @@ L'événement `scan:progress` a une sémantique stricte que **toutes les phases 
 | `file` | Nom du fichier en cours de traitement. **Toujours rempli** en pleine phase (sinon la zone affichée saute). |
 
 **Modèle d'implémentation** (`scanner/mod.rs`) :
-- `total_work` = somme exacte des **emits maximum** par phase, pas du nombre d'items. Constantes par phase : `EMITS_EXACT=1`, `EMITS_IMAGES=3` (decode + hash compute si cache froid + compare outer), `EMITS_VIDEOS=2`, `EMITS_AUDIO=2`, `EMITS_ARCH_P1=1`, `EMITS_ARCH_P2=2` (extraction + pHash). Doivent rester alignées avec le code des phases — si on ajoute une sous-phase qui émet, mettre à jour la constante.
+- `total_work` = somme exacte des **emits maximum** par phase, pas du nombre d'items. Constantes par phase : `EMITS_EXACT=1`, `EMITS_IMAGES=3` (decode + hash compute si cache froid + compare outer), `EMITS_VIDEOS=2`, `EMITS_AUDIO=2`, `EMITS_ARCH_P1=1`, `EMITS_ARCH_P2=2` (extraction + pHash). **Doivent rester alignées avec le code des phases** : toute modification d'une phase qui change le nombre d'`on_progress` par item (ajout d'une sous-phase qui émet, suppression d'une, conditionnelle, etc.) doit s'accompagner d'une mise à jour de la constante. Sinon : sur-estimation → barre stagne ; sous-estimation → barre atteint 100% trop tôt.
 - Compteur global atomique `progress_counter` partagé entre toutes les phases via un wrapper `wrapped_on_progress` qui ignore le `current` calculé localement et utilise `pc.fetch_add(1)` à la place. Garantit l'incrément +1 par emit, peu importe la sous-phase ou le parallélisme rayon.
 - Sync de fin de phase (`sync_to(budget_after_X)`) qui force le compteur à la frontière exacte du budget cumulé via `fetch_max`. Rattrape les emits manquants (cache warm, exclusions par filtre, matching silencieux d'archives Phase 2). Ne peut JAMAIS faire reculer le compteur. Garantit qu'on atteint exactement `total_work` à la fin = 100% pile.
 - Filtre max dans `commands/scan.rs` (snapshot mutex) : on n'écrase la valeur courante que si `new_current >= existing`. Sans ce filtre, des emits parallèles arrivant out-of-order (thread A `fetch_add=4` mais son emit traverse le mutex après B `fetch_add=5`) feraient reculer le snapshot vu par le frontend.
+- **Comptage des entrées d'archive : exact, pas heuristique.** `count_entries_fast` et `count_archive_image_entries` itèrent réellement les archives (random access pour ZIP, headers pour 7z, décompression du stream pour tar.* avec auto-skip des données via `Drop`). L'ancienne heuristique `size / 100000` sous-estimait systématiquement les tars denses (renpy.tar.bz2 : 2000 estimé vs 3134 réel), faisant atteindre 100% en pleine phase archive. Le coût (quelques secondes au démarrage du scan pour les gros tar) est acceptable pour avoir une barre correcte. Ne JAMAIS revenir à une heuristique basée sur `size`.
 
-Tests d'invariants (`scanner::tests::progression_*`) :
-- `assert_progress_invariants` : aucun emit ne dépasse `total`, le max atteint == `total`.
+Tests d'invariants (`scanner::tests::progression_*`) — **à garder verts en permanence**, sentinelle anti-régression :
+- `progression_atteint_total_avec_phases_simples` : exact + pHash → atteint pile `total_work`.
+- `progression_atteint_total_avec_archives` : cas le plus complexe (matching silencieux d'archives Phase 2) → atteint pile `total_work` grâce au sync final.
 - `progression_apres_filtre_snapshot_max_strictement_monotone` : avec le filtre max simulé dans le test, la séquence vue par le frontend est strictement croissante.
+- Helper `assert_progress_invariants` : aucun emit ne dépasse `total`, le max atteint == `total`.
+Si l'un de ces tests casse après une modif de phase, c'est probablement une constante `EMITS_*` désalignée ou un sync manquant — ne PAS relâcher l'assertion, corriger la cause.
 
 Conséquences pratiques :
 - Pour ajouter une phase nouvelle, il faut définir sa constante `EMITS_*`, l'ajouter à `total_work`, et appeler `sync_to(budget_after_X)` après l'avoir exécutée. Sinon le 100% n'est pas atteint pile.

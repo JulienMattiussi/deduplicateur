@@ -815,3 +815,30 @@ En mode "Comparer avec un autre dossier" : dossier source S et dossier de réfé
 ### Phase 27D - Mode Vidéo (différé)
 
 **Note** : les entrées vidéo dans les archives nécessitent une extraction obligatoire en temp file (ffmpeg/ffprobe travaillent sur des chemins disque). Le gain pratique est faible (les vidéos sont rarement archivées). À traiter séparément si le besoin se confirme.
+
+---
+
+## Phase 28 - Refonte progression + comparateur d'archives v2 ✅
+
+**Objectif : barre de progression fiable (jamais de recul, atteint pile 100% à la fin) et comparateur d'archives plus utilisable (miniatures, clic-pour-ouvrir, layout en grille).**
+
+### Comparateur d'archives v2 ✅
+- [x] Layout : remplacement des 2 panneaux à scroll synchronisé par une **grille unique à 3 colonnes** (archive A | score % | archive B). Miniatures collées au centre, tailles aux bords externes, score (`100%` exact / `99%` similar / vide pour unique) en colonne centrale unique.
+- [x] Miniatures : nouveau composant `ArchiveEntryThumbnail` avec **lazy load** via IntersectionObserver. Backend `get_archive_entry_thumbnail(archivePath, internalPath, maxSize)` qui décode l'entrée en mémoire et renvoie une JPEG base64. Repli sur `FileTypeIcon` pour les non-images ou en cas d'erreur.
+- [x] Clic miniature : nouvelle commande Tauri `open_archive_entry(archive_path, internal_path)` qui extrait l'entrée vers `app_data/archive_preview/<id>_<filename>` et ouvre avec le viewer par défaut. Spinner overlay pendant l'opération. Cleanup du dossier `archive_preview/` au boot de l'app.
+- [x] Style : taille en italique + gap 1rem pour démarquer visuellement de nom de fichier ; sync du `simThreshold` du comparateur avec celui du scan (plus de hardcoded `10`).
+- [x] Recompute des compteurs au load_session : `recompute_group_duplicated_entries` + `ensure_cache_for_groups` qui ré-itère les archives pour les sessions pré-cache. Cohérence du badge "Supprimable" avec ce que voit l'utilisateur dans le comparateur.
+
+### Modèle de progression unifié ✅
+- [x] **Compteur global atomique** : nouveau `progress_counter: Arc<AtomicUsize>` partagé entre toutes les phases via un wrapper `wrapped_on_progress` qui ignore le `current` calculé localement et utilise `pc.fetch_add(1)` à la place. Garantit l'incrément +1 par emit, peu importe la sous-phase ou le parallélisme rayon.
+- [x] **`total_work` accurate** : constantes par phase (`EMITS_EXACT=1`, `EMITS_IMAGES=3`, `EMITS_VIDEOS=2`, `EMITS_AUDIO=2`, `EMITS_ARCH_P1=1`, `EMITS_ARCH_P2=2`) basées sur l'audit du nombre réel d'`on_progress` émis. Plus d'over/undershoot du calcul de `total_work`.
+- [x] **Sync de fin de phase** : `sync_to(budget_after_X)` après chaque phase via `fetch_max` rattrape les emits manquants (cache warm, exclusions par filtres, matching silencieux d'archives Phase 2). Garantit qu'on atteint exactement `total_work` à la fin = 100% pile.
+- [x] **Filtre snapshot max** : `commands/scan.rs` n'écrase la valeur courante que si `new_current >= existing`. Sans ce filtre, des emits parallèles arrivant out-of-order pouvaient faire reculer le snapshot vu par le frontend.
+- [x] **Comptage exact tar/7z** : `count_entries_fast` et `count_archive_image_entries` itèrent maintenant tar/7z (au lieu de `size / 100000`) pour avoir des budgets accurate. Quelques secondes ajoutées au démarrage du scan, en échange d'une barre fiable.
+- [x] **`almostDone` simplifié** : `phase_total - phase_current < 10` dans la dernière phase (au lieu d'une heuristique rate/pct). Plus de clignotement ni faux positif.
+- [x] Tests : `progression_atteint_total_avec_phases_simples`, `progression_atteint_total_avec_archives`, `progression_apres_filtre_snapshot_max_strictement_monotone`. Vérifient que `current ≤ total` toujours, que le max atteint == `total`, et que la séquence filtrée est strictement monotone.
+
+### Misc UX ✅
+- [x] Tooltips checkbox "Sous-dossiers" et "Analyser les archives" mentionnent explicitement que l'option **multiplie la durée du scan**.
+- [x] AGENTS.md : 3 règles impératives ajoutées (Vision d'ensemble avant patch local, Sémantique de la progression, Architecture cache pour opérations lazy, Cohérence des seuils, Diagnostic par logs avant code) ; section "Sémantique de la progression" mise à jour avec le nouveau modèle.
+- [x] 245 tests Rust / 426 tests TypeScript / tsc clean.
