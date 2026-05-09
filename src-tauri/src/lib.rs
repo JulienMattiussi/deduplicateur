@@ -263,9 +263,9 @@ pub fn select_files_to_delete(
 pub fn run() {
     use commands::archive::{get_archive_comparison, get_archive_groups, check_archive_disk_space, list_archive_paths};
     use commands::files::{
-        check_path_is_dir, delete_files, get_archive_entry_thumbnail, get_image_meta,
-        get_image_thumbnail, get_video_metadata, get_video_thumbnail, open_archive_entry,
-        open_file, reveal_in_folder,
+        check_path_is_dir, delete_files, get_archive_entry_thumbnail, get_archive_entry_url,
+        get_image_meta, get_image_thumbnail, get_video_metadata, get_video_thumbnail,
+        open_archive_entry, open_file, reveal_in_folder,
     };
     use commands::ignore::{clear_all_ignored, clear_ignore_entry, get_ignore_list, ignore_group};
     use commands::scan::{cancel_scan, scan_folder};
@@ -328,6 +328,7 @@ pub fn run() {
             get_video_thumbnail,
             get_archive_entry_thumbnail,
             open_archive_entry,
+            get_archive_entry_url,
             get_phash_config,
             set_phash_config,
             get_video_config,

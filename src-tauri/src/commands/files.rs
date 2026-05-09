@@ -124,6 +124,34 @@ fn archive_preview_dir(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
     Some(dir)
 }
 
+/// Extrait une entree d'archive vers un fichier temporaire et retourne son chemin.
+/// Helper interne mutualise par `open_archive_entry` (ouvre avec viewer par defaut)
+/// et `get_archive_entry_url` (sert via le media server HTTP local).
+async fn extract_archive_entry_to_preview(
+    app: &tauri::AppHandle,
+    archive_path: String,
+    internal_path: String,
+) -> Result<std::path::PathBuf, String> {
+    let dir = archive_preview_dir(app).ok_or_else(|| "data_dir indisponible".to_string())?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let bytes = crate::archive::read_archive_entry_bytes(
+            std::path::Path::new(&archive_path),
+            &internal_path,
+        )?;
+        let leaf = std::path::Path::new(&internal_path)
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "entry".to_string());
+        let id = uuid::Uuid::new_v4().simple().to_string();
+        let safe = format!("{}_{}", &id[..8], leaf);
+        let out_path = dir.join(safe);
+        std::fs::write(&out_path, &bytes).map_err(|e| e.to_string())?;
+        Ok::<std::path::PathBuf, String>(out_path)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Extrait une entree d'archive vers un fichier temporaire et l'ouvre avec le viewer
 /// par defaut. Utilise pour permettre le clic sur les miniatures du comparateur d'archives.
 /// Le fichier temporaire reste sur disque jusqu'au prochain demarrage de l'app
@@ -135,28 +163,29 @@ pub async fn open_archive_entry(
     archive_path: String,
     internal_path: String,
 ) -> Result<(), String> {
-    let dir = archive_preview_dir(&app).ok_or_else(|| "data_dir indisponible".to_string())?;
-    tauri::async_runtime::spawn_blocking(move || {
-        let bytes = crate::archive::read_archive_entry_bytes(
-            std::path::Path::new(&archive_path),
-            &internal_path,
-        )?;
-        // Nom unique a partir du nom interne pour que le viewer affiche un titre lisible,
-        // prefixe d'un id court pour eviter les collisions entre plusieurs ouvertures.
-        let leaf = std::path::Path::new(&internal_path)
-            .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_else(|| "entry".to_string());
-        let id = uuid::Uuid::new_v4().simple().to_string();
-        let safe = format!("{}_{}", &id[..8], leaf);
-        let out_path = dir.join(safe);
-        std::fs::write(&out_path, &bytes).map_err(|e| e.to_string())?;
-        open_file_default(&out_path.to_string_lossy()).map_err(|e| e.to_string())?;
-        Ok::<(), String>(())
-    })
-    .await
-    .map_err(|e| e.to_string())??;
-    Ok(())
+    let out_path = extract_archive_entry_to_preview(&app, archive_path, internal_path).await?;
+    open_file_default(&out_path.to_string_lossy()).map_err(|e| e.to_string())
+}
+
+/// Extrait une entree audio d'archive vers un fichier temporaire et retourne son URL
+/// servie par le media server HTTP local. Permet la lecture via `<audio src>` dans le
+/// comparateur sans avoir a charger les bytes en base64 (lourd) ni a ouvrir un viewer
+/// externe. Le fichier temporaire est purge au prochain demarrage de l'app comme pour
+/// `open_archive_entry`.
+#[tauri::command]
+pub async fn get_archive_entry_url(
+    app: tauri::AppHandle,
+    archive_path: String,
+    internal_path: String,
+) -> Result<String, String> {
+    use tauri::Manager;
+    let port = app.state::<crate::MediaServerPort>().0;
+    let out_path = extract_archive_entry_to_preview(&app, archive_path, internal_path).await?;
+    // Le media server (axum) sert tous les fichiers par chemin absolu URL-encode.
+    // Cf. video/media_server.rs : handle() fait percent_decode_str sur l'uri.
+    let path_str = out_path.to_string_lossy();
+    let encoded = percent_encoding::utf8_percent_encode(&path_str, percent_encoding::NON_ALPHANUMERIC).to_string();
+    Ok(format!("http://127.0.0.1:{}/{}", port, encoded))
 }
 
 #[tauri::command]

@@ -1,10 +1,10 @@
-//! Extraction des entrees image d'archives vers un dossier temporaire.
+//! Extraction d'entrees d'archives (images ou audio) vers un dossier temporaire.
 //!
-//! Permet de reutiliser le pipeline pHash standard (qui travaille sur des chemins disque)
-//! avec ses optimisations (EXIF thumbnail, decodage parallele rayon, etc.) au lieu de
-//! decoder en memoire entree par entree.
+//! Permet de reutiliser les pipelines standards (pHash pour images, fpcalc pour audio)
+//! qui travaillent sur des chemins disque, au lieu de decoder en memoire entree par entree.
 //!
-//! Le `TempDir` est detruit automatiquement quand `ImageExtraction` sort de scope (Drop).
+//! Le `TempDir` est detruit automatiquement quand `EntryExtraction` sort de scope (Drop).
+//! Le filtre est passe en parametre : `is_image_path` en mode Image, `is_audio` en mode Audio.
 
 use std::path::{Path, PathBuf};
 use std::fs::File;
@@ -15,25 +15,29 @@ use sevenz_rust2::{ArchiveReader, Password};
 use crate::archive::{ArchiveFormat, EntryCallback, detect_archive_format};
 use crate::scanner::hash::is_image_path;
 
-/// Une image extraite d'une archive vers un fichier temporaire sur disque.
-pub struct ExtractedImage {
-    /// Index de l'archive source dans la liste passee a `extract_image_entries`.
+/// Une entree (image ou audio) extraite d'une archive vers un fichier temporaire sur disque.
+pub struct ExtractedEntry {
+    /// Index de l'archive source dans la liste passee a la fonction d'extraction.
     pub archive_idx: usize,
-    /// Chemin interne dans l'archive (ex. "subdir/page01.jpg").
+    /// Chemin interne dans l'archive (ex. "subdir/page01.jpg" ou "music/track.mp3").
     pub internal_path: String,
-    /// Chemin sur disque dans le temp dir (valide tant que l'`ImageExtraction` parent vit).
+    /// Chemin sur disque dans le temp dir (valide tant que l'`EntryExtraction` parent vit).
     pub temp_path: PathBuf,
 }
 
 /// Resultat de l'extraction. Le `temp_dir` est detruit automatiquement quand on drop
 /// cette struct, ce qui supprime tous les fichiers extraits en cascade.
-pub struct ImageExtraction {
+pub struct EntryExtraction {
     /// Garde-fou : la destruction de ce TempDir supprime recursivement le dossier
     /// et tous les fichiers extraits. NE PAS DROP avant d'avoir fini d'utiliser
     /// les `temp_path` des items.
     pub _temp_dir: TempDir,
-    pub items: Vec<ExtractedImage>,
+    pub items: Vec<ExtractedEntry>,
 }
+
+/// Alias retro-compatible pour le type item, utilise par archive_phase qui annote
+/// explicitement le type des items dans son par_iter (`|img: &ExtractedImage|`).
+pub type ExtractedImage = ExtractedEntry;
 
 /// Sous-dossier "scan_temp" sous le data_dir de l'app, parent de tous les TempDir d'extraction.
 /// Permet le cleanup_orphan au demarrage de l'app : on peut tout supprimer sous ce parent.
@@ -41,18 +45,28 @@ pub fn scan_temp_parent(data_dir: &Path) -> PathBuf {
     data_dir.join("scan_temp")
 }
 
-/// Estime la taille totale (bytes) qu'occupera l'extraction des entrees image
-/// de ces archives. Lit les headers (central directory pour ZIP, headers tar/7z)
-/// sans decompresser le contenu des entrees.
+/// Estime la taille totale (bytes) qu'occupera l'extraction des entrees passant le filtre
+/// `is_image_path`. Wrapper sur `estimate_extraction_size_filtered` pour retro-compat.
+#[allow(dead_code)]
+pub fn estimate_extraction_size(archive_paths: &[String]) -> u64 {
+    estimate_extraction_size_filtered(archive_paths, |name| is_image_path(name))
+}
+
+/// Estime la taille totale (bytes) qu'occupera l'extraction des entrees passant le predicat
+/// `filter` (ex. `is_image_path` ou `is_audio`). Lit les headers sans decompresser le contenu.
 ///
 /// **Performance** :
 /// - ZIP/7z : lecture de la table d'entrees uniquement, tres rapide
 /// - tar.* : on doit decompresser TOUT le flux pour atteindre chaque header (limite
 ///   du format tar). Pour eviter de bloquer plusieurs minutes sur un dossier avec
 ///   plusieurs gros tar.gz, on utilise une **estimation approximative** = taille
-///   compressee * 4 (ratio typique gz/xz/zst) sans decompresser.
+///   compressee * 4 (ratio typique gz/xz/zst) sans decompresser. C'est une borne
+///   superieure realiste, le but est juste de detecter "espace insuffisant".
 /// - Parallelisation : toutes les archives sont traitees en parallele via rayon.
-pub fn estimate_extraction_size(archive_paths: &[String]) -> u64 {
+pub fn estimate_extraction_size_filtered(
+    archive_paths: &[String],
+    filter: impl Fn(&str) -> bool + Copy + Send + Sync,
+) -> u64 {
     use rayon::prelude::*;
     archive_paths.par_iter()
         .map(|arch_path| {
@@ -61,41 +75,39 @@ pub fn estimate_extraction_size(archive_paths: &[String]) -> u64 {
                 None => return 0u64,
             };
             match format {
-                ArchiveFormat::Zip => estimate_zip(arch_path),
+                ArchiveFormat::Zip => estimate_zip(arch_path, filter),
                 ArchiveFormat::TarGz | ArchiveFormat::TarBz2 | ArchiveFormat::TarXz | ArchiveFormat::TarZst => {
                     estimate_tar_fast(arch_path)
                 }
-                ArchiveFormat::SevenZip => estimate_sevenz(arch_path),
+                ArchiveFormat::SevenZip => estimate_sevenz(arch_path, filter),
             }
         })
         .sum()
 }
 
-fn estimate_zip(arch_path: &str) -> u64 {
+fn estimate_zip(arch_path: &str, filter: impl Fn(&str) -> bool) -> u64 {
     let file = match File::open(arch_path) { Ok(f) => f, Err(_) => return 0 };
     let mut archive = match zip::ZipArchive::new(file) { Ok(a) => a, Err(_) => return 0 };
     let mut sum = 0u64;
     for i in 0..archive.len() {
         let entry = match archive.by_index(i) { Ok(e) => e, Err(_) => continue };
         if entry.is_dir() || entry.encrypted() { continue; }
-        if !is_image_path(entry.name()) { continue; }
+        if !filter(entry.name()) { continue; }
         sum += entry.size();
     }
     sum
 }
 
 /// Estimation conservative pour tar compresse : on NE decompresse PAS (cout prohibitif).
-/// On retourne `compressed_size * 4` comme borne superieure realiste : un tar.gz typique
-/// se decompresse en 2-5x, on prend 4 comme moyenne. Si l'archive ne contient aucune
-/// image, on surestime ; mais le but est juste de detecter "espace insuffisant", pas
-/// d'etre precis. La phase 2 reelle (extraction) ne fait que les images.
+/// On retourne `compressed_size * 4` comme borne superieure realiste, peu importe le filtre.
+/// Le but est juste de detecter "espace insuffisant", pas d'etre precis.
 fn estimate_tar_fast(arch_path: &str) -> u64 {
     std::fs::metadata(arch_path)
         .map(|m| m.len().saturating_mul(4))
         .unwrap_or(0)
 }
 
-fn estimate_sevenz(arch_path: &str) -> u64 {
+fn estimate_sevenz(arch_path: &str, filter: impl Fn(&str) -> bool) -> u64 {
     let mut reader = match ArchiveReader::open(arch_path, Password::empty()) {
         Ok(r) => r,
         Err(_) => return 0,
@@ -103,7 +115,7 @@ fn estimate_sevenz(arch_path: &str) -> u64 {
     let mut sum = 0u64;
     let _ = reader.for_each_entries(|entry, _stream| {
         if entry.is_directory() || !entry.has_stream() { return Ok(true); }
-        if is_image_path(entry.name()) {
+        if filter(entry.name()) {
             sum += entry.size();
         }
         Ok(true)
@@ -117,14 +129,34 @@ pub fn available_disk_space(path: &Path) -> u64 {
     available_space(path).unwrap_or(0)
 }
 
-/// Extrait toutes les entrees image des archives donnees vers un nouveau dossier
-/// temporaire (sous data_dir/scan_temp/). `on_entry` est appele apres chaque image
-/// extraite ; retourner false interrompt l'extraction.
+/// Extrait toutes les entrees image des archives donnees (filtre `is_image_path`).
+/// Wrapper sur `extract_entries_filtered` pour retro-compat avec l'API existante.
 pub fn extract_image_entries(
     archive_paths: &[String],
     data_dir: &Path,
     on_entry: EntryCallback,
-) -> std::io::Result<ImageExtraction> {
+) -> std::io::Result<EntryExtraction> {
+    extract_entries_filtered(archive_paths, data_dir, |name| is_image_path(name), on_entry)
+}
+
+/// Extrait toutes les entrees audio des archives donnees (filtre `is_audio`).
+pub fn extract_audio_entries(
+    archive_paths: &[String],
+    data_dir: &Path,
+    on_entry: EntryCallback,
+) -> std::io::Result<EntryExtraction> {
+    extract_entries_filtered(archive_paths, data_dir, |name| crate::audio::is_audio(name), on_entry)
+}
+
+/// Extrait toutes les entrees passant le predicat `filter` vers un nouveau dossier
+/// temporaire (sous `data_dir/scan_temp/`). `on_entry` est appele apres chaque entree
+/// extraite ; retourner false interrompt l'extraction.
+pub fn extract_entries_filtered(
+    archive_paths: &[String],
+    data_dir: &Path,
+    filter: impl Fn(&str) -> bool + Copy,
+    on_entry: EntryCallback,
+) -> std::io::Result<EntryExtraction> {
     let parent = scan_temp_parent(data_dir);
     std::fs::create_dir_all(&parent)?;
     let temp_dir = TempDir::new_in(&parent)?;
@@ -139,17 +171,17 @@ pub fn extract_image_entries(
         std::fs::create_dir_all(&arch_subdir)?;
 
         let result = match format {
-            ArchiveFormat::Zip => extract_zip(arch_path, arch_idx, &arch_subdir, &mut items, on_entry),
+            ArchiveFormat::Zip => extract_zip(arch_path, arch_idx, &arch_subdir, &mut items, filter, on_entry),
             ArchiveFormat::TarGz | ArchiveFormat::TarBz2 | ArchiveFormat::TarXz | ArchiveFormat::TarZst => {
-                extract_tar(arch_path, format, arch_idx, &arch_subdir, &mut items, on_entry)
+                extract_tar(arch_path, format, arch_idx, &arch_subdir, &mut items, filter, on_entry)
             }
-            ArchiveFormat::SevenZip => extract_sevenz(arch_path, arch_idx, &arch_subdir, &mut items, on_entry),
+            ArchiveFormat::SevenZip => extract_sevenz(arch_path, arch_idx, &arch_subdir, &mut items, filter, on_entry),
         };
         // En cas d'erreur sur une archive, on continue avec les suivantes (extraction best-effort)
         let _ = result;
     }
 
-    Ok(ImageExtraction { _temp_dir: temp_dir, items })
+    Ok(EntryExtraction { _temp_dir: temp_dir, items })
 }
 
 fn safe_filename(idx: usize, original: &str) -> String {
@@ -163,7 +195,8 @@ fn extract_zip(
     arch_path: &str,
     arch_idx: usize,
     out_dir: &Path,
-    items: &mut Vec<ExtractedImage>,
+    items: &mut Vec<ExtractedEntry>,
+    filter: impl Fn(&str) -> bool,
     on_entry: EntryCallback,
 ) -> std::io::Result<()> {
     let file = File::open(arch_path)?;
@@ -176,11 +209,11 @@ fn extract_zip(
         };
         if entry.is_dir() || entry.encrypted() { continue; }
         let name = entry.name().to_string();
-        if !is_image_path(&name) { continue; }
+        if !filter(&name) { continue; }
         let temp_path = out_dir.join(safe_filename(i, &name));
         let mut out = File::create(&temp_path)?;
         std::io::copy(&mut entry, &mut out)?;
-        items.push(ExtractedImage {
+        items.push(ExtractedEntry {
             archive_idx: arch_idx,
             internal_path: name,
             temp_path,
@@ -195,17 +228,18 @@ fn extract_tar(
     format: ArchiveFormat,
     arch_idx: usize,
     out_dir: &Path,
-    items: &mut Vec<ExtractedImage>,
+    items: &mut Vec<ExtractedEntry>,
+    filter: impl Fn(&str) -> bool,
     on_entry: EntryCallback,
 ) -> std::io::Result<()> {
     let file = File::open(arch_path)?;
     match format {
-        ArchiveFormat::TarGz => extract_tar_inner(tar::Archive::new(flate2::read::GzDecoder::new(file)), arch_idx, out_dir, items, on_entry),
-        ArchiveFormat::TarBz2 => extract_tar_inner(tar::Archive::new(bzip2::read::BzDecoder::new(file)), arch_idx, out_dir, items, on_entry),
-        ArchiveFormat::TarXz => extract_tar_inner(tar::Archive::new(xz2::read::XzDecoder::new(file)), arch_idx, out_dir, items, on_entry),
+        ArchiveFormat::TarGz => extract_tar_inner(tar::Archive::new(flate2::read::GzDecoder::new(file)), arch_idx, out_dir, items, filter, on_entry),
+        ArchiveFormat::TarBz2 => extract_tar_inner(tar::Archive::new(bzip2::read::BzDecoder::new(file)), arch_idx, out_dir, items, filter, on_entry),
+        ArchiveFormat::TarXz => extract_tar_inner(tar::Archive::new(xz2::read::XzDecoder::new(file)), arch_idx, out_dir, items, filter, on_entry),
         ArchiveFormat::TarZst => {
             let zst = zstd::Decoder::new(file)?;
-            extract_tar_inner(tar::Archive::new(zst), arch_idx, out_dir, items, on_entry)
+            extract_tar_inner(tar::Archive::new(zst), arch_idx, out_dir, items, filter, on_entry)
         }
         _ => Ok(()),
     }
@@ -215,7 +249,8 @@ fn extract_tar_inner<R: Read>(
     mut archive: tar::Archive<R>,
     arch_idx: usize,
     out_dir: &Path,
-    items: &mut Vec<ExtractedImage>,
+    items: &mut Vec<ExtractedEntry>,
+    filter: impl Fn(&str) -> bool,
     on_entry: EntryCallback,
 ) -> std::io::Result<()> {
     let mut idx = 0;
@@ -233,11 +268,11 @@ fn extract_tar_inner<R: Read>(
             Ok(p) => p.to_string_lossy().to_string(),
             Err(_) => { idx += 1; continue; }
         };
-        if !is_image_path(&path) { idx += 1; continue; }
+        if !filter(&path) { idx += 1; continue; }
         let temp_path = out_dir.join(safe_filename(idx, &path));
         let mut out = File::create(&temp_path)?;
         std::io::copy(&mut entry, &mut out)?;
-        items.push(ExtractedImage {
+        items.push(ExtractedEntry {
             archive_idx: arch_idx,
             internal_path: path,
             temp_path,
@@ -252,7 +287,8 @@ fn extract_sevenz(
     arch_path: &str,
     arch_idx: usize,
     out_dir: &Path,
-    items: &mut Vec<ExtractedImage>,
+    items: &mut Vec<ExtractedEntry>,
+    filter: impl Fn(&str) -> bool,
     on_entry: EntryCallback,
 ) -> std::io::Result<()> {
     let mut reader = ArchiveReader::open(arch_path, Password::empty())
@@ -265,7 +301,7 @@ fn extract_sevenz(
             return Ok(true);
         }
         let name = entry.name().to_string();
-        if !is_image_path(&name) {
+        if !filter(&name) {
             idx += 1;
             return Ok(true);
         }
@@ -279,7 +315,7 @@ fn extract_sevenz(
             io_err = Some(e);
             return Ok(false);
         }
-        items.push(ExtractedImage {
+        items.push(ExtractedEntry {
             archive_idx: arch_idx,
             internal_path: name,
             temp_path,

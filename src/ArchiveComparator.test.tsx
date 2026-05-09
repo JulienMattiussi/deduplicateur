@@ -154,6 +154,30 @@ describe("ArchiveComparator - pairing greedy quand cardinalites differentes", ()
   });
 });
 
+describe("ArchiveComparator - entrees audio (mode Audio)", () => {
+  it("affiche un bouton play (au lieu de la miniature) sur les entrees audio", async () => {
+    const audioComparison = {
+      a: {
+        path: "/x.zip",
+        entries: [
+          { internal_path: "song.mp3", size: 5_000_000, status: "duplicate" as const, duplicate_in: "song.mp3", hash: "h1" },
+        ],
+      },
+      b: {
+        path: "/y.zip",
+        entries: [
+          { internal_path: "song.mp3", size: 5_000_000, status: "duplicate" as const, duplicate_in: "song.mp3", hash: "h1" },
+        ],
+      },
+    };
+    mockInvoke.mockResolvedValue(audioComparison);
+    renderComparator();
+    await waitFor(() => screen.getByTestId("archive-comparator-body"));
+    // 2 boutons play (un par cote)
+    expect(screen.getAllByTestId("archive-audio-btn").length).toBe(2);
+  });
+});
+
 describe("ArchiveComparator - paires similaires (B-min)", () => {
   it("affiche les entrees similar face-a-face avec score", async () => {
     const sim = {
@@ -189,6 +213,9 @@ describe("ArchiveComparator - paires similaires (B-min)", () => {
       pathB: archiveB.path,
       findSimilar: true,
       simThreshold: 10,
+      findSimilarAudio: false,
+      audioSimThreshold: 20,
+      audioDurationTolerance: 0.20,
     });
   });
 });

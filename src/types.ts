@@ -1,4 +1,4 @@
-export type ScanPhase = "reading" | "exact" | "images" | "videos" | "audio" | "archives" | "archives_phash";
+export type ScanPhase = "reading" | "exact" | "images" | "videos" | "audio" | "archives" | "archives_phash" | "archives_audio";
 
 export interface ScanProgress {
   current: number;
@@ -93,6 +93,8 @@ export interface ArchiveDiskCheck {
   available_bytes: number;
   needs_warning: boolean;
   deficit_bytes: number;
+  /** Mode d'extraction qui declenche la warning ("image" ou "audio"). Set par App.tsx. */
+  mode?: "image" | "audio";
 }
 
 export interface ArchiveEntryResult {

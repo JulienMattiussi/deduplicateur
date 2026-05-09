@@ -242,9 +242,11 @@ export default function App() {
     }
     setPreScanToolMissing(null);
 
-    // Pre-check d'espace disque si on est en mode Image avec scan_archives
-    // (B-revised : extraction temp dir necessaire pour pHash dans archives).
-    if (config.detectionMode === "images" && config.scanArchives) {
+    // Pre-check d'espace disque si on declenche une extraction d'entrees d'archives :
+    // mode Image (pHash sur images) ou mode Audio (fpcalc sur audios).
+    const needsExtraction = config.scanArchives && (config.detectionMode === "images" || config.detectionMode === "audio");
+    const extractionMode: "image" | "audio" = config.detectionMode === "audio" ? "audio" : "image";
+    if (needsExtraction) {
       precheckAbortedRef.current = false;
       setPrecheckRunning(true);
       try {
@@ -254,11 +256,11 @@ export default function App() {
         });
         if (precheckAbortedRef.current) return;
         if (archives.length > 0) {
-          const check = await invoke<ArchiveDiskCheck>("check_archive_disk_space", { archivePaths: archives });
+          const check = await invoke<ArchiveDiskCheck>("check_archive_disk_space", { archivePaths: archives, mode: extractionMode });
           if (precheckAbortedRef.current) return;
           if (check.needs_warning) {
             setPrecheckRunning(false);
-            setDiskWarning(check);  // affiche la modale ; user choisira via les handlers
+            setDiskWarning({ ...check, mode: extractionMode });  // affiche la modale
             return;
           }
         }
@@ -284,7 +286,7 @@ export default function App() {
     setDiskWarning(null);
     setPanelResetKey(k => k + 1);
     resetResults();
-    scanExec.scan({ ...buildScanArgsFromConfig(config, lang), skipArchivePhash: true });
+    scanExec.scan({ ...buildScanArgsFromConfig(config, lang), skipArchiveExtraction: true });
   }
 
   async function handleIgnoreGroup(groupId: string) {
@@ -840,6 +842,8 @@ export default function App() {
           archiveB={archiveComparatorPair.b}
           findSimilar={summary?.find_similar ?? false}
           simThreshold={summary?.sim_threshold ?? 10}
+          findSimilarAudio={summary?.find_similar_audio ?? false}
+          audioSimThreshold={summary?.audio_sim_threshold ?? 20}
           onClose={() => setArchiveComparatorPair(null)}
         />
       )}
@@ -858,6 +862,7 @@ export default function App() {
           neededBytes={diskWarning.needed_bytes}
           availableBytes={diskWarning.available_bytes}
           deficitBytes={diskWarning.deficit_bytes}
+          mode={diskWarning.mode ?? "image"}
           onCancel={() => setDiskWarning(null)}
           onContinueSkipping={continueWithoutArchivePhash}
         />

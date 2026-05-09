@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useLang } from "./LangContext";
 import { formatSize, formatDate, dirname, basename } from "./utils";
 import { revealInFolder } from "./fileActions";
-import { ArchiveEntryThumbnail } from "./components/FileThumbnail";
+import { ArchiveEntryThumbnail, ArchiveEntryAudioPlayer, isAudioPath } from "./components/FileThumbnail";
 import { ComparatorBasicShell } from "./comparatorShared";
 import type { ArchiveComparison, ArchiveEntryResult, ArchiveInGroup } from "./types";
 
@@ -12,6 +12,9 @@ interface Props {
   archiveB: ArchiveInGroup;
   findSimilar: boolean;
   simThreshold: number;
+  findSimilarAudio?: boolean;
+  audioSimThreshold?: number;
+  audioDurationTolerance?: number;
   onClose: () => void;
 }
 
@@ -113,14 +116,20 @@ function EntryCell({
   if (!entry) return <span className="archive-row-empty" />;
   const sizeEl = <span className="archive-row-size">{formatSize(entry.size)}</span>;
   const pathEl = <span className="archive-row-path" title={entry.internal_path}>{entry.internal_path}</span>;
-  const thumbEl = (
+  // Lecteur audio inline pour les entrees audio, miniature lazy pour les images,
+  // icone de type de fichier pour le reste (gere par ArchiveEntryThumbnail).
+  const mediaEl = isAudioPath(entry.internal_path) ? (
+    <span className="archive-row-icon">
+      <ArchiveEntryAudioPlayer archivePath={archivePath} internalPath={entry.internal_path} />
+    </span>
+  ) : (
     <span className="archive-row-icon">
       <ArchiveEntryThumbnail archivePath={archivePath} internalPath={entry.internal_path} />
     </span>
   );
   return (
     <span className={`archive-row-content archive-row-content--${side}`}>
-      {side === "left" ? <>{sizeEl}{pathEl}{thumbEl}</> : <>{thumbEl}{pathEl}{sizeEl}</>}
+      {side === "left" ? <>{sizeEl}{pathEl}{mediaEl}</> : <>{mediaEl}{pathEl}{sizeEl}</>}
     </span>
   );
 }
@@ -172,7 +181,12 @@ function ArchiveMetaBlock({ archive }: { archive: ArchiveInGroup }) {
   );
 }
 
-export function ArchiveComparator({ archiveA, archiveB, findSimilar, simThreshold, onClose }: Props) {
+export function ArchiveComparator({
+  archiveA, archiveB,
+  findSimilar, simThreshold,
+  findSimilarAudio, audioSimThreshold, audioDurationTolerance,
+  onClose,
+}: Props) {
   const { t } = useLang();
   const [comparison, setComparison] = useState<ArchiveComparison | null>(null);
   const [loading, setLoading] = useState(true);
@@ -186,10 +200,13 @@ export function ArchiveComparator({ archiveA, archiveB, findSimilar, simThreshol
       pathB: archiveB.path,
       findSimilar,
       simThreshold,
+      findSimilarAudio: findSimilarAudio ?? false,
+      audioSimThreshold: audioSimThreshold ?? 20,
+      audioDurationTolerance: audioDurationTolerance ?? 0.20,
     })
       .then((c) => { setComparison(c); setLoading(false); })
       .catch(() => setLoading(false));
-  }, [archiveA.path, archiveB.path, findSimilar, simThreshold]);
+  }, [archiveA.path, archiveB.path, findSimilar, simThreshold, findSimilarAudio, audioSimThreshold, audioDurationTolerance]);
 
   const rows = useMemo(() => {
     if (!comparison) return [];

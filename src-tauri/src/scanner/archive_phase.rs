@@ -6,7 +6,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use rayon::prelude::*;
 
 use crate::archive::{detect_archive_format, hash_archive_entries, count_entries_fast, ArchiveEntryHash};
-use crate::archive::extractor::{extract_image_entries, ExtractedImage};
+use crate::archive::extractor::{extract_image_entries, extract_audio_entries, ExtractedImage};
+use crate::audio::{compute_fingerprint, fingerprint_distance};
 use super::hash::{hamming_distance, compute_two_pass_hashes};
 use super::types::{DuplicateFile, ArchiveGroupResult, ArchiveInGroup};
 use crate::scanner::types::UnionFind;
@@ -21,14 +22,17 @@ pub struct ArchivePhaseResult {
 }
 
 /// Entree d'archive enrichie avec son indice d'archive parente.
-/// `phash` est rempli en Phase 2 pour les entrees image (sera persiste dans le cache
-/// pour eviter le recalcul lors du clic Comparer).
+/// `phash` est rempli en Phase 2 (mode Image) pour les entrees image, `audio_fp` en
+/// Phase 3 (mode Audio) pour les entrees audio. Les deux sont mutuellement exclusifs
+/// (mode Image et Audio incompatibles dans le meme scan). Persistes dans le cache
+/// pour eviter le recalcul lors du clic Comparer.
 struct EnrichedEntry {
     arch_idx: usize,
     internal_path: String,
     size: u64,
     hash: u64,
     phash: Option<(Vec<u8>, Vec<u8>)>,
+    audio_fp: Option<(Vec<i32>, f64)>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -39,8 +43,11 @@ pub fn run(
     total_work: usize,
     find_similar: bool,
     sim_threshold: u32,
+    find_similar_audio: bool,
+    audio_sim_threshold: u32,
+    audio_duration_tolerance: f64,
     data_dir: Option<&str>,
-    skip_phash: bool,
+    skip_extraction: bool,
     on_progress: &(impl Fn(usize, usize, usize, &str, usize, usize, &str) + Send + Sync),
 ) -> ArchivePhaseResult {
     // Filtrer les archives
@@ -93,7 +100,8 @@ pub fn run(
                 internal_path: entry.internal_path,
                 size: entry.size,
                 hash: entry.hash,
-                phash: None,  // rempli en Phase 2 si l'entree est une image
+                phash: None,    // rempli en Phase 2 (mode Image)
+                audio_fp: None, // rempli en Phase 3 (mode Audio)
             });
             hash_map.entry(all_entries[idx].hash).or_default().push(idx);
         }
@@ -133,7 +141,7 @@ pub fn run(
     // le pipeline pHash standard (parallele rayon + EXIF thumbnail pour les JPEG)
     // pour calculer les hashes. Enfin, matching O(n²) inter-archives sur les images
     // pas encore dans un groupe exact.
-    if find_similar && !skip_phash && !cancelled.load(Ordering::Relaxed) {
+    if find_similar && !skip_extraction && !cancelled.load(Ordering::Relaxed) {
         if let Some(dir) = data_dir {
             let archive_paths: Vec<String> = archives.iter().map(|f| f.path.clone()).collect();
             let extract_cancelled = cancelled.clone();
@@ -244,6 +252,125 @@ pub fn run(
         }
     }
 
+    // ── PASSE 3 : extraction + fpcalc parallele + appariement AUDIO SIMILAIRE ──
+    // Strategie symetrique a la PASSE 2 (images) : extraction des entrees audio vers
+    // un temp dir, fpcalc parallele rayon, matching O(n²) inter-archives sur les audio
+    // pas encore dans un groupe exact. Mode Audio et mode Image sont mutuellement
+    // exclusifs cote ScanParams, donc une seule des deux passes tourne par scan.
+    if find_similar_audio && !skip_extraction && !cancelled.load(Ordering::Relaxed) {
+        if let Some(dir) = data_dir {
+            let archive_paths: Vec<String> = archives.iter().map(|f| f.path.clone()).collect();
+            let extract_cancelled = cancelled.clone();
+            let p3_done = std::sync::atomic::AtomicUsize::new(0);
+
+            let extract_cb = || -> bool {
+                if extract_cancelled.load(Ordering::Relaxed) { return false; }
+                let n3 = p3_done.fetch_add(1, Ordering::Relaxed) + 1;
+                let n_overall = processed.fetch_add(1, Ordering::Relaxed) + 1;
+                on_progress(
+                    progress_base + n_overall,
+                    total_work,
+                    0,
+                    "",
+                    n3,
+                    estimated_total.max(n_overall),
+                    "archives_audio",
+                );
+                true
+            };
+            if let Ok(extraction) = extract_audio_entries(&archive_paths, Path::new(dir), &extract_cb) {
+                let audio_count = extraction.items.len();
+                let p3_real_total = (audio_count * 2).max(p3_done.load(Ordering::Relaxed));
+                let fp_done = std::sync::atomic::AtomicUsize::new(audio_count);
+
+                // fpcalc parallele via rayon : un subprocess par item, en parallele.
+                // Note : fpcalc n'utilise pas EXIF thumbnail comme pHash, c'est juste
+                // un fingerprint chromaprint sur le contenu audio decompresse.
+                let fingerprints: Vec<Option<(Vec<i32>, f64)>> = extraction.items
+                    .par_iter()
+                    .map(|item: &ExtractedImage| {
+                        if extract_cancelled.load(Ordering::Relaxed) { return None; }
+                        let path_str = item.temp_path.to_str().unwrap_or("");
+                        let result = compute_fingerprint(path_str);
+                        let n3 = fp_done.fetch_add(1, Ordering::Relaxed) + 1;
+                        let n_overall = processed.fetch_add(1, Ordering::Relaxed) + 1;
+                        on_progress(
+                            progress_base + n_overall,
+                            total_work,
+                            0,
+                            &item.internal_path,
+                            n3,
+                            p3_real_total,
+                            "archives_audio",
+                        );
+                        result
+                    })
+                    .collect();
+
+                // Persister fingerprints + duree dans all_entries (cache pour comparateur).
+                let mut entry_index_by_key: HashMap<(usize, String), usize> = HashMap::new();
+                for (i, e) in all_entries.iter().enumerate() {
+                    entry_index_by_key.insert((e.arch_idx, e.internal_path.clone()), i);
+                }
+                for (i, item) in extraction.items.iter().enumerate() {
+                    if let Some(fp) = &fingerprints[i] {
+                        if let Some(&entry_i) = entry_index_by_key.get(&(item.archive_idx, item.internal_path.clone())) {
+                            all_entries[entry_i].audio_fp = Some(fp.clone());
+                        }
+                    }
+                }
+
+                if !cancelled.load(Ordering::Relaxed) {
+                    // Matching inter-archive sur les audios pas encore dans un groupe exact.
+                    // sim_threshold est un nb de bits (0..32) ramene a un ratio par division par 32
+                    // pour rester coherent avec audio_phase standard (threshold = pct/100, ratio).
+                    let audio_threshold_ratio = audio_sim_threshold as f64 / 32.0;
+
+                    let candidates: Vec<usize> = extraction.items.iter().enumerate()
+                        .filter(|(i, item)| {
+                            fingerprints[*i].is_some()
+                                && !duplicated_entries[item.archive_idx].contains_key(&item.internal_path)
+                        })
+                        .map(|(i, _)| i)
+                        .collect();
+
+                    for w in 0..candidates.len() {
+                        if cancelled.load(Ordering::Relaxed) { break; }
+                        for v in (w + 1)..candidates.len() {
+                            let i = candidates[w];
+                            let j = candidates[v];
+                            let item_i = &extraction.items[i];
+                            let item_j = &extraction.items[j];
+                            if item_i.archive_idx == item_j.archive_idx { continue; }
+                            let (fp_i, dur_i) = fingerprints[i].as_ref().unwrap();
+                            let (fp_j, dur_j) = fingerprints[j].as_ref().unwrap();
+                            // Tolerance de duree : si les deux durees different de plus que la
+                            // tolerance, on skip (meme regle qu'audio_phase standard).
+                            let max_dur = dur_i.max(*dur_j);
+                            if max_dur > 0.0 && (dur_i - dur_j).abs() / max_dur > audio_duration_tolerance {
+                                continue;
+                            }
+                            let dist = fingerprint_distance(fp_i, fp_j);
+                            if dist > audio_threshold_ratio { continue; }
+                            uf.union(item_i.archive_idx, item_j.archive_idx);
+                            let size_i = all_entries.iter().find(|e|
+                                e.arch_idx == item_i.archive_idx && e.internal_path == item_i.internal_path
+                            ).map(|e| e.size).unwrap_or(0);
+                            let size_j = all_entries.iter().find(|e|
+                                e.arch_idx == item_j.archive_idx && e.internal_path == item_j.internal_path
+                            ).map(|e| e.size).unwrap_or(0);
+                            duplicated_entries[item_i.archive_idx].entry(item_i.internal_path.clone()).or_insert(size_i);
+                            duplicated_entries[item_j.archive_idx].entry(item_j.internal_path.clone()).or_insert(size_j);
+                            let key = (item_i.archive_idx.min(item_j.archive_idx), item_i.archive_idx.max(item_j.archive_idx));
+                            *shared_count_per_pair.entry(key).or_insert(0) += 1;
+                        }
+                    }
+                }
+                // extraction (et son TempDir) est drop ici -> cleanup automatique
+            }
+        }
+    }
+
     // Construire les groupes via Union-Find
     let mut group_map: HashMap<usize, Vec<usize>> = HashMap::new();
     for i in 0..n {
@@ -296,12 +423,18 @@ pub fn run(
             Some((c, f)) => (Some(c.clone()), Some(f.clone())),
             None => (None, None),
         };
+        let (audio_fingerprint, audio_duration_secs) = match &entry.audio_fp {
+            Some((fp, dur)) => (Some(fp.clone()), Some(*dur)),
+            None => (None, None),
+        };
         entries_cache.entry(arch_path).or_default().push(ArchiveEntryHash {
             internal_path: entry.internal_path.clone(),
             size: entry.size,
             xxh3_hex: format!("{:x}", entry.hash),
             phash_coarse,
             phash_fine,
+            audio_fingerprint,
+            audio_duration_secs,
         });
     }
 
@@ -356,7 +489,7 @@ mod tests {
             make_dup_file(zip1.path().to_str().unwrap()),
             make_dup_file(zip2.path().to_str().unwrap()),
         ];
-        let groups = run(&files, &no_cancel(), 0, 100, false, 10, None, false, &no_progress).groups;
+        let groups = run(&files, &no_cancel(), 0, 100, false, 10, false, 20, 0.20, None, false, &no_progress).groups;
         assert_eq!(groups.len(), 1);
         assert_eq!(groups[0].archives.len(), 2);
         assert!(groups[0].archives.iter().all(|a| a.can_delete));
@@ -370,7 +503,7 @@ mod tests {
             make_dup_file(zip1.path().to_str().unwrap()),
             make_dup_file(zip2.path().to_str().unwrap()),
         ];
-        let groups = run(&files, &no_cancel(), 0, 100, false, 10, None, false, &no_progress).groups;
+        let groups = run(&files, &no_cancel(), 0, 100, false, 10, false, 20, 0.20, None, false, &no_progress).groups;
         assert_eq!(groups.len(), 1);
         assert!(groups[0].archives.iter().all(|a| !a.can_delete));
     }
@@ -383,7 +516,7 @@ mod tests {
             make_dup_file(zip1.path().to_str().unwrap()),
             make_dup_file(zip2.path().to_str().unwrap()),
         ];
-        let groups = run(&files, &no_cancel(), 0, 100, false, 10, None, false, &no_progress).groups;
+        let groups = run(&files, &no_cancel(), 0, 100, false, 10, false, 20, 0.20, None, false, &no_progress).groups;
         assert_eq!(groups.len(), 0);
     }
 
@@ -391,7 +524,7 @@ mod tests {
     fn archive_unique_pas_de_groupe() {
         let zip1 = make_zip_file(&[("a.txt", b"content")]);
         let files = vec![make_dup_file(zip1.path().to_str().unwrap())];
-        let groups = run(&files, &no_cancel(), 0, 100, false, 10, None, false, &no_progress).groups;
+        let groups = run(&files, &no_cancel(), 0, 100, false, 10, false, 20, 0.20, None, false, &no_progress).groups;
         assert_eq!(groups.len(), 0);
     }
 
@@ -407,7 +540,7 @@ mod tests {
             make_dup_file(zip1.path().to_str().unwrap()),
             make_dup_file(zip2.path().to_str().unwrap()),
         ];
-        let groups = run(&files, &no_cancel(), 0, 100, false, 10, None, false, &no_progress).groups;
+        let groups = run(&files, &no_cancel(), 0, 100, false, 10, false, 20, 0.20, None, false, &no_progress).groups;
         assert_eq!(groups.len(), 1);
         // Seules les archives sont dans le groupe, pas le fichier texte
         for g in &groups {
@@ -422,7 +555,7 @@ mod tests {
         // Une archive avec 2 entrees identiques ne forme pas de groupe (comparaison inter-archive seulement)
         let zip1 = make_zip_file(&[("a.txt", b"same"), ("b.txt", b"same")]);
         let files = vec![make_dup_file(zip1.path().to_str().unwrap())];
-        let groups = run(&files, &no_cancel(), 0, 100, false, 10, None, false, &no_progress).groups;
+        let groups = run(&files, &no_cancel(), 0, 100, false, 10, false, 20, 0.20, None, false, &no_progress).groups;
         assert_eq!(groups.len(), 0);
     }
 
@@ -434,7 +567,7 @@ mod tests {
         let mut f2 = make_dup_file(zip2.path().to_str().unwrap());
         f1.modified = 1700000000;
         f2.modified = 1700001000;
-        let groups = run(&[f1, f2], &no_cancel(), 0, 100, false, 10, None, false, &no_progress).groups;
+        let groups = run(&[f1, f2], &no_cancel(), 0, 100, false, 10, false, 20, 0.20, None, false, &no_progress).groups;
         assert_eq!(groups.len(), 1);
         let archives = &groups[0].archives;
         assert_eq!(archives.len(), 2);
@@ -494,16 +627,16 @@ mod tests {
             make_dup_file(zip2.path().to_str().unwrap()),
         ];
         // Sans find_similar : pas de match (xxh3 differents)
-        let g_exact = run(&files, &no_cancel(), 0, 100, false, 10, None, false, &no_progress).groups;
+        let g_exact = run(&files, &no_cancel(), 0, 100, false, 10, false, 20, 0.20, None, false, &no_progress).groups;
         assert_eq!(g_exact.len(), 0, "sans find_similar, les images avec bruit ne matchent pas");
         // Avec find_similar : match par pHash via extraction temp + compute_two_pass_hashes
         let data_tmp = TempDir::new().unwrap();
-        let g_sim = run(&files, &no_cancel(), 0, 100, true, 10, data_tmp.path().to_str(), false, &no_progress).groups;
+        let g_sim = run(&files, &no_cancel(), 0, 100, true, 10, false, 20, 0.20, data_tmp.path().to_str(), false, &no_progress).groups;
         assert_eq!(g_sim.len(), 1, "avec find_similar + data_dir, les images proches forment un groupe");
         assert_eq!(g_sim[0].archives.len(), 2);
-        // Avec skip_phash=true : pas de groupe meme avec find_similar
-        let g_skip = run(&files, &no_cancel(), 0, 100, true, 10, data_tmp.path().to_str(), true, &no_progress).groups;
-        assert_eq!(g_skip.len(), 0, "skip_phash=true desactive la phase pHash archives");
+        // Avec skip_extraction=true : pas de groupe meme avec find_similar
+        let g_skip = run(&files, &no_cancel(), 0, 100, true, 10, false, 20, 0.20, data_tmp.path().to_str(), true, &no_progress).groups;
+        assert_eq!(g_skip.len(), 0, "skip_extraction=true desactive la phase pHash archives");
     }
 
     #[test]
@@ -540,7 +673,7 @@ mod tests {
             make_dup_file(zip2.path().to_str().unwrap()),
         ];
         let data_tmp = TempDir::new().unwrap();
-        let groups = run(&files, &no_cancel(), 0, 100, true, 10, data_tmp.path().to_str(), false, &no_progress).groups;
+        let groups = run(&files, &no_cancel(), 0, 100, true, 10, false, 20, 0.20, data_tmp.path().to_str(), false, &no_progress).groups;
         assert_eq!(groups.len(), 1);
         let g = &groups[0];
         // Chaque archive a 1 entree au total, et son seul fichier est match (similaire) avec l'autre
@@ -565,7 +698,7 @@ mod tests {
             make_dup_file(zip2.path().to_str().unwrap()),
         ];
         let data_tmp = TempDir::new().unwrap();
-        let groups = run(&files, &no_cancel(), 0, 100, true, 10, data_tmp.path().to_str(), false, &no_progress).groups;
+        let groups = run(&files, &no_cancel(), 0, 100, true, 10, false, 20, 0.20, data_tmp.path().to_str(), false, &no_progress).groups;
         assert_eq!(groups.len(), 0, "le pHash ne s'applique pas aux fichiers non-image");
     }
 }

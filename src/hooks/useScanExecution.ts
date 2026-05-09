@@ -23,7 +23,7 @@ export interface ScanInvokeArgs {
   minModifiedTimestamp?: number;
   maxModifiedTimestamp?: number;
   scanArchives?: boolean;
-  skipArchivePhash?: boolean;
+  skipArchiveExtraction?: boolean;
 }
 
 export function useScanExecution(

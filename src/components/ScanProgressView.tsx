@@ -3,7 +3,7 @@ import { interp, pluralInterp, type Translations } from "../i18n";
 import type { ScanProgress, ScanPhase } from "../types";
 import { ProgressETA } from "./ProgressETA";
 
-const PHASE_ORDER: ScanPhase[] = ["reading", "exact", "images", "videos", "audio", "archives", "archives_phash"];
+const PHASE_ORDER: ScanPhase[] = ["reading", "exact", "images", "videos", "audio", "archives", "archives_phash", "archives_audio"];
 
 interface Props {
   progress: ScanProgress | null;
@@ -25,6 +25,7 @@ export function ScanProgressView({ progress, detectionMode, scanArchives, histor
     audio: t.phaseAudio,
     archives: t.phaseArchives,
     archives_phash: t.phaseArchivesPhash,
+    archives_audio: t.phaseArchivesAudio,
   };
 
   const baseRelevant: ScanPhase[] =
@@ -36,6 +37,10 @@ export function ScanProgressView({ progress, detectionMode, scanArchives, histor
   // Phase 2 d'archive (extraction + pHash) ne tourne qu'en mode Image avec scan_archives
   if (scanArchives && detectionMode === "images") {
     relevantPhases = [...relevantPhases, "archives_phash"];
+  }
+  // Phase 3 d'archive (extraction + fpcalc) ne tourne qu'en mode Audio avec scan_archives
+  if (scanArchives && detectionMode === "audio") {
+    relevantPhases = [...relevantPhases, "archives_audio"];
   }
 
   const currentPhaseIdx = phase ? PHASE_ORDER.indexOf(phase) : -1;
@@ -53,6 +58,7 @@ export function ScanProgressView({ progress, detectionMode, scanArchives, histor
     : phase === "audio" ? t.typeAudio
     : phase === "archives" ? t.typeArchives
     : phase === "archives_phash" ? t.typeArchivesPhash
+    : phase === "archives_audio" ? t.typeArchivesAudio
     : "";
 
   const heartbeat = progress?.current ?? 0;

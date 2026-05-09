@@ -4,6 +4,8 @@ interface Props {
   neededBytes: number;
   availableBytes: number;
   deficitBytes: number;
+  /** "image" : extraction prevue pour pHash (mode Images). "audio" : extraction pour fpcalc (mode Audio). */
+  mode: "image" | "audio";
   onCancel: () => void;
   onContinueSkipping: () => void;
 }
@@ -25,14 +27,18 @@ function renderBold(template: string, vars: Record<string, string>): React.React
   return parts.map((p, i) => i % 2 === 1 ? <strong key={i}>{p}</strong> : <span key={i}>{p}</span>);
 }
 
-export function DiskSpaceWarningModal({ neededBytes, availableBytes, deficitBytes, onCancel, onContinueSkipping }: Props) {
+export function DiskSpaceWarningModal({ neededBytes, availableBytes, deficitBytes, mode, onCancel, onContinueSkipping }: Props) {
   const { t } = useLang();
   const vars = {
     needed: formatBytesAdaptive(neededBytes),
     available: formatBytesAdaptive(availableBytes),
     deficit: formatBytesAdaptive(deficitBytes),
   };
-  const lines = t.diskWarningBody.split("\n\n");
+  // Texte d'avertissement et libelle du bouton "continuer sans" varient selon le mode
+  // d'extraction : images (pHash) vs sons (fpcalc).
+  const bodyTemplate = mode === "audio" ? t.diskWarningBodyAudio : t.diskWarningBody;
+  const continueLabel = mode === "audio" ? t.diskWarningContinueWithoutAudio : t.diskWarningContinueWithoutImages;
+  const lines = bodyTemplate.split("\n\n");
   return (
     <div className="modal-overlay" onClick={onCancel} data-testid="disk-warning-overlay">
       <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -45,7 +51,7 @@ export function DiskSpaceWarningModal({ neededBytes, availableBytes, deficitByte
             {t.diskWarningCancel}
           </button>
           <button className="btn-primary" onClick={onContinueSkipping} data-testid="disk-warning-continue">
-            {t.diskWarningContinueWithoutImages}
+            {continueLabel}
           </button>
         </div>
       </div>

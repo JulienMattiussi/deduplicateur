@@ -15,6 +15,14 @@ pub struct ArchiveEntryHash {
     /// pHash fine (16x16 = 256 bits) si l'entree est une image, sinon None.
     #[serde(default)]
     pub phash_fine: Option<Vec<u8>>,
+    /// Empreinte acoustique fpcalc (vecteur i32) si l'entree est un fichier audio,
+    /// sinon None. Calculee en mode Audio archives.
+    #[serde(default)]
+    pub audio_fingerprint: Option<Vec<i32>>,
+    /// Duree de l'audio en secondes (extraite par fpcalc en meme temps que le fingerprint),
+    /// utilisee dans le matching pour eliminer les paires aux durees trop differentes.
+    #[serde(default)]
+    pub audio_duration_secs: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

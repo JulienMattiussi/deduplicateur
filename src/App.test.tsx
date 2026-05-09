@@ -1148,6 +1148,9 @@ describe("S - option Analyser les archives", () => {
         pathB: "/data/b.zip",
         findSimilar: false,
         simThreshold: 10,
+        findSimilarAudio: false,
+        audioSimThreshold: 20,
+        audioDurationTolerance: 0.20,
       });
     });
   });

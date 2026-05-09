@@ -169,9 +169,18 @@ const IMAGE_EXTS = new Set([
   "ico", "jfif", "heic", "heif", "avif",
 ]);
 
+const AUDIO_EXTS = new Set([
+  "mp3", "flac", "ogg", "m4a", "aac", "wav", "wma", "opus", "aiff", "aif", "ape",
+]);
+
 function isImagePath(p: string): boolean {
   const ext = p.split(".").pop()?.toLowerCase() ?? "";
   return IMAGE_EXTS.has(ext);
+}
+
+export function isAudioPath(p: string): boolean {
+  const ext = p.split(".").pop()?.toLowerCase() ?? "";
+  return AUDIO_EXTS.has(ext);
 }
 
 /**
@@ -242,4 +251,75 @@ export function ArchiveEntryThumbnail({
     );
   }
   return <span ref={placeholderRef} className="file-thumb-spinner" />;
+}
+
+/**
+ * Lecteur audio inline pour une entree d'archive. Au clic sur play, on invoque
+ * `get_archive_entry_url` qui extrait l'entree dans `archive_preview/` et retourne
+ * l'URL servie par le media server HTTP local. Le `<audio>` HTML5 lit alors le fichier
+ * sans charger les bytes en base64.
+ *
+ * Spinner overlay pendant l'extraction. L'URL est mise en cache une fois extraite,
+ * donc rejouer ne re-extrait pas. Le fichier temp est purge au prochain demarrage de l'app.
+ */
+export function ArchiveEntryAudioPlayer({
+  archivePath,
+  internalPath,
+}: {
+  archivePath: string;
+  internalPath: string;
+}) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [playing, setPlaying] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  function togglePlay(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (loading) return;
+    if (playing) {
+      audioRef.current?.pause();
+      return;
+    }
+    if (url) {
+      audioRef.current?.play().catch(() => {});
+      return;
+    }
+    // Premier clic : extrait + cree l'audio element via setUrl, qui declenche autoPlay
+    setLoading(true);
+    invoke<string>("get_archive_entry_url", { archivePath, internalPath })
+      .then((u) => setUrl(u))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }
+
+  return (
+    <span className="archive-audio-wrap">
+      <button
+        type="button"
+        className="archive-audio-btn"
+        data-testid="archive-audio-btn"
+        onClick={togglePlay}
+        title={playing ? "Pause" : "Play"}
+      >
+        {loading ? (
+          <span className="archive-audio-spinner" />
+        ) : playing ? (
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" /><rect x="14" y="5" width="4" height="14" /></svg>
+        ) : (
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="6,4 20,12 6,20" /></svg>
+        )}
+      </button>
+      {url && (
+        <audio
+          ref={audioRef}
+          src={url}
+          autoPlay
+          onPlay={() => setPlaying(true)}
+          onPause={() => setPlaying(false)}
+          onEnded={() => setPlaying(false)}
+        />
+      )}
+    </span>
+  );
 }

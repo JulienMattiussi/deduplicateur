@@ -209,10 +209,16 @@ pub async fn load_session(app: tauri::AppHandle, id: String) -> Result<ScanSumma
             .map(|ag| ag.archives.iter().map(|a| a.duplicated_entries).collect())
             .collect();
         let sim_threshold = summary.sim_threshold.unwrap_or(10);
+        let audio_sim_threshold = summary.audio_sim_threshold.unwrap_or(20);
+        // Tolerance de duree par defaut, alignee sur ScanParams (cf. scanner/types.rs).
+        // Pas stockee dans ScanSummary ; on prend le default raisonnable.
+        let audio_duration_tolerance = 0.20;
         crate::archive::recompute_group_duplicated_entries(
             &mut archive_groups,
             &archive_entries_cache,
             sim_threshold,
+            audio_sim_threshold,
+            audio_duration_tolerance,
         );
         let counts_changed = archive_groups.iter().zip(counts_before.iter())
             .any(|(ag, prev)| ag.archives.iter().zip(prev.iter())

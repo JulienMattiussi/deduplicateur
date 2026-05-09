@@ -191,15 +191,30 @@ fn read_tar_entry_inner<R: Read>(mut archive: tar::Archive<R>, internal_path: &s
 }
 
 /// Compte les entrees image d'une archive en lisant uniquement ses headers.
-/// Utilise pour estimer le travail de la phase pHash archives upfront, afin que
-/// `total_work` du scanner inclue cette phase et que la barre de progression
-/// avance de maniere monotone et fiable.
-///
-/// - ZIP/7z : count exact via central directory / table d'entrees (rapide)
-/// - tar.* : approximation = `count_entries_fast / 3` (fraction typique d'images)
-///   pour eviter de decompresser le flux entier
+/// Wrapper sur `count_archive_entries_filtered` avec le predicat `is_image_path`.
 pub fn count_archive_image_entries(path: &Path) -> usize {
-    use crate::scanner::hash::is_image_path;
+    count_archive_entries_filtered(path, |name| crate::scanner::hash::is_image_path(name))
+}
+
+/// Compte les entrees audio d'une archive en lisant uniquement ses headers.
+/// Wrapper sur `count_archive_entries_filtered` avec le predicat `is_audio` (audio::hash).
+pub fn count_archive_audio_entries(path: &Path) -> usize {
+    count_archive_entries_filtered(path, |name| crate::audio::is_audio(name))
+}
+
+/// Compte les entrees d'une archive qui passent le predicat `filter`.
+/// - ZIP/7z : count exact via central directory / iteration des headers (rapide)
+/// - tar.* : iteration sequentielle, decompresse le stream pour lire les headers
+///   (les bytes des entrees sont auto-skip via Drop). Cout : quelques secondes pour
+///   un gros tar.bz2.
+///
+/// Utilise pour estimer le travail des phases pHash et audio archives upfront,
+/// afin que `total_work` du scanner inclue ces phases et que la barre de progression
+/// avance de maniere monotone et fiable.
+pub fn count_archive_entries_filtered(
+    path: &Path,
+    filter: impl Fn(&str) -> bool + Copy,
+) -> usize {
     let format = match detect_archive_format(path) {
         Some(f) => f,
         None => return 0,
@@ -211,7 +226,7 @@ pub fn count_archive_image_entries(path: &Path) -> usize {
             let mut n = 0;
             for i in 0..archive.len() {
                 if let Ok(entry) = archive.by_index(i) {
-                    if !entry.is_dir() && !entry.encrypted() && is_image_path(entry.name()) {
+                    if !entry.is_dir() && !entry.encrypted() && filter(entry.name()) {
                         n += 1;
                     }
                 }
@@ -225,45 +240,45 @@ pub fn count_archive_image_entries(path: &Path) -> usize {
             };
             let mut n = 0;
             let _ = reader.for_each_entries(|entry, _| {
-                if !entry.is_directory() && entry.has_stream() && is_image_path(entry.name()) {
+                if !entry.is_directory() && entry.has_stream() && filter(entry.name()) {
                     n += 1;
                 }
                 Ok(true)
             });
             n
         }
-        // tar.* : iteration sequentielle (decompression du stream + lecture des headers,
-        // les bytes des entrees sont auto-skip via Drop). Cout similaire a count_entries_fast,
-        // exact car on lit chaque chemin pour filtrer is_image_path.
-        ArchiveFormat::TarGz => count_tar_image_entries(path, |f| Box::new(flate2::read::GzDecoder::new(f))),
-        ArchiveFormat::TarBz2 => count_tar_image_entries(path, |f| Box::new(bzip2::read::BzDecoder::new(f))),
-        ArchiveFormat::TarXz => count_tar_image_entries(path, |f| Box::new(xz2::read::XzDecoder::new(f))),
+        ArchiveFormat::TarGz => count_tar_filtered(path, filter, |f| Box::new(flate2::read::GzDecoder::new(f))),
+        ArchiveFormat::TarBz2 => count_tar_filtered(path, filter, |f| Box::new(bzip2::read::BzDecoder::new(f))),
+        ArchiveFormat::TarXz => count_tar_filtered(path, filter, |f| Box::new(xz2::read::XzDecoder::new(f))),
         ArchiveFormat::TarZst => {
             let file = match std::fs::File::open(path) { Ok(f) => f, Err(_) => return 0 };
             let zst = match zstd::Decoder::new(file) { Ok(d) => d, Err(_) => return 0 };
-            count_tar_image_entries_inner(tar::Archive::new(zst))
+            count_tar_filtered_inner(tar::Archive::new(zst), filter)
         }
     }
 }
 
-fn count_tar_image_entries(
+fn count_tar_filtered(
     path: &Path,
+    filter: impl Fn(&str) -> bool + Copy,
     decoder: impl FnOnce(std::fs::File) -> Box<dyn Read>,
 ) -> usize {
     let file = match std::fs::File::open(path) { Ok(f) => f, Err(_) => return 0 };
     let stream = decoder(file);
-    count_tar_image_entries_inner(tar::Archive::new(stream))
+    count_tar_filtered_inner(tar::Archive::new(stream), filter)
 }
 
-fn count_tar_image_entries_inner<R: Read>(mut archive: tar::Archive<R>) -> usize {
-    use crate::scanner::hash::is_image_path;
+fn count_tar_filtered_inner<R: Read>(
+    mut archive: tar::Archive<R>,
+    filter: impl Fn(&str) -> bool,
+) -> usize {
     let mut n = 0;
     if let Ok(entries) = archive.entries() {
         for entry in entries.flatten() {
             let entry_type = entry.header().entry_type();
             if !matches!(entry_type, tar::EntryType::Regular | tar::EntryType::Continuous) { continue; }
             if let Ok(p) = entry.path() {
-                if is_image_path(&p.to_string_lossy()) {
+                if filter(&p.to_string_lossy()) {
                     n += 1;
                 }
             }
@@ -425,6 +440,8 @@ pub fn ensure_cache_for_groups(
                     xxh3_hex: format!("{:x}", e.hash),
                     phash_coarse: e.phash.as_ref().map(|p| p.0.clone()),
                     phash_fine: e.phash.map(|p| p.1),
+                    audio_fingerprint: None,
+                    audio_duration_secs: None,
                 })
                 .collect();
             entries_cache.insert(arch.path.clone(), entries_hash);
@@ -446,8 +463,12 @@ pub fn recompute_group_duplicated_entries(
     groups: &mut [crate::scanner::ArchiveGroupResult],
     entries_cache: &std::collections::HashMap<String, Vec<ArchiveEntryHash>>,
     sim_threshold: u32,
+    audio_sim_threshold: u32,
+    audio_duration_tolerance: f64,
 ) {
     use crate::scanner::hash::hamming_distance;
+    use crate::audio::fingerprint_distance;
+    let audio_threshold_ratio = audio_sim_threshold as f64 / 32.0;
     for group in groups.iter_mut() {
         for arch_idx in 0..group.archives.len() {
             let my_path = group.archives[arch_idx].path.clone();
@@ -469,13 +490,31 @@ pub fn recompute_group_duplicated_entries(
                         matched.insert(my_idx);
                         continue;
                     }
-                    // Match pHash similar
+                    // Match pHash similar (mode Image)
                     if let (Some(mc), Some(mf)) = (&my_e.phash_coarse, &my_e.phash_fine) {
+                        let mut found = false;
                         for o in other_entries {
                             if let (Some(oc), Some(of)) = (&o.phash_coarse, &o.phash_fine) {
                                 if hamming_distance(mc, oc) <= sim_threshold
                                     && hamming_distance(mf, of) <= sim_threshold
                                 {
+                                    matched.insert(my_idx);
+                                    found = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if found { continue; }
+                    }
+                    // Match audio similar (mode Audio) : fingerprint chromaprint + tolerance de duree.
+                    if let (Some(my_fp), Some(my_dur)) = (&my_e.audio_fingerprint, my_e.audio_duration_secs) {
+                        for o in other_entries {
+                            if let (Some(o_fp), Some(o_dur)) = (&o.audio_fingerprint, o.audio_duration_secs) {
+                                let max_dur = my_dur.max(o_dur);
+                                if max_dur > 0.0 && (my_dur - o_dur).abs() / max_dur > audio_duration_tolerance {
+                                    continue;
+                                }
+                                if fingerprint_distance(my_fp, o_fp) <= audio_threshold_ratio {
                                     matched.insert(my_idx);
                                     break;
                                 }
@@ -720,6 +759,85 @@ mod tests {
     }
 
     #[test]
+    fn count_archive_audio_entries_zip_compte_que_les_audios() {
+        let zip = make_zip(&[
+            ("readme.txt", b"plain text"),
+            ("song.mp3", b"fake mp3 content"),
+            ("track.flac", b"fake flac content"),
+            ("photo.jpg", b"fake jpg content"),
+        ]);
+        assert_eq!(count_archive_audio_entries(zip.path()), 2, "doit compter mp3 + flac uniquement");
+        assert_eq!(count_archive_image_entries(zip.path()), 1, "doit compter jpg uniquement");
+    }
+
+    #[test]
+    fn count_archive_entries_filtered_predicat_arbitraire() {
+        let zip = make_zip(&[
+            ("a.txt", b"a"),
+            ("b.txt", b"b"),
+            ("c.md",  b"c"),
+        ]);
+        let txt_count = count_archive_entries_filtered(zip.path(), |name| name.ends_with(".txt"));
+        let md_count = count_archive_entries_filtered(zip.path(), |name| name.ends_with(".md"));
+        assert_eq!(txt_count, 2);
+        assert_eq!(md_count, 1);
+    }
+
+    #[test]
+    fn recompute_detecte_match_audio_via_fingerprint() {
+        use crate::scanner::{ArchiveGroupResult, ArchiveInGroup};
+        use std::collections::HashMap;
+
+        // Cache simulant 2 archives avec un fichier audio chacune au fingerprint identique
+        // (mais xxh3 different : compresse differemment ou metadata differentes).
+        let fp = vec![100i32, 200, 300, 400];
+        let mut cache: HashMap<String, Vec<ArchiveEntryHash>> = HashMap::new();
+        cache.insert("/a.zip".to_string(), vec![
+            ArchiveEntryHash {
+                internal_path: "song.mp3".to_string(),
+                size: 5000,
+                xxh3_hex: "aaa".to_string(),
+                phash_coarse: None,
+                phash_fine: None,
+                audio_fingerprint: Some(fp.clone()),
+                audio_duration_secs: Some(180.0),
+            },
+        ]);
+        cache.insert("/b.zip".to_string(), vec![
+            ArchiveEntryHash {
+                internal_path: "song.mp3".to_string(),
+                size: 5100,
+                xxh3_hex: "bbb".to_string(),
+                phash_coarse: None,
+                phash_fine: None,
+                audio_fingerprint: Some(fp.clone()),  // identique => distance 0
+                audio_duration_secs: Some(180.5),  // tolerance large
+            },
+        ]);
+
+        let mut groups = vec![ArchiveGroupResult {
+            id: "g".to_string(),
+            archives: vec![
+                ArchiveInGroup {
+                    path: "/a.zip".to_string(), size: 0, modified: 0,
+                    total_entries: 1, duplicated_entries: 0, can_delete: false, wasted_bytes: 0,
+                },
+                ArchiveInGroup {
+                    path: "/b.zip".to_string(), size: 0, modified: 0,
+                    total_entries: 1, duplicated_entries: 0, can_delete: false, wasted_bytes: 0,
+                },
+            ],
+            shared_entry_count: 0,
+        }];
+
+        recompute_group_duplicated_entries(&mut groups, &cache, 10, 20, 0.20);
+        assert_eq!(groups[0].archives[0].duplicated_entries, 1, "audio fingerprint identique = match");
+        assert_eq!(groups[0].archives[1].duplicated_entries, 1);
+        assert!(groups[0].archives[0].can_delete);
+        assert!(groups[0].archives[1].can_delete);
+    }
+
+    #[test]
     fn recompute_corrige_compteur_obsolete_avec_similaires() {
         use crate::scanner::{ArchiveGroupResult, ArchiveInGroup};
         use std::collections::HashMap;
@@ -733,6 +851,8 @@ mod tests {
                 xxh3_hex: "deadbeef".to_string(),
                 phash_coarse: None,
                 phash_fine: None,
+                audio_fingerprint: None,
+                audio_duration_secs: None,
             },
             ArchiveEntryHash {
                 internal_path: "img.png".to_string(),
@@ -740,6 +860,8 @@ mod tests {
                 xxh3_hex: "111".to_string(),
                 phash_coarse: Some(vec![0u8; 8]),
                 phash_fine: Some(vec![0u8; 32]),
+                audio_fingerprint: None,
+                audio_duration_secs: None,
             },
         ]);
         cache.insert("/b.zip".to_string(), vec![
@@ -749,6 +871,8 @@ mod tests {
                 xxh3_hex: "deadbeef".to_string(),
                 phash_coarse: None,
                 phash_fine: None,
+                audio_fingerprint: None,
+                audio_duration_secs: None,
             },
             ArchiveEntryHash {
                 internal_path: "img2.png".to_string(),
@@ -756,6 +880,8 @@ mod tests {
                 xxh3_hex: "222".to_string(),
                 phash_coarse: Some(vec![0u8; 8]),
                 phash_fine: Some(vec![0u8; 32]),  // pHash identique a img.png
+                audio_fingerprint: None,
+                audio_duration_secs: None,
             },
         ]);
 
@@ -775,7 +901,7 @@ mod tests {
             shared_entry_count: 1,
         }];
 
-        recompute_group_duplicated_entries(&mut groups, &cache, 10);
+        recompute_group_duplicated_entries(&mut groups, &cache, 10, 20, 0.20);
 
         // Apres recompute : 2 entrees matchees (1 exacte + 1 similaire) sur 2 totales
         assert_eq!(groups[0].archives[0].duplicated_entries, 2);

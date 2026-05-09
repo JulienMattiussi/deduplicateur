@@ -189,31 +189,39 @@ where
     const EMITS_VIDEOS: usize = 2;
     const EMITS_AUDIO: usize = 2;
     const EMITS_ARCH_P1: usize = 1;
-    const EMITS_ARCH_P2: usize = 2;
+    const EMITS_ARCH_P2: usize = 2;       // extraction + pHash (images), matching silencieux
+    const EMITS_ARCH_AUDIO: usize = 2;    // extraction + fpcalc (audio), matching silencieux
 
     // Estimation du travail des phases archives, INCLUSE dans total_work upfront pour que
     // la barre de progression avance de maniere monotone tout au long du scan.
     // - archive_phase1 : xxh3 sur toutes les entrees (count_entries_fast)
-    // - archive_phase2 : extraction + pHash sur les images
-    let (archive_phase1_count, archive_phase2_image_count) = if params.scan_archives {
+    // - archive_phase2 : extraction + pHash sur les images (mode Image)
+    // - archive_phase_audio : extraction + fpcalc sur les audios (mode Audio)
+    // Phase 2 et phase audio sont mutuellement exclusives (mode Image vs Audio).
+    let (archive_phase1_count, archive_phase2_image_count, archive_audio_count) = if params.scan_archives {
         let archive_files: Vec<&DuplicateFile> = all_files_for_archives.iter()
             .filter(|f| archive::detect_archive_format(std::path::Path::new(&f.path)).is_some())
             .collect();
         if archive_files.len() < 2 {
-            (0usize, 0usize)
+            (0usize, 0usize, 0usize)
         } else {
             let p1: usize = archive_files.iter()
                 .map(|f| archive::count_entries_fast(std::path::Path::new(&f.path)))
                 .sum::<usize>().max(1);
-            let p2 = if params.find_similar && !params.skip_archive_phash {
+            let p2 = if params.find_similar && !params.skip_archive_extraction {
                 archive_files.iter()
                     .map(|f| archive::count_archive_image_entries(std::path::Path::new(&f.path)))
                     .sum()
             } else { 0 };
-            (p1, p2)
+            let p3 = if params.find_similar_audio && !params.skip_archive_extraction {
+                archive_files.iter()
+                    .map(|f| archive::count_archive_audio_entries(std::path::Path::new(&f.path)))
+                    .sum()
+            } else { 0 };
+            (p1, p2, p3)
         }
     } else {
-        (0, 0)
+        (0, 0, 0)
     };
 
     let total_work = total_to_hash * EMITS_EXACT
@@ -221,7 +229,8 @@ where
         + video_estimate * EMITS_VIDEOS
         + audio_estimate * EMITS_AUDIO
         + archive_phase1_count * EMITS_ARCH_P1
-        + archive_phase2_image_count * EMITS_ARCH_P2;
+        + archive_phase2_image_count * EMITS_ARCH_P2
+        + archive_audio_count * EMITS_ARCH_AUDIO;
 
     // Budgets cumulatifs par phase (frontiere atteinte a la fin de chaque phase).
     // Utilises pour le sync de fin de phase qui force le compteur global a sa valeur exacte,
@@ -371,8 +380,11 @@ where
             ctx.total_work,
             params.find_similar,
             params.sim_threshold,
+            params.find_similar_audio,
+            params.audio_sim_threshold,
+            params.audio_duration_tolerance,
             params.data_dir.as_deref(),
-            params.skip_archive_phash,
+            params.skip_archive_extraction,
             &wrapped_on_progress,
         );
         (res.groups, res.entries_cache)

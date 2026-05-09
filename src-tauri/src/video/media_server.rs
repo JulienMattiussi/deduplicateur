@@ -3,6 +3,7 @@ use axum::{body::Body, http::{header, Request, Response, StatusCode}, Router};
 
 fn video_mime(path: &std::path::Path) -> &'static str {
     match path.extension().and_then(|e| e.to_str()).map(|s| s.to_ascii_lowercase()).as_deref() {
+        // Video
         Some("mp4") | Some("m4v") => "video/mp4",
         Some("mkv") => "video/x-matroska",
         Some("avi") => "video/x-msvideo",
@@ -10,6 +11,14 @@ fn video_mime(path: &std::path::Path) -> &'static str {
         Some("mov") => "video/quicktime",
         Some("flv") => "video/x-flv",
         Some("wmv") => "video/x-ms-wmv",
+        // Audio (utilise pour servir les entrees audio extraites des archives via
+        // open_archive_entry_for_playback ; HTML5 audio sait lire mp3/wav/ogg/m4a)
+        Some("mp3") => "audio/mpeg",
+        Some("wav") => "audio/wav",
+        Some("ogg") | Some("opus") => "audio/ogg",
+        Some("flac") => "audio/flac",
+        Some("m4a") | Some("aac") => "audio/mp4",
+        Some("aiff") | Some("aif") => "audio/aiff",
         _ => "video/mp4",
     }
 }
