@@ -128,7 +128,18 @@ pub async fn scan_folder(
             skip_archive_phash: skip_archive_phash.unwrap_or(false),
         };
         do_scan(params, cancelled, move |current, total, total_files, file: &str, phase_current, phase_total, phase: &str| {
-            *progress_for_scan.lock().unwrap() = Some((current, total, total_files, file.to_string(), phase_current, phase_total, phase.to_string()));
+            // Snapshot mutex : on n'ecrase QUE si current >= existing. Sinon un emit
+            // parallele arrive en retard avec un current plus petit (ex. thread A
+            // fetch_add=4 mais son emit arrive apres B fetch_add=5) ferait reculer la
+            // barre au prochain tick d'emission. Garantit la monotonie visible.
+            let mut state = progress_for_scan.lock().unwrap();
+            let should_update = match state.as_ref() {
+                Some((existing, ..)) => current >= *existing,
+                None => true,
+            };
+            if should_update {
+                *state = Some((current, total, total_files, file.to_string(), phase_current, phase_total, phase.to_string()));
+            }
         })
     })
     .await

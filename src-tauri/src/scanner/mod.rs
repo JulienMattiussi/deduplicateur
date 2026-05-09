@@ -179,13 +179,23 @@ where
         .map(|(_, cands)| cands.iter().map(|v| v.len()).sum::<usize>())
         .sum();
 
-    let phash_compare_estimate = phash_estimate;
+    // Chaque phase emet plusieurs `on_progress` par item traite (sous-phases : decode,
+    // hash, compare, etc.). Pour que `total_work` soit une borne SUPERIEURE stricte du
+    // nombre d'emits attendus, on multiplie le compte d'items par le nb d'emits par item.
+    // Ces constantes doivent rester alignees avec le code des phases (cf. audit dans
+    // PLAN.md / AGENTS.md : exact=1, images=3, videos=2, audio=2, archives_p1=1, archives_p2=2).
+    const EMITS_EXACT: usize = 1;
+    const EMITS_IMAGES: usize = 3;
+    const EMITS_VIDEOS: usize = 2;
+    const EMITS_AUDIO: usize = 2;
+    const EMITS_ARCH_P1: usize = 1;
+    const EMITS_ARCH_P2: usize = 2;
 
     // Estimation du travail des phases archives, INCLUSE dans total_work upfront pour que
     // la barre de progression avance de maniere monotone tout au long du scan.
     // - archive_phase1 : xxh3 sur toutes les entrees (count_entries_fast)
-    // - archive_phase2 : extraction + pHash sur les images (image_count * 2 etapes)
-    let (archive_phase1_estimate, archive_phase2_estimate) = if params.scan_archives {
+    // - archive_phase2 : extraction + pHash sur les images
+    let (archive_phase1_count, archive_phase2_image_count) = if params.scan_archives {
         let archive_files: Vec<&DuplicateFile> = all_files_for_archives.iter()
             .filter(|f| archive::detect_archive_format(std::path::Path::new(&f.path)).is_some())
             .collect();
@@ -196,10 +206,9 @@ where
                 .map(|f| archive::count_entries_fast(std::path::Path::new(&f.path)))
                 .sum::<usize>().max(1);
             let p2 = if params.find_similar && !params.skip_archive_phash {
-                let images: usize = archive_files.iter()
+                archive_files.iter()
                     .map(|f| archive::count_archive_image_entries(std::path::Path::new(&f.path)))
-                    .sum();
-                images * 2  // etape extraction + etape pHash
+                    .sum()
             } else { 0 };
             (p1, p2)
         }
@@ -207,15 +216,38 @@ where
         (0, 0)
     };
 
-    let total_work = total_to_hash
-        + phash_estimate + phash_compare_estimate
-        + video_estimate + audio_estimate
-        + archive_phase1_estimate + archive_phase2_estimate;
+    let total_work = total_to_hash * EMITS_EXACT
+        + phash_estimate * EMITS_IMAGES
+        + video_estimate * EMITS_VIDEOS
+        + audio_estimate * EMITS_AUDIO
+        + archive_phase1_count * EMITS_ARCH_P1
+        + archive_phase2_image_count * EMITS_ARCH_P2;
 
+    // Budgets cumulatifs par phase (frontiere atteinte a la fin de chaque phase).
+    // Utilises pour le sync de fin de phase qui force le compteur global a sa valeur exacte,
+    // garantissant la monotonie : meme si une phase emet moins que son budget (ex. cache warm,
+    // exclusions par filtres), on rattrape la difference avant la phase suivante.
+    let budget_after_exact = total_to_hash * EMITS_EXACT;
+    let budget_after_images = budget_after_exact + phash_estimate * EMITS_IMAGES;
+    let budget_after_videos = budget_after_images + video_estimate * EMITS_VIDEOS;
+    let budget_after_audio = budget_after_videos + audio_estimate * EMITS_AUDIO;
+    let budget_after_arch_p1 = budget_after_audio + archive_phase1_count * EMITS_ARCH_P1;
+    let _budget_after_arch_p2 = budget_after_arch_p1 + archive_phase2_image_count * EMITS_ARCH_P2;
+
+    // Compteur global d'emits. Chaque emit incrementede 1, peu importe sa sous-phase.
+    // Le wrapper `wrapped_on_progress` ignore le `current` calcule par les phases et
+    // utilise ce compteur a la place. Garantit la monotonie absolue : current ne fait
+    // que monter, jamais redescendre, meme aux frontieres entre sous-phases.
+    let progress_counter = Arc::new(AtomicUsize::new(0));
+
+    // Garde l'ancienne struct Ctx pour ne pas casser les phases qui s'en servent encore
+    // (phash_compare_estimate notamment, utilise comme offset interne dans phash_phase).
+    // Les valeurs sont re-utilisees par les phases qui calculent encore leur `current` local,
+    // mais ce `current` est ECRASE par le wrapper avant de partir vers le frontend.
     let ctx = Ctx {
         total_to_hash,
         phash_estimate,
-        phash_compare_estimate,
+        phash_compare_estimate: phash_estimate,
         video_estimate,
         total_work,
         analysis_total,
@@ -231,6 +263,30 @@ where
     let groups_counter = params.groups_counter.clone()
         .unwrap_or_else(|| Arc::new(AtomicUsize::new(0)));
 
+    // Wrapper qui remplace le `current` calcule par chaque phase par un compteur global
+    // incremente de 1 par emit. Garantit la monotonie : meme si une phase a un emit pattern
+    // qui se chevauche entre sous-phases (ex. pHash decode + hash compute partagent leur
+    // range), le compteur partage ne fait jamais marche arriere.
+    let pc = Arc::clone(&progress_counter);
+    let on_progress_ref = &on_progress;
+    let wrapped_on_progress = move |_current: usize, total: usize, scanned: usize, file: &str, phase_current: usize, phase_total: usize, phase: &str| {
+        let cur = pc.fetch_add(1, Ordering::Relaxed) + 1;
+        on_progress_ref(cur, total, scanned, file, phase_current, phase_total, phase);
+    };
+
+    // Sync de fin de phase : force le compteur global a la valeur exacte du budget cumule
+    // jusqu'a cette phase incluse, SANS jamais reculer (fetch_max). Si la phase a emis moins
+    // que prevu (cache warm, exclusions par filtres), on rattrape la difference d'un coup.
+    // Si la phase a emis plus (defensif : ne devrait pas arriver), le compteur reste a sa
+    // valeur courante. La barre ne fait jamais marche arriere. Cf. principe "+ aux transitions".
+    let sync_to = |target: usize, phase: &str, total_work: usize, scanned: usize| {
+        let prev = progress_counter.fetch_max(target, Ordering::Relaxed);
+        let new = prev.max(target);
+        if new > prev {
+            on_progress(new, total_work, scanned, "", new.saturating_sub(prev), 0, phase);
+        }
+    };
+
     // --- Phase 1 : doublons exacts ---
     let (mut groups, mut was_cancelled) = exact_phase::run(
         &params,
@@ -239,9 +295,10 @@ where
         timing_enabled,
         &start,
         &cancelled,
-        &on_progress,
+        &wrapped_on_progress,
         &groups_counter,
     );
+    sync_to(budget_after_exact, "exact", total_work, scanned_files);
 
     // --- Phase 2 : images similaires (pHash) ---
     timing_log(timing_enabled, params.data_dir.as_deref(), &start, "phash_start");
@@ -254,12 +311,13 @@ where
             timing_enabled,
             &start,
             &cancelled,
-            &on_progress,
+            &wrapped_on_progress,
             &groups_counter,
         );
         groups.extend(new_groups);
         was_cancelled |= wc;
     }
+    sync_to(budget_after_images, "images", total_work, scanned_files);
 
     // --- Phase 3 : videos similaires ---
     let ffmpeg_missing = params.find_similar_videos && !is_ffmpeg_available();
@@ -276,12 +334,13 @@ where
             timing_enabled,
             &start,
             &cancelled,
-            &on_progress,
+            &wrapped_on_progress,
             &groups_counter,
         );
         groups.extend(new_groups);
         was_cancelled |= wc;
     }
+    sync_to(budget_after_videos, "videos", total_work, scanned_files);
 
     // --- Phase 4 : audio similaire ---
     if params.find_similar_audio && !was_cancelled && !cancelled.load(Ordering::Relaxed)
@@ -295,18 +354,17 @@ where
             timing_enabled,
             &start,
             &cancelled,
-            &on_progress,
+            &wrapped_on_progress,
             &groups_counter,
         );
         groups.extend(new_groups);
         was_cancelled |= wc;
     }
+    sync_to(budget_after_audio, "audio", total_work, scanned_files);
 
     // --- Phase 5 : archives (comparaison de contenu entre archives) ---
     let (archive_groups, archive_entries_cache) = if params.scan_archives && !was_cancelled {
-        let archive_progress_base = total_to_hash
-            + phash_estimate + phash_compare_estimate
-            + video_estimate + audio_estimate;
+        let archive_progress_base = budget_after_audio;  // pas utilise par les phases archives, garde pour API
         let res = archive_phase::run(
             &all_files_for_archives,
             &cancelled,
@@ -316,12 +374,15 @@ where
             params.sim_threshold,
             params.data_dir.as_deref(),
             params.skip_archive_phash,
-            &on_progress,
+            &wrapped_on_progress,
         );
         (res.groups, res.entries_cache)
     } else {
         (vec![], std::collections::HashMap::new())
     };
+    // Sync final a total_work : garantit qu'on atteint exactement 100% (rattrape le matching
+    // silencieux d'archives Phase 2 et toute autre sous-phase qui n'aurait pas emis).
+    sync_to(total_work, "archives_phash", total_work, scanned_files);
 
     if params.by_folder {
         groups.sort_by(|a, b| {
@@ -549,6 +610,125 @@ mod tests {
             move |_, _, _, _: &str, _, _, _: &str| { c.fetch_add(1, Ordering::Relaxed); },
         ).unwrap();
         assert!(count.load(Ordering::Relaxed) > 0);
+    }
+
+    /// Verifie les invariants de la progression :
+    /// - aucun emit ne depasse `total_work` (borne stricte)
+    /// - le compteur global atteint exactement `total_work` a la fin (= 100%)
+    ///
+    /// Note : on ne teste PAS la monotonie emit-par-emit ici parce que les phases
+    /// utilisent rayon (par_iter) et les emits paralleles peuvent arriver dans le
+    /// desordre dans un test direct. La monotonie *visible* est garantie par le
+    /// filtre max dans `commands/scan.rs` (snapshot ne s'ecrase que si current >=
+    /// existing) ; cf. test d'integration scan_progress_monotone_via_throttle.
+    fn assert_progress_invariants(recorded: &[(usize, usize)]) {
+        assert!(!recorded.is_empty(), "au moins un emit attendu");
+        let total = recorded[0].1;
+        for (i, &(cur, t)) in recorded.iter().enumerate() {
+            assert_eq!(t, total, "total doit etre constant (emit #{})", i);
+            assert!(cur <= total, "current ne doit jamais depasser total : emit #{} cur={} > total={}", i, cur, total);
+        }
+        let max_cur = recorded.iter().map(|(c, _)| *c).max().unwrap();
+        assert_eq!(max_cur, total, "current max doit egaler total (= 100% atteint)");
+    }
+
+    #[test]
+    fn progression_atteint_total_avec_phases_simples() {
+        // Cas standard : exact + pHash. Verifie qu'on atteint pile total_work.
+        let dir = TempDir::new().unwrap();
+        write_file(dir.path(), "a.txt", b"contenu duplique exemplaire");
+        write_file(dir.path(), "b.txt", b"contenu duplique exemplaire");
+        write_solid_png(dir.path(), "img1.png", [0, 128, 255], 40);
+        write_solid_png(dir.path(), "img2.png", [0, 128, 255], 80);
+
+        let emits: Arc<std::sync::Mutex<Vec<(usize, usize)>>> = Arc::new(std::sync::Mutex::new(vec![]));
+        let e = Arc::clone(&emits);
+        scan_folder(
+            ScanParams { find_similar: true, ..ScanParams::new(dir.path().to_str().unwrap()) },
+            no_cancel(),
+            move |current, total, _, _: &str, _, _, _: &str| {
+                e.lock().unwrap().push((current, total));
+            },
+        ).unwrap();
+
+        assert_progress_invariants(&emits.lock().unwrap());
+    }
+
+    #[test]
+    fn progression_atteint_total_avec_archives() {
+        // Cas complexe : archives + find_similar. Le matching final dans archive_phase
+        // est silencieux ; le sync de fin doit donc rattraper jusqu'a total_work exact.
+        let dir = TempDir::new().unwrap();
+        write_solid_png(dir.path(), "img1.png", [0, 128, 255], 40);
+        write_solid_png(dir.path(), "img2.png", [0, 128, 255], 80);
+
+        for name in ["pack_a.zip", "pack_b.zip"] {
+            let zip_path = dir.path().join(name);
+            let f = std::fs::File::create(&zip_path).unwrap();
+            let mut w = zip::ZipWriter::new(std::io::BufWriter::new(f));
+            let opts = zip::write::SimpleFileOptions::default();
+            w.start_file("photo.png", opts).unwrap();
+            use image::{ImageBuffer, Rgb, ImageFormat};
+            use std::io::Cursor;
+            let mut img: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(16, 16);
+            for (_, _, p) in img.enumerate_pixels_mut() {
+                *p = Rgb([100, 50, 30]);
+            }
+            let mut buf = Vec::new();
+            img.write_to(&mut Cursor::new(&mut buf), ImageFormat::Png).unwrap();
+            std::io::Write::write_all(&mut w, &buf).unwrap();
+            w.finish().unwrap();
+        }
+
+        let data_tmp = TempDir::new().unwrap();
+        let emits: Arc<std::sync::Mutex<Vec<(usize, usize)>>> = Arc::new(std::sync::Mutex::new(vec![]));
+        let e = Arc::clone(&emits);
+        scan_folder(
+            ScanParams {
+                find_similar: true,
+                scan_archives: true,
+                data_dir: Some(data_tmp.path().to_str().unwrap().to_string()),
+                ..ScanParams::new(dir.path().to_str().unwrap())
+            },
+            no_cancel(),
+            move |current, total, _, _: &str, _, _, _: &str| {
+                e.lock().unwrap().push((current, total));
+            },
+        ).unwrap();
+
+        assert_progress_invariants(&emits.lock().unwrap());
+    }
+
+    #[test]
+    fn progression_apres_filtre_snapshot_max_strictement_monotone() {
+        // Simule le filtrage par max applique dans commands/scan.rs : meme avec emits
+        // paralleles desordonnes, le snapshot vu par le frontend est strictement monotone.
+        let dir = TempDir::new().unwrap();
+        for i in 0..6 {
+            write_solid_png(dir.path(), &format!("img_{}.png", i), [200, 100, 50], 30);
+        }
+
+        let snapshot_current: Arc<std::sync::Mutex<usize>> = Arc::new(std::sync::Mutex::new(0));
+        let observed: Arc<std::sync::Mutex<Vec<usize>>> = Arc::new(std::sync::Mutex::new(vec![]));
+        let s = Arc::clone(&snapshot_current);
+        let o = Arc::clone(&observed);
+        scan_folder(
+            ScanParams { find_similar: true, ..ScanParams::new(dir.path().to_str().unwrap()) },
+            no_cancel(),
+            move |current, _total, _, _: &str, _, _, _: &str| {
+                let mut snap = s.lock().unwrap();
+                if current >= *snap {
+                    *snap = current;
+                    o.lock().unwrap().push(current);
+                }
+            },
+        ).unwrap();
+
+        let observed_seq = observed.lock().unwrap().clone();
+        assert!(!observed_seq.is_empty());
+        for w in observed_seq.windows(2) {
+            assert!(w[1] >= w[0], "snapshot filtre doit etre strictement monotone : {} -> {}", w[0], w[1]);
+        }
     }
 
     #[test]

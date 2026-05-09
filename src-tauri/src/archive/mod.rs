@@ -232,12 +232,57 @@ pub fn count_archive_image_entries(path: &Path) -> usize {
             });
             n
         }
-        // tar.* : decompresser pour compter precisement serait prohibitif. Heuristique :
-        // un tiers des entrees sont des images. Conservateur sans surdimensionner.
-        _ => count_entries_fast(path) / 3,
+        // tar.* : iteration sequentielle (decompression du stream + lecture des headers,
+        // les bytes des entrees sont auto-skip via Drop). Cout similaire a count_entries_fast,
+        // exact car on lit chaque chemin pour filtrer is_image_path.
+        ArchiveFormat::TarGz => count_tar_image_entries(path, |f| Box::new(flate2::read::GzDecoder::new(f))),
+        ArchiveFormat::TarBz2 => count_tar_image_entries(path, |f| Box::new(bzip2::read::BzDecoder::new(f))),
+        ArchiveFormat::TarXz => count_tar_image_entries(path, |f| Box::new(xz2::read::XzDecoder::new(f))),
+        ArchiveFormat::TarZst => {
+            let file = match std::fs::File::open(path) { Ok(f) => f, Err(_) => return 0 };
+            let zst = match zstd::Decoder::new(file) { Ok(d) => d, Err(_) => return 0 };
+            count_tar_image_entries_inner(tar::Archive::new(zst))
+        }
     }
 }
 
+fn count_tar_image_entries(
+    path: &Path,
+    decoder: impl FnOnce(std::fs::File) -> Box<dyn Read>,
+) -> usize {
+    let file = match std::fs::File::open(path) { Ok(f) => f, Err(_) => return 0 };
+    let stream = decoder(file);
+    count_tar_image_entries_inner(tar::Archive::new(stream))
+}
+
+fn count_tar_image_entries_inner<R: Read>(mut archive: tar::Archive<R>) -> usize {
+    use crate::scanner::hash::is_image_path;
+    let mut n = 0;
+    if let Ok(entries) = archive.entries() {
+        for entry in entries.flatten() {
+            let entry_type = entry.header().entry_type();
+            if !matches!(entry_type, tar::EntryType::Regular | tar::EntryType::Continuous) { continue; }
+            if let Ok(p) = entry.path() {
+                if is_image_path(&p.to_string_lossy()) {
+                    n += 1;
+                }
+            }
+        }
+    }
+    n
+}
+
+/// Compte EXACTEMENT le nombre d'entrees fichier d'une archive (filtre dirs et streams vides).
+/// - ZIP : random access via central directory (instantane)
+/// - 7z : iteration des entrees via for_each_entries (rapide, lit les headers compresses)
+/// - tar.* : iteration sequentielle, decompresse le stream pour lire les headers (les bytes
+///   d'entree sont auto-skip via Drop). Cout : quelques secondes pour un gros tar.bz2.
+///
+/// Une heuristique imprecise ici cause un budget total_work errone et fait atteindre
+/// 100% trop tot ou jamais. Le cout d'iteration est paye une fois upfront, pour avoir
+/// une barre de progression fiable. (Anciennement `size / 100000` qui sous-estimait
+/// systematiquement les tars denses comme renpy.tar.bz2 : 200 MB / 100K = 2000 alors
+/// que l'archive contient 3134 entrees.)
 pub fn count_entries_fast(path: &Path) -> usize {
     let format = match detect_archive_format(path) {
         Some(f) => f,
@@ -251,12 +296,51 @@ pub fn count_entries_fast(path: &Path) -> usize {
                 Err(_) => 0,
             }
         }
-        // Pour tar et 7z : estimation grossiere basee sur la taille du fichier
-        _ => {
-            let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
-            (size / 100_000).max(1) as usize  // 1 entree estimee par 100 Ko
+        ArchiveFormat::SevenZip => {
+            let mut reader = match sevenz_rust2::ArchiveReader::open(path, sevenz_rust2::Password::empty()) {
+                Ok(r) => r,
+                Err(_) => return 0,
+            };
+            let mut n = 0;
+            let _ = reader.for_each_entries(|entry, _| {
+                if !entry.is_directory() && entry.has_stream() {
+                    n += 1;
+                }
+                Ok(true)
+            });
+            n
+        }
+        ArchiveFormat::TarGz => count_tar_entries(path, |f| Box::new(flate2::read::GzDecoder::new(f))),
+        ArchiveFormat::TarBz2 => count_tar_entries(path, |f| Box::new(bzip2::read::BzDecoder::new(f))),
+        ArchiveFormat::TarXz => count_tar_entries(path, |f| Box::new(xz2::read::XzDecoder::new(f))),
+        ArchiveFormat::TarZst => {
+            let file = match std::fs::File::open(path) { Ok(f) => f, Err(_) => return 0 };
+            let zst = match zstd::Decoder::new(file) { Ok(d) => d, Err(_) => return 0 };
+            count_tar_entries_inner(tar::Archive::new(zst))
         }
     }
+}
+
+fn count_tar_entries(
+    path: &Path,
+    decoder: impl FnOnce(std::fs::File) -> Box<dyn Read>,
+) -> usize {
+    let file = match std::fs::File::open(path) { Ok(f) => f, Err(_) => return 0 };
+    let stream = decoder(file);
+    count_tar_entries_inner(tar::Archive::new(stream))
+}
+
+fn count_tar_entries_inner<R: Read>(mut archive: tar::Archive<R>) -> usize {
+    let mut n = 0;
+    if let Ok(entries) = archive.entries() {
+        for entry in entries.flatten() {
+            let entry_type = entry.header().entry_type();
+            if matches!(entry_type, tar::EntryType::Regular | tar::EntryType::Continuous) {
+                n += 1;
+            }
+        }
+    }
+    n
 }
 
 /// Calcule la comparaison detaillee entre deux archives (entree par entree).

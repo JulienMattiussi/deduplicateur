@@ -101,17 +101,28 @@ L'événement `scan:progress` a une sémantique stricte que **toutes les phases 
 | `phase_current` / `phase_total` | Compteur LOCAL à la phase ("1234 / 5000 images"). |
 | `file` | Nom du fichier en cours de traitement. **Toujours rempli** en pleine phase (sinon la zone affichée saute). |
 
-Conséquences :
-- Pour ajouter une phase nouvelle (ex. archive Phase 2), il faut **étendre `total_work` upfront** avec une estimation de son travail. Si on ne sait pas estimer précisément, surestimer (la barre s'arrête à 95% au lieu de 100%, c'est moins grave qu'un dépassement).
-- Si une phase est silencieuse (pas d'évènements), la barre reste figée pendant son exécution, l'ETA ne peut pas être calculé. **Toujours émettre des évènements** régulièrement (par item traité, par itération du `par_iter` rayon, etc.).
-- Le frontend `ProgressETA` est conçu pour **ne PAS afficher d'info trompeuse** quand `current` ne bouge pas (rate=0 → pas de "presque fini", pas de "X min restantes"). C'est intentionnel. Si l'ETA disparaît, c'est que `current` est bloqué, pas un bug du frontend.
-- Le frontend cap déjà `pct = Math.min(100, current/total)` côté affichage. C'est un garde-fou défensif, **pas une excuse pour laisser current dépasser total**.
+**Modèle d'implémentation** (`scanner/mod.rs`) :
+- `total_work` = somme exacte des **emits maximum** par phase, pas du nombre d'items. Constantes par phase : `EMITS_EXACT=1`, `EMITS_IMAGES=3` (decode + hash compute si cache froid + compare outer), `EMITS_VIDEOS=2`, `EMITS_AUDIO=2`, `EMITS_ARCH_P1=1`, `EMITS_ARCH_P2=2` (extraction + pHash). Doivent rester alignées avec le code des phases — si on ajoute une sous-phase qui émet, mettre à jour la constante.
+- Compteur global atomique `progress_counter` partagé entre toutes les phases via un wrapper `wrapped_on_progress` qui ignore le `current` calculé localement et utilise `pc.fetch_add(1)` à la place. Garantit l'incrément +1 par emit, peu importe la sous-phase ou le parallélisme rayon.
+- Sync de fin de phase (`sync_to(budget_after_X)`) qui force le compteur à la frontière exacte du budget cumulé via `fetch_max`. Rattrape les emits manquants (cache warm, exclusions par filtre, matching silencieux d'archives Phase 2). Ne peut JAMAIS faire reculer le compteur. Garantit qu'on atteint exactement `total_work` à la fin = 100% pile.
+- Filtre max dans `commands/scan.rs` (snapshot mutex) : on n'écrase la valeur courante que si `new_current >= existing`. Sans ce filtre, des emits parallèles arrivant out-of-order (thread A `fetch_add=4` mais son emit traverse le mutex après B `fetch_add=5`) feraient reculer le snapshot vu par le frontend.
+
+Tests d'invariants (`scanner::tests::progression_*`) :
+- `assert_progress_invariants` : aucun emit ne dépasse `total`, le max atteint == `total`.
+- `progression_apres_filtre_snapshot_max_strictement_monotone` : avec le filtre max simulé dans le test, la séquence vue par le frontend est strictement croissante.
+
+Conséquences pratiques :
+- Pour ajouter une phase nouvelle, il faut définir sa constante `EMITS_*`, l'ajouter à `total_work`, et appeler `sync_to(budget_after_X)` après l'avoir exécutée. Sinon le 100% n'est pas atteint pile.
+- Si une sous-phase est silencieuse (pas d'emit), c'est OK : le sync de fin rattrape. La barre fera juste un saut vers le haut à la transition (ce qui est désirable).
+- Le frontend `ProgressETA` est conçu pour **ne PAS afficher d'info trompeuse** quand `current` ne bouge pas (rate=0 → pas de "presque fini", pas de "X min restantes"). C'est intentionnel.
+- Le frontend cap déjà `pct = Math.min(100, current/total)` côté affichage. Garde-fou défensif, **pas une excuse pour laisser current dépasser total**.
 
 **Ce qu'il ne faut JAMAIS faire** :
 - Modifier `total_work` pendant le scan (`total_work.max(current)` etc.)
+- Calculer `current` à partir d'un offset par phase (l'ancienne approche `phase_offset + n`) : c'est ce qui causait des chevauchements entre sous-phases et des reculs visibles
 - Geler `current` pour faire avancer le heartbeat autrement
 - Faire lire `phase_current` au heartbeat à la place de `current`
-- Émettre `file=""` en pleine phase
+- Émettre `file=""` en pleine phase (sauf aux sync de transition, où c'est intentionnel)
 
 ## Règle impérative - Architecture cache pour opérations lazy
 
