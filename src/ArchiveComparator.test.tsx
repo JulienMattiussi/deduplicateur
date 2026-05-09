@@ -176,6 +176,50 @@ describe("ArchiveComparator - entrees audio (mode Audio)", () => {
     // 2 boutons play (un par cote)
     expect(screen.getAllByTestId("archive-audio-btn").length).toBe(2);
   });
+
+  it("affiche la duree audio (mm:ss) a cote du lecteur quand audio_duration_secs est dans le cache", async () => {
+    const audioComparison = {
+      a: {
+        path: "/x.zip",
+        entries: [
+          { internal_path: "song.mp3", size: 5_000_000, status: "duplicate" as const, duplicate_in: "song.mp3", hash: "h1", audio_duration_secs: 222 },
+        ],
+      },
+      b: {
+        path: "/y.zip",
+        entries: [
+          { internal_path: "song.mp3", size: 5_000_000, status: "duplicate" as const, duplicate_in: "song.mp3", hash: "h1", audio_duration_secs: 222 },
+        ],
+      },
+    };
+    mockInvoke.mockResolvedValue(audioComparison);
+    renderComparator();
+    await waitFor(() => screen.getByTestId("archive-comparator-body"));
+    // 222s = 3:42, deux occurrences (une par cote)
+    expect(screen.getAllByText("3:42").length).toBe(2);
+  });
+
+  it("n'affiche pas de duree quand audio_duration_secs est absent (sessions pre-cache audio)", async () => {
+    const audioComparison = {
+      a: {
+        path: "/x.zip",
+        entries: [
+          { internal_path: "song.mp3", size: 5_000_000, status: "duplicate" as const, duplicate_in: "song.mp3", hash: "h1" },
+        ],
+      },
+      b: {
+        path: "/y.zip",
+        entries: [
+          { internal_path: "song.mp3", size: 5_000_000, status: "duplicate" as const, duplicate_in: "song.mp3", hash: "h1" },
+        ],
+      },
+    };
+    mockInvoke.mockResolvedValue(audioComparison);
+    renderComparator();
+    await waitFor(() => screen.getByTestId("archive-comparator-body"));
+    // Aucun texte mm:ss attendu
+    expect(screen.queryByText(/^\d+:\d{2}$/)).not.toBeInTheDocument();
+  });
 });
 
 describe("ArchiveComparator - paires similaires (B-min)", () => {

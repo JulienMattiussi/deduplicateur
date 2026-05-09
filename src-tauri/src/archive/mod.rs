@@ -427,6 +427,7 @@ fn build_result(e: &ArchiveEntry, other: Option<&ArchiveEntry>) -> ArchiveEntryR
             duplicate_in: Some(o.internal_path.clone()),
             hash: hash_hex,
             similarity_score: None,
+            audio_duration_secs: None,
         }
     } else {
         ArchiveEntryResult {
@@ -436,6 +437,7 @@ fn build_result(e: &ArchiveEntry, other: Option<&ArchiveEntry>) -> ArchiveEntryR
             duplicate_in: None,
             hash: hash_hex,
             similarity_score: None,
+            audio_duration_secs: None,
         }
     }
 }

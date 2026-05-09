@@ -39,6 +39,12 @@ pub struct ArchiveEntryResult {
     /// Score de similarite pHash (0..100, 100 = identique) si status == "similar".
     #[serde(default)]
     pub similarity_score: Option<f32>,
+    /// Duree de l'audio en secondes pour les entrees audio scannees en mode Audio
+    /// (fpcalc retourne fingerprint + duree en un seul appel ; donnee deja en cache,
+    /// pas de re-extraction). None pour les entrees image et pour les sessions
+    /// pre-cache audio.
+    #[serde(default)]
+    pub audio_duration_secs: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -801,98 +801,107 @@ En mode "Comparer avec un autre dossier" : dossier source S et dossier de réfé
 - Le flag `skip_archive_phash` actuel est renommé/unifié en `skip_archive_extraction` (un seul flag bool, couvre les deux usages : extraction d'images en mode Image, extraction d'audio en mode Audio). L'utilisateur ne peut pas analyser les deux dans la même analyse (mode mutuellement exclusif), donc un drapeau unique suffit.
 - Migration : les sessions persistantes ne stockent pas ce flag (paramètre éphémère du scan). Le rename est interne, pas de souci de rétro-compat.
 
-#### C1. Backend : extraction + fingerprint + cache + progression ✅⏳
+#### C1. Backend : extraction + fingerprint + cache + progression ✅
 
-**C1.1 Helper `is_audio_path`** dans `scanner::hash` (ou autre module commun) :
-- [ ] Liste d'extensions : `mp3`, `wav`, `flac`, `ogg`, `m4a`, `opus`, `aac`, `wma`, `aiff`, `ape`. Cohérent avec ce que `is_audio` (collect_files) reconnaît déjà.
-- [ ] Test : extensions reconnues vs ignorées.
+**C1.1 Helper de détection audio** (`audio::hash`) :
+- [x] Réutilisation de l'existant `audio::is_audio(path: &str) -> bool` (au lieu de créer `is_audio_path`) avec la liste `AUDIO_EXTS = ["mp3","flac","ogg","m4a","aac","wav","wma","opus","aiff","aif","ape"]`. Cohérent avec ce que `collect_files` reconnaît déjà.
+- [x] Test : `audio::hash::tests::is_audio_detects_formats`.
 
 **C1.2 Comptage** :
-- [ ] `count_archive_audio_entries(path)` symétrique à `count_archive_image_entries`. ZIP/7z exact via headers, tar.* via itération du stream (cohérent avec la règle de comptage exact, pas d'heuristique).
-- [ ] Tests : count exact pour zip/7z/tar (toutes les variantes de compression).
+- [x] `archive::count_archive_audio_entries(path)` (wrapper sur `count_archive_entries_filtered` avec prédicat `audio::is_audio`). ZIP/7z exact via headers, tar.* via itération du stream.
+- [x] Test ZIP `count_archive_audio_entries_zip_compte_que_les_audios` + test générique `count_archive_entries_filtered_predicat_arbitraire`. Le moteur sous-jacent (`count_entries_fast`) est déjà couvert pour 7z/tar.
 
 **C1.3 Extraction temp dir** (`archive/extractor.rs`) :
-- [ ] Soit étendre `extract_image_entries` avec un paramètre `EntryFilter` (closure `|name: &str| -> bool`), soit ajouter `extract_audio_entries`. Préférence : paramétriser pour DRY.
-- [ ] `estimate_extraction_size` étendu : calcule la taille des entrées audio aussi quand `find_similar_audio=true`. La modale d'avertissement existante reste, son texte devient générique ("entrées média" ou paramétré selon le mode).
-- [ ] Tests : extraction des audio uniquement, taille estimée.
+- [x] Refactor en `extract_entries_filtered(...)` paramétré par closure (DRY). `extract_image_entries` et `extract_audio_entries` sont des wrappers.
+- [x] `estimate_extraction_size_filtered(archive_paths, predicat)` - utilisé via `commands/archive.rs` qui passe `is_audio` ou `is_image_path` selon le mode.
+- [x] Tests : couverture générique via les tests existants (extraction, taille estimée, cancel) ; le filtre est testé indirectement par `count_archive_entries_filtered_predicat_arbitraire`.
 
 **C1.4 Phase audio archives** (`scanner/archive_phase.rs`) :
-- [ ] Nouvelle Phase 3 (après les Phase 1 xxh3 et Phase 2 pHash images) qui s'active si `find_similar_audio=true && !skip_archive_extraction`. Mutex avec Phase 2 : si mode Audio, c'est Phase 3 qui tourne, sinon Phase 2.
-- [ ] Extraction des entrées audio non encore matchées en exact (filter sur `duplicated_entries`).
-- [ ] fpcalc parallèle via rayon sur les chemins extraits, mêmes optimisations que `audio_phase` standard (subprocess fpcalc avec `creation_flags(0x08000000)` sous Windows).
-- [ ] Matching inter-archive : Hamming distance sur fingerprints i32 + tolérance de durée (réutilise les helpers de `audio::hash` ou équivalent).
-- [ ] Update `duplicated_entries` et `shared_count_per_pair` pour les paires audio similaires (cohérent avec ce que fait Phase 2 pour les pHash).
-- [ ] Persiste fingerprints + durée dans `all_entries` puis dans `entries_cache`.
+- [x] PASSE 3 dans `archive_phase::run` qui s'active si `find_similar_audio=true && !skip_archive_extraction`. Mutuellement exclusive avec PASSE 2 (modes find_similar et find_similar_audio non simultanés côté ScanParams).
+- [x] Extraction des entrées audio non encore matchées en exact via filter sur `duplicated_entries`.
+- [x] fpcalc parallèle via `rayon::par_iter` sur les chemins extraits ; subprocess fpcalc avec `creation_flags(0x08000000)` sous Windows hérité de `audio::compute_fingerprint`.
+- [x] Matching inter-archive : `audio::fingerprint_distance` (Hamming normalisé) + tolérance de durée (`audio_duration_tolerance`).
+- [x] Update `duplicated_entries` et `shared_count_per_pair` pour les paires audio similaires.
+- [x] Persiste fingerprints dans `all_entries[i].audio_fp` puis dans `entries_cache` (`audio_fingerprint` + `audio_duration_secs` via `ArchiveEntryHash`).
 
 **C1.5 Cache** (`archive::ArchiveEntryHash`) :
-- [ ] Ajouter `audio_fingerprint: Option<Vec<i32>>` et `audio_duration_secs: Option<f64>` (rétro-compat via `#[serde(default)]`).
-- [ ] `recompute_group_duplicated_entries` étendue : reconnaît les matches audio (Hamming sur fingerprints + tolérance de durée) en plus des matches xxh3 et pHash.
-- [ ] `ensure_cache_for_groups` : pour les sessions pré-cache audio, re-calcule via `hash_archive_entries` avec un nouveau flag pour pousser le calcul fpcalc en plus du pHash. Alternative : laisser ces sessions sans audio, ne ré-hasher que pour les xxh3.
+- [x] Champs `audio_fingerprint: Option<Vec<i32>>` et `audio_duration_secs: Option<f64>` ajoutés avec `#[serde(default)]` (rétro-compat).
+- [x] `recompute_group_duplicated_entries` étendue avec paramètres `audio_sim_threshold` + `audio_duration_tolerance` ; reconnaît les matches audio (Hamming sur fingerprints i32 + tolérance de durée) en plus des xxh3 et pHash.
+- [x] `ensure_cache_for_groups` : alternative retenue (sessions pré-cache audio restent sans fingerprint, `audio_fingerprint: None`). Pas de re-fpcalc au load. Acceptable car le mode Audio archives est une feature récente.
 
 **C1.6 Progression** (`scanner/mod.rs`) :
-- [ ] Nouvelle constante `EMITS_ARCH_AUDIO = 2` (extraction + fpcalc, matching silencieux). Documenter dans le tableau des constantes.
-- [ ] Nouveau phase id `archives_audio` dans `ScanPhase` (Rust + TS).
-- [ ] `total_work` étendu : `+ archive_phase_audio_count * EMITS_ARCH_AUDIO` quand `find_similar_audio && scan_archives && !skip_archive_extraction`.
-- [ ] `sync_to(budget_after_archives_audio)` après la phase. Le sync final reste `sync_to(total_work)`.
-- [ ] Test d'invariant `progression_atteint_total_avec_archives_audio` (pendant à `progression_atteint_total_avec_archives`).
+- [x] Constante `EMITS_ARCH_AUDIO = 2` (extraction + fpcalc, matching silencieux).
+- [x] Phase id `archives_audio` dans `ScanPhase` (Rust string + `src/types.ts`).
+- [x] `total_work` étendu : `+ archive_audio_count * EMITS_ARCH_AUDIO` quand `find_similar_audio && scan_archives && !skip_archive_extraction`.
+- [x] Sync final `sync_to(total_work, "archives_phash", ...)` couvre l'audio aussi (PASSE 2 et PASSE 3 sont mutuellement exclusives, le sync final rattrape les emits manquants quel que soit le mode).
+- [ ] Test d'invariant dédié `progression_atteint_total_avec_archives_audio` (pendant à `progression_atteint_total_avec_archives` qui ne couvre que mode Image). Cas de régression à ajouter.
 
 **C1.7 ScanParams + commande `scan_folder`** :
-- [ ] Renommer `skip_archive_phash` → `skip_archive_extraction` côté Rust et TS. Le frontend met à jour le payload de la commande.
-- [ ] La modale d'espace disque conserve son trigger mais avec le bon texte selon le mode.
+- [x] `skip_archive_phash` renommé en `skip_archive_extraction` côté Rust (`ScanParams.skip_archive_extraction`) et TS (`skipArchiveExtraction`). Le frontend (`useScanExecution`, `App.tsx::continueWithoutArchivePhash`) passe le bon nom.
+- [x] La modale d'espace disque conserve son trigger avec texte adapté selon le mode.
 
 **C1.8 Tests Rust** :
-- [ ] `archive_phase::tests::deux_zips_avec_audio_similaire_donnent_groupe` : 2 archives contenant un fichier audio (synthétique, fingerprint identique) → groupe matché.
-- [ ] `audio_archives_count_dans_duplicated_entries` : recompute_group_duplicated_entries inclut bien les paires audio.
-- [ ] Tests de `count_archive_audio_entries` pour ZIP/7z/tar.
+- [ ] `archive_phase::tests::deux_zips_avec_audio_similaire_donnent_groupe` : test e2e avec fichiers audio synthétiques + fingerprint identique. À faire (le test actuel `recompute_detecte_match_audio_via_fingerprint` ne couvre que la fonction de recompute, pas la pipeline complète).
+- [x] `archive::tests::recompute_detecte_match_audio_via_fingerprint` couvre `recompute_group_duplicated_entries` avec paires audio (équivalent fonctionnel à l'item `audio_archives_count_dans_duplicated_entries` du plan).
+- [ ] Tests de `count_archive_audio_entries` pour 7z et tar.* (ZIP couvert ; le mécanisme générique est testé par `count_archive_entries_filtered_predicat_arbitraire`, mais une couverture explicite par format serait plus rassurante).
 
-#### C2. Frontend : comparateur d'archives avec lecteur audio ⏳
+#### C2. Frontend : comparateur d'archives avec lecteur audio ✅
 
 **C2.1 Détection des entrées audio** :
-- [ ] Côté frontend, helper `isAudioPath(path)` dans le composant ou dans `utils.ts`. Symétrique à `isImagePath` qu'on a déjà dans `FileThumbnail.tsx`.
+- [x] `isAudioPath(p: string)` exporté depuis `src/components/FileThumbnail.tsx`, symétrique à `isImagePath`.
 
-**C2.2 Composant `ArchiveEntryAudioPlayer`** (nouveau) :
-- [ ] Bouton play / pause minimal (icônes, pas de barre de scrubbing pour rester compact dans une ligne du comparateur).
-- [ ] À l'activation : invoke `get_archive_entry_url(archivePath, internalPath)` qui retourne une URL `http://127.0.0.1:<port>/<temp_path>`.
-- [ ] Lecture via `<audio src={url}>` standard, géré par WebKit. Stop au démontage du composant.
-- [ ] Spinner overlay pendant l'extraction (pattern identique au clic miniature image).
-- [ ] Style aligné sur la cellule miniature image (taille 32px, position centrale).
+**C2.2 Composant `ArchiveEntryAudioPlayer`** (`src/components/FileThumbnail.tsx`) :
+- [x] Bouton play / pause minimal (`data-testid="archive-audio-btn"`).
+- [x] À l'activation : `invoke<string>("get_archive_entry_url", { archivePath, internalPath })`.
+- [x] Lecture via `<audio src={url}>` HTML5 standard, géré par WebKit.
+- [x] Spinner overlay pendant l'extraction.
+- [x] Style aligné sur la cellule miniature image.
 
-**C2.3 Backend `get_archive_entry_url`** (`commands/files.rs`) :
-- [ ] Extrait l'entrée vers `app_data/archive_preview/<id>_<filename>` (réutilise le sous-dossier déjà purgé au boot).
-- [ ] Retourne `http://127.0.0.1:<media_server_port>/<absolute_path_url_encoded>`. Le media server existant (axum, `media_server.rs`) sert déjà les fichiers du disque par chemin absolu.
-- [ ] Garde la même logique de cleanup que `open_archive_entry` (purge au boot, fichiers persistent durant la session).
+**C2.3 Backend `get_archive_entry_url`** (`src-tauri/src/commands/files.rs`) :
+- [x] Extrait l'entrée vers `app_data/archive_preview/<id>_<filename>` (réutilise le sous-dossier purgé au boot).
+- [x] Retourne `http://127.0.0.1:<media_server_port>/<absolute_path_url_encoded>` via le media server existant (`media_server.rs`).
+- [x] Même logique de cleanup que `open_archive_entry` (purge au boot, persistance pendant la session).
 
 **C2.4 ArchiveComparator étendu** :
-- [ ] `EntryCell` : pour les entrées audio, remplacer la miniature image par `ArchiveEntryAudioPlayer`. Pour les non-images non-audio, garder `FileTypeIcon`.
-- [ ] `ScoreCell` : afficher le score audio comme "97% audio" (ou avec icône note de musique) pour différencier du score pHash. À voir avec le design.
-- [ ] Affichage durée de l'entrée audio à côté de la taille (ex. "3:42 · 5.2 Mo"), récupéré depuis `audio_duration_secs` du cache.
+- [x] `EntryCell` : utilise `ArchiveEntryAudioPlayer` pour les entrées audio, `ArchiveEntryThumbnail` pour les images, fallback `FileTypeIcon` pour le reste.
+- [ ] `ScoreCell` : non différencié audio vs pHash (le pourcentage seul est affiché). Décision design : symbole/texte additionnel jugé visuellement bruité, à reconsidérer si retour utilisateur.
+- [x] Affichage de la durée de l'entrée audio à côté du lecteur (côté centre), même police que `archive-row-size`. Donnée déjà en cache (fpcalc retourne `(fingerprint, duration)`), propagée via `ArchiveEntryResult.audio_duration_secs` ; pas de re-extraction. Format `mm:ss` ou `h:mm:ss` via `formatDurationSecs`.
 
-**C2.5 Tests TS** :
-- [ ] `ArchiveComparator.test.tsx` : entrée audio montre le bouton play, pas de miniature image.
-- [ ] Mock de `get_archive_entry_url` qui renvoie une URL factice, vérifier que `<audio src>` est bien set.
-- [ ] Score audio rendu correctement.
+**C2.5 Tests TS** (`src/ArchiveComparator.test.tsx`) :
+- [x] Test `affiche un bouton play (au lieu de la miniature) sur les entrees audio`.
+- [x] Tests `affiche la duree audio (mm:ss) a cote du lecteur` + `n'affiche pas de duree quand audio_duration_secs est absent` (couvre les sessions pré-cache).
+- [ ] Mock de `get_archive_entry_url` + vérification du `<audio src>` après clic. Couverture supplémentaire à ajouter (interaction click → URL fetch → `<audio>` injection).
+- [ ] Score audio (couplé au C2.4 ScoreCell, donc moot tant que pas différencié).
 
-#### C3. Pré-check espace disque + modale ⏳
+#### C3. Pré-check espace disque + modale ✅
 
 **C3.1 Estimation étendue** :
-- [ ] `estimate_extraction_size(archive_paths, mode)` paramétré : si `mode = Image`, estime la taille des entrées image ; si `mode = Audio`, des entrées audio. Le frontend passe le mode courant.
-- [ ] `check_archive_disk_space` paramétré pareil.
+- [x] `commands::archive::check_archive_disk_space` paramétré par `mode: "image" | "audio"` ; appelle `estimate_extraction_size_filtered` avec le bon prédicat.
+- [x] Le frontend (`App.tsx::handleScan`) passe le mode courant (`detectionMode === "audio" ? "audio" : "image"`).
 
 **C3.2 Modale d'avertissement** (`DiskSpaceWarningModal`) :
-- [ ] Texte adapté selon le mode : "images archivées" en mode Image, "sons archivés" en mode Audio.
-- [ ] Le bouton "Continuer sans analyser" set `skip_archive_extraction=true`. Sémantique unifiée.
-- [ ] Tests : modale avec mode Image vs Audio affiche le bon texte.
+- [x] Texte adapté selon le mode : `diskWarningBodyAudio` vs `diskWarningBody` ; bouton continuer `diskWarningContinueWithoutAudio` vs `diskWarningContinueWithoutImages`.
+- [x] Le bouton "Continuer sans analyser" set `skipArchiveExtraction=true`.
+- [x] Tests `DiskSpaceWarningModal.test.tsx` : `mode image : message et bouton mentionnent les images` + `mode audio : message et bouton mentionnent les sons`.
 
 **C3.3 Pre-check côté App.tsx** :
-- [ ] Le pre-check ne déclenche que si `find_similar=true OR find_similar_audio=true` (en plus de `scan_archives=true`). Actuellement c'est `find_similar`, à étendre.
+- [x] Trigger sur `config.scanArchives && (config.detectionMode === "images" || config.detectionMode === "audio")`.
 
-#### C4. Documentation + cleanup ⏳
+#### C4. Documentation + cleanup ✅
 
-- [ ] `src/help/content.ts` : article "archive-scan" mis à jour FR + EN pour mentionner le mode Audio (extraction + fingerprint, lecteur play dans le comparateur).
-- [ ] `README.md` : section Fonctionnalités du scan d'archives mentionne le mode Audio.
-- [ ] `AGENTS.md` : si une nouvelle constante `EMITS_*` est ajoutée, l'inclure dans le tableau de la règle de progression.
-- [ ] Mise à jour des counts de tests dans README et plan (cargo + vitest).
-- [ ] Rename `skip_archive_phash` partout (Rust, TS, tests, sessions persistées si jamais).
+- [x] `src/help/content.ts` : article `archive-scan` mis à jour FR + EN avec le mode Audio (extraction + fingerprint Chromaprint + lecteur play dans le comparateur).
+- [x] `README.md` : ligne "Scan d'archives" mentionne le mode Audio (`fingerprint Chromaprint (fpcalc)`, bouton play inline, pré-check d'espace disque adapté au mode).
+- [x] `AGENTS.md` : `EMITS_ARCH_AUDIO=2` ajouté à la liste des constantes (ligne 105) ; `archives_audio` ajouté aux phases du tableau.
+- [x] Counts de tests à jour : 251 Rust + 431 TS dans README.
+- [x] Rename `skip_archive_phash` → `skip_archive_extraction` partout (Rust, TS, tests).
+
+#### Reliquat Phase 27C
+
+Items résiduels non bloquants (peuvent être traités à part si besoin) :
+- Test d'invariant `progression_atteint_total_avec_archives_audio` (C1.6).
+- Test e2e `deux_zips_avec_audio_similaire_donnent_groupe` (C1.8) ; tests `count_archive_audio_entries` pour 7z/tar (C1.8).
+- Test TS du flow `<audio src>` après mock `get_archive_entry_url` (C2.5).
+- Différenciation visuelle `ScoreCell` audio vs pHash (C2.4) - décision design, à reconsidérer si retour utilisateur.
 
 **Découpage en livrables** : C1 d'abord (backend complet, testable seul via `cargo test`), puis C2 + C3 ensemble (frontend cohérent), puis C4 (cleanup + doc).
 

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useLang } from "./LangContext";
-import { formatSize, formatDate, dirname, basename } from "./utils";
+import { formatSize, formatDate, formatDurationSecs, dirname, basename } from "./utils";
 import { revealInFolder } from "./fileActions";
 import { ArchiveEntryThumbnail, ArchiveEntryAudioPlayer, isAudioPath } from "./components/FileThumbnail";
 import { ComparatorBasicShell } from "./comparatorShared";
@@ -127,9 +127,16 @@ function EntryCell({
       <ArchiveEntryThumbnail archivePath={archivePath} internalPath={entry.internal_path} />
     </span>
   );
+  // Duree audio : affichee a cote du lecteur audio, cote centre. Donnee deja en cache
+  // (calculee par fpcalc pendant le scan en mode Audio archives), pas de re-extraction.
+  const durationEl = entry.audio_duration_secs != null ? (
+    <span className="archive-row-size">{formatDurationSecs(entry.audio_duration_secs)}</span>
+  ) : null;
   return (
     <span className={`archive-row-content archive-row-content--${side}`}>
-      {side === "left" ? <>{sizeEl}{pathEl}{mediaEl}</> : <>{mediaEl}{pathEl}{sizeEl}</>}
+      {side === "left"
+        ? <>{sizeEl}{pathEl}{durationEl}{mediaEl}</>
+        : <>{mediaEl}{durationEl}{pathEl}{sizeEl}</>}
     </span>
   );
 }

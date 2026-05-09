@@ -106,6 +106,8 @@ export interface ArchiveEntryResult {
   hash: string;
   /** Score de similarite (0..100, 100 = identique) si status === "similar". */
   similarity_score?: number;
+  /** Duree de l'audio en secondes (mode Audio archives uniquement). */
+  audio_duration_secs?: number;
 }
 
 export interface ArchiveDetail {

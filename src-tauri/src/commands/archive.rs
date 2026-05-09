@@ -207,6 +207,7 @@ fn build_result(e: &ArchiveEntryHash, other: Option<&ArchiveEntryHash>) -> Archi
             duplicate_in: Some(o.internal_path.clone()),
             hash: e.xxh3_hex.clone(),
             similarity_score: None,
+            audio_duration_secs: e.audio_duration_secs,
         }
     } else {
         ArchiveEntryResult {
@@ -216,6 +217,7 @@ fn build_result(e: &ArchiveEntryHash, other: Option<&ArchiveEntryHash>) -> Archi
             duplicate_in: None,
             hash: e.xxh3_hex.clone(),
             similarity_score: None,
+            audio_duration_secs: e.audio_duration_secs,
         }
     }
 }
