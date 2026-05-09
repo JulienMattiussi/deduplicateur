@@ -184,7 +184,7 @@ where
                 return vec![].into_iter();
             }
             let cnt = cc.fetch_add(1, Ordering::Relaxed);
-            on_progress(compare_base + cnt, ctx.total_work, ctx.scanned_files, "", cnt, n, "videos");
+            on_progress(compare_base + cnt, ctx.total_work, ctx.scanned_files, &video_data[i].file.name, cnt, n, "videos");
             let mut local = Vec::new();
             for j in (i + 1)..n {
                 let dur_i = video_data[i].metadata.duration_secs;

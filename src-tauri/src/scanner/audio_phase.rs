@@ -119,7 +119,7 @@ where
         .flat_map_iter(|i| {
             if cancelled.load(Ordering::Relaxed) { return vec![].into_iter(); }
             let cnt = cc.fetch_add(1, Ordering::Relaxed);
-            on_progress(compare_base + cnt, ctx.total_work, ctx.scanned_files, "", cnt, n, "audio");
+            on_progress(compare_base + cnt, ctx.total_work, ctx.scanned_files, &audio_data[i].file.name, cnt, n, "audio");
             let mut local = Vec::new();
             for j in (i + 1)..n {
                 let dur_i = audio_data[i].duration_secs;

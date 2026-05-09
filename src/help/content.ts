@@ -1137,7 +1137,15 @@ The notification uses the **active UI language** (FR or EN) at the time the scan
       en: ["archive", "zip", "tar", "gz", "7z", "archives", "content", "duplicate", "comparator"],
     },
     body: {
-      fr: `**Analyser les archives** est une option disponible en mode **Fichiers**, **Images** et **Audio**. Elle ouvre les archives (ZIP, tar.gz, 7z, CBZ...) trouvées dans le dossier analysé et détecte celles dont le contenu est identique (même contenu binaire) ou similaire (en mode Images : pHash perceptuel sur les images internes, utile pour des packs de comics ou de photos ; en mode Audio : empreinte Chromaprint sur les pistes internes, utile pour des collections de samples ou backups iTunes). Les fichiers \`.cbz\` (Comic Book ZIP) sont traités comme des ZIP. Les \`.cbr\` (Comic Book RAR) et \`.rar\` ne sont pas supportés.
+      fr: `**Analyser les archives** est une option disponible en mode **Fichiers**, **Images** et **Audio**. Elle ouvre les archives trouvées dans le dossier analysé et détecte celles dont le contenu est identique (même contenu binaire) ou similaire (en mode Images : pHash perceptuel sur les images internes, utile pour des packs de comics ou de photos ; en mode Audio : empreinte Chromaprint sur les pistes internes, utile pour des collections de samples ou backups iTunes).
+
+**Formats supportés** : \`.zip\`, \`.tar\`, \`.tar.gz\` / \`.tgz\`, \`.tar.bz2\` / \`.tbz2\`, \`.tar.xz\` / \`.txz\`, \`.tar.zst\`, \`.7z\`, \`.cbz\` (Comic Book ZIP, lu comme un ZIP), \`.jar\` / \`.war\` / \`.ear\` (Java, structurellement des ZIP), \`.apk\` (Android) et \`.ipa\` (iOS).
+
+**Formats non supportés** :
+- \`.rar\` et \`.cbr\` : format propriétaire de RarLab. La bibliothèque de décompression UnRAR existe mais sa licence est incompatible avec un projet libre. Pour les comics au format CBR, convertir en CBZ (= ZIP) avant scan.
+- \`.cab\`, \`.iso\`, \`.dmg\`, \`.deb\`, \`.rpm\` : non gérés (cas niches).
+
+**Archives chiffrées (mot de passe)** : les entrées chiffrées sont **ignorées silencieusement** car non lisibles. Une archive entièrement chiffrée affichera 0 entrée. C'est un comportement attendu, pas un bug.
 
 **Activer l'option** : cochez la case "Analyser les archives" dans la barre de configuration, à côté de l'option "Sous-dossiers".
 
@@ -1152,7 +1160,15 @@ The notification uses the **active UI language** (FR or EN) at the time the scan
 **Miniatures et lecteur audio dans le comparateur** : pour les entrées image, une **miniature** remplace l'icône de type de fichier (chargement paresseux à la volée quand la ligne entre dans la zone visible, extraction en mémoire + redimensionnement JPEG base64). **Cliquer sur une miniature** ouvre l'image dans le viewer par défaut du système. Pour les entrées audio (mode Audio), un **bouton play** remplace l'icône : au clic, l'entrée est extraite vers un fichier temporaire et lue inline via un lecteur HTML5 (la lecture utilise le media server HTTP local). Dans tous les cas, l'extraction crée un fichier temporaire dans le sous-dossier \`archive_preview/\` du dossier de données de l'app, et ces fichiers sont **purgés automatiquement** au prochain démarrage.
 
 **Supprimer** : utilisez la barre d'outils standard (\`Supprimer N fichiers\`) après avoir coché les archives supprimables. La suppression envoie le fichier dans la corbeille (récupérable).`,
-      en: `**Scan archives** is an option available in **Files**, **Images** and **Audio** modes. It opens archives (ZIP, tar.gz, 7z, CBZ...) found in the scanned folder and detects those whose content is identical (same binary content) or similar (in Images mode: perceptual pHash on internal images, useful for comic packs or photo archives ; in Audio mode: Chromaprint fingerprint on internal tracks, useful for sample collections or iTunes backups). \`.cbz\` files (Comic Book ZIP) are treated as ZIP archives. \`.cbr\` (Comic Book RAR) and \`.rar\` are not supported.
+      en: `**Scan archives** is an option available in **Files**, **Images** and **Audio** modes. It opens archives found in the scanned folder and detects those whose content is identical (same binary content) or similar (in Images mode: perceptual pHash on internal images, useful for comic packs or photo archives ; in Audio mode: Chromaprint fingerprint on internal tracks, useful for sample collections or iTunes backups).
+
+**Supported formats**: \`.zip\`, \`.tar\`, \`.tar.gz\` / \`.tgz\`, \`.tar.bz2\` / \`.tbz2\`, \`.tar.xz\` / \`.txz\`, \`.tar.zst\`, \`.7z\`, \`.cbz\` (Comic Book ZIP, read as ZIP), \`.jar\` / \`.war\` / \`.ear\` (Java, structurally ZIPs), \`.apk\` (Android) and \`.ipa\` (iOS).
+
+**Unsupported formats**:
+- \`.rar\` and \`.cbr\`: proprietary format from RarLab. The UnRAR decompression library exists but its license is incompatible with a free/open-source project. For CBR comics, convert to CBZ (= ZIP) before scanning.
+- \`.cab\`, \`.iso\`, \`.dmg\`, \`.deb\`, \`.rpm\`: not handled (niche cases).
+
+**Password-encrypted archives**: encrypted entries are **silently ignored** since they can't be read. A fully encrypted archive will show 0 entries. This is expected behavior, not a bug.
 
 **Enable the option**: check the "Scan archives" checkbox in the configuration bar, next to the "Subfolders" option.
 

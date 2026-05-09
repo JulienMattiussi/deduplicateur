@@ -247,7 +247,8 @@ where
                         return vec![].into_iter();
                     }
                     let cnt = cc.fetch_add(1, Ordering::Relaxed);
-                    on_progress(compare_base + cnt, ctx.total_work, ctx.scanned_files, "", cnt, num_buckets, "images");
+                    let bucket_name = bucket.first().map(|&i| images[i].file.name.as_str()).unwrap_or("");
+                    on_progress(compare_base + cnt, ctx.total_work, ctx.scanned_files, bucket_name, cnt, num_buckets, "images");
                     let cf = Arc::clone(&cf);
                     let m = bucket.len();
                     let mut local = Vec::new();
@@ -280,7 +281,8 @@ where
                     return (vec![], true);
                 }
                 let cnt = compare_counter.fetch_add(1, Ordering::Relaxed);
-                on_progress(compare_base + cnt, ctx.total_work, ctx.scanned_files, "", b_idx, num_buckets, "images");
+                let bucket_name = bucket.first().map(|&i| images[i].file.name.as_str()).unwrap_or("");
+                on_progress(compare_base + cnt, ctx.total_work, ctx.scanned_files, bucket_name, b_idx, num_buckets, "images");
                 let m = bucket.len();
                 for a in 0..m {
                     for b in (a + 1)..m {
@@ -330,10 +332,10 @@ where
                         return vec![].into_iter();
                     }
                     let cnt = cc.fetch_add(1, Ordering::Relaxed);
-                    on_progress(compare_base + cnt, ctx.total_work, ctx.scanned_files, "", cnt, n, "images");
+                    let i = sorted_indices[pos_a];
+                    on_progress(compare_base + cnt, ctx.total_work, ctx.scanned_files, &images[i].file.name, cnt, n, "images");
                     let sc = Arc::clone(&sc);
                     let cf = Arc::clone(&cf);
-                    let i = sorted_indices[pos_a];
                     let ai = sorted_aspects[pos_a];
                     let mut local = Vec::new();
 
@@ -393,8 +395,8 @@ where
                     return (vec![], true);
                 }
                 let cnt = compare_counter.fetch_add(1, Ordering::Relaxed);
-                on_progress(compare_base + cnt, ctx.total_work, ctx.scanned_files, "", cnt, n, "images");
                 let i = sorted_indices[pos_a];
+                on_progress(compare_base + cnt, ctx.total_work, ctx.scanned_files, &images[i].file.name, cnt, n, "images");
                 let ai = sorted_aspects[pos_a];
 
                 let (real_end, incl_none) = if ai.is_finite() {
@@ -454,7 +456,7 @@ where
                         return vec![].into_iter();
                     }
                     let cnt = cc.fetch_add(1, Ordering::Relaxed);
-                    on_progress(compare_base + cnt, ctx.total_work, ctx.scanned_files, "", cnt, n, "images");
+                    on_progress(compare_base + cnt, ctx.total_work, ctx.scanned_files, &images[i].file.name, cnt, n, "images");
                     let sc = Arc::clone(&sc);
                     let cf = Arc::clone(&cf);
                     let mut local = Vec::new();
@@ -491,7 +493,7 @@ where
                     return (vec![], true);
                 }
                 let cnt = compare_counter.fetch_add(1, Ordering::Relaxed);
-                on_progress(compare_base + cnt, ctx.total_work, ctx.scanned_files, "", cnt, n, "images");
+                on_progress(compare_base + cnt, ctx.total_work, ctx.scanned_files, &images[i].file.name, cnt, n, "images");
                 for j in (i + 1)..n {
                     if use_two_pass
                         && hamming_distance(&images[i].coarse, &images[j].coarse)

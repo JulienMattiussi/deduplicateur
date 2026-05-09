@@ -1,10 +1,22 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+/// True si le fichier existe et a une taille > 0. Skip les placeholders vides crees
+/// par `build.rs` quand le binaire n'a pas ete telecharge (ex. dev en mode light sans
+/// `download-fpcalc.sh`). Sans ce check, `find_tool` retournerait le chemin du placeholder
+/// vide et `Command::new(placeholder)` echouerait silencieusement, faisant croire que
+/// l'outil est "introuvable" alors qu'il est dans `/usr/bin`.
+fn is_real_binary(path: &Path) -> bool {
+    std::fs::metadata(path).map(|m| m.is_file() && m.len() > 0).unwrap_or(false)
+}
 
 /// Cherche un outil dans cet ordre :
 /// 1. A cote de l'executable (binaire bundte - cas externalBin Tauri)
 /// 2. Dans le sous-dossier binaries/ a cote de l'executable (cas resources Tauri)
 /// 3. Chemins systeme courants selon l'OS
 /// 4. Retourne None (l'appelant peut fallback sur Command::new(name))
+///
+/// Tous les candidats sont valides via `is_real_binary` (size > 0) pour ne pas retourner
+/// un placeholder cree par `build.rs`.
 pub fn find_tool(name: &str) -> Option<PathBuf> {
     if let Ok(exe) = std::env::current_exe() {
         if let Some(exe_dir) = exe.parent() {
@@ -13,7 +25,7 @@ pub fn find_tool(name: &str) -> Option<PathBuf> {
             let candidate = exe_dir.join(format!("{}.exe", name));
             #[cfg(not(target_os = "windows"))]
             let candidate = exe_dir.join(name);
-            if candidate.is_file() {
+            if is_real_binary(&candidate) {
                 return Some(candidate);
             }
 
@@ -22,7 +34,7 @@ pub fn find_tool(name: &str) -> Option<PathBuf> {
             let candidate2 = exe_dir.join("binaries").join(format!("{}.exe", name));
             #[cfg(not(target_os = "windows"))]
             let candidate2 = exe_dir.join("binaries").join(name);
-            if candidate2.is_file() {
+            if is_real_binary(&candidate2) {
                 return Some(candidate2);
             }
         }
@@ -34,7 +46,7 @@ pub fn find_tool(name: &str) -> Option<PathBuf> {
         let candidate = PathBuf::from(&dir).join(format!("{}.exe", name));
         #[cfg(not(target_os = "windows"))]
         let candidate = PathBuf::from(&dir).join(name);
-        if candidate.is_file() {
+        if is_real_binary(&candidate) {
             return Some(candidate);
         }
     }
@@ -92,6 +104,29 @@ mod tests {
         // Un outil inexistant ne doit pas paniquer et retourner None
         let result = find_tool("__outil_inexistant_xyz_42__");
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn find_tool_skip_placeholder_vide() {
+        // Le build.rs cree un placeholder vide (size 0) si le binaire reel n'a pas
+        // ete telecharge. find_tool ne doit pas le retourner sinon Command::new(empty)
+        // echoue silencieusement et l'app croit l'outil "introuvable".
+        let exe = std::env::current_exe().expect("current_exe ok");
+        let exe_dir = exe.parent().expect("exe parent ok");
+
+        #[cfg(target_os = "windows")]
+        let fake_name = "__test_tool_placeholder__.exe";
+        #[cfg(not(target_os = "windows"))]
+        let fake_name = "__test_tool_placeholder__";
+
+        let fake_path = exe_dir.join(fake_name);
+        // Cree un fichier VIDE (placeholder)
+        std::fs::File::create(&fake_path).expect("create ok");
+
+        let result = find_tool("__test_tool_placeholder__");
+        let _ = std::fs::remove_file(&fake_path);
+
+        assert!(result.is_none(), "un placeholder vide doit etre ignore");
     }
 
     #[test]

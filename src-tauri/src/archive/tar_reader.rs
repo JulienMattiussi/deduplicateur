@@ -11,6 +11,10 @@ pub fn hash_tar_entries(
 ) -> Result<Vec<ArchiveEntry>, String> {
     let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
     match format {
+        ArchiveFormat::Tar => {
+            // Pas de decompression : le file lui-meme est le stream tar.
+            hash_tar_archive(tar::Archive::new(file), compute_phash, on_entry)
+        }
         ArchiveFormat::TarGz => {
             let gz = flate2::read::GzDecoder::new(file);
             hash_tar_archive(tar::Archive::new(gz), compute_phash, on_entry)

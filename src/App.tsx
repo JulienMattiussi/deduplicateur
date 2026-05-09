@@ -519,7 +519,7 @@ export default function App() {
               disabled={scanExec.scanning || config.scanMode === "by_folder" || config.scanMode === "compare_folder"} />
             {t.recursive}
           </label>
-          {(config.detectionMode === "files" || config.detectionMode === "images") && (
+          {(config.detectionMode === "files" || config.detectionMode === "images" || config.detectionMode === "audio") && (
             <label className="toggle-recursive" title={t.tipScanArchives} data-testid="scan-archives-label">
               <input
                 type="checkbox"

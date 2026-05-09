@@ -39,10 +39,11 @@ describe("ScanProgressView - bulles d'etape", () => {
     expect(screen.queryByText(translations.fr.phaseImages)).not.toBeInTheDocument();
   });
 
-  it("mode files + scanArchives : 3 etapes incluant archives", () => {
+  it("mode files + scanArchives : 4 etapes incluant comptage + archives", () => {
     render(<Wrapper progress={{ current: 0, total: 0, phase: "reading" }} detectionMode="files" scanArchives={true} />);
     expect(screen.getByText(translations.fr.phaseReading)).toBeInTheDocument();
     expect(screen.getByText(translations.fr.phaseExact)).toBeInTheDocument();
+    expect(screen.getByText(translations.fr.phaseCountingArchives)).toBeInTheDocument();
     expect(screen.getByText(translations.fr.phaseArchives)).toBeInTheDocument();
   });
 
@@ -53,11 +54,12 @@ describe("ScanProgressView - bulles d'etape", () => {
   });
 
   it("toutes les bulles sont rendues des le debut (pas de progressive disclosure)", () => {
-    // Phase reading initiale : les bulles archives/exact doivent quand meme apparaitre
+    // Phase reading initiale : les bulles counting_archives/archives doivent deja apparaitre.
+    // 4 etapes : reading + exact + counting_archives + archives.
     const { container } = render(
       <Wrapper progress={{ current: 0, total: 0, phase: "reading" }} detectionMode="files" scanArchives={true} />
     );
-    expect(container.querySelectorAll(".progress-step").length).toBe(3);
+    expect(container.querySelectorAll(".progress-step").length).toBe(4);
   });
 });
 

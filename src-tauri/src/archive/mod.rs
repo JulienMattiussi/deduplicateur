@@ -13,7 +13,11 @@ use xxhash_rust::xxh3::Xxh3;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ArchiveFormat {
+    /// Format ZIP et tous ses derives techniques (CBZ, JAR, WAR, EAR, APK, IPA, ODT/ODS,
+    /// EPUB, etc.) qui sont structurellement des ZIP avec une extension specialisee.
     Zip,
+    /// Tar non compresse.
+    Tar,
     TarGz,
     TarBz2,
     TarXz,
@@ -36,7 +40,11 @@ pub struct ArchiveEntry {
 pub const PHASH_INMEMORY_MAX: u64 = 50 * 1024 * 1024;
 
 /// Detecte le format d'archive selon l'extension du nom de fichier (insensible a la casse).
-/// Retourne None pour les formats non supportes (RAR, etc.).
+/// Retourne None pour les formats non supportes (RAR, CAB, ISO, etc.).
+///
+/// Variantes ZIP supportees : `.zip`, `.cbz` (Comic Book ZIP), `.jar` / `.war` / `.ear`
+/// (Java archives), `.apk` (Android), `.ipa` (iOS). Toutes structurellement identiques au
+/// ZIP, le `zip` crate les lit directement.
 pub fn detect_archive_format(path: &Path) -> Option<ArchiveFormat> {
     let name = path.file_name()?.to_string_lossy().to_lowercase();
     if name.ends_with(".tar.gz") || name.ends_with(".tgz") {
@@ -47,7 +55,16 @@ pub fn detect_archive_format(path: &Path) -> Option<ArchiveFormat> {
         Some(ArchiveFormat::TarXz)
     } else if name.ends_with(".tar.zst") {
         Some(ArchiveFormat::TarZst)
-    } else if name.ends_with(".zip") || name.ends_with(".cbz") {
+    } else if name.ends_with(".tar") {
+        Some(ArchiveFormat::Tar)
+    } else if name.ends_with(".zip")
+        || name.ends_with(".cbz")
+        || name.ends_with(".jar")
+        || name.ends_with(".war")
+        || name.ends_with(".ear")
+        || name.ends_with(".apk")
+        || name.ends_with(".ipa")
+    {
         Some(ArchiveFormat::Zip)
     } else if name.ends_with(".7z") {
         Some(ArchiveFormat::SevenZip)
@@ -89,6 +106,7 @@ pub fn hash_archive_entries(
         .ok_or_else(|| format!("format non supporte: {}", path.display()))?;
     match format {
         ArchiveFormat::Zip => zip_reader::hash_zip_entries(path, compute_phash, on_entry),
+        ArchiveFormat::Tar => tar_reader::hash_tar_entries(path, ArchiveFormat::Tar, compute_phash, on_entry),
         ArchiveFormat::TarGz => tar_reader::hash_tar_entries(path, ArchiveFormat::TarGz, compute_phash, on_entry),
         ArchiveFormat::TarBz2 => tar_reader::hash_tar_entries(path, ArchiveFormat::TarBz2, compute_phash, on_entry),
         ArchiveFormat::TarXz => tar_reader::hash_tar_entries(path, ArchiveFormat::TarXz, compute_phash, on_entry),
@@ -149,6 +167,7 @@ pub fn read_archive_entry_bytes(archive_path: &Path, internal_path: &str) -> Res
             }).map_err(|e| e.to_string())?;
             found.ok_or_else(|| "entree introuvable".to_string())
         }
+        ArchiveFormat::Tar => read_tar_entry(archive_path, internal_path, |f| Box::new(f)),
         ArchiveFormat::TarGz => read_tar_entry(archive_path, internal_path, |f| Box::new(flate2::read::GzDecoder::new(f))),
         ArchiveFormat::TarBz2 => read_tar_entry(archive_path, internal_path, |f| Box::new(bzip2::read::BzDecoder::new(f))),
         ArchiveFormat::TarXz => read_tar_entry(archive_path, internal_path, |f| Box::new(xz2::read::XzDecoder::new(f))),
@@ -247,6 +266,7 @@ pub fn count_archive_entries_filtered(
             });
             n
         }
+        ArchiveFormat::Tar => count_tar_filtered(path, filter, |f| Box::new(f)),
         ArchiveFormat::TarGz => count_tar_filtered(path, filter, |f| Box::new(flate2::read::GzDecoder::new(f))),
         ArchiveFormat::TarBz2 => count_tar_filtered(path, filter, |f| Box::new(bzip2::read::BzDecoder::new(f))),
         ArchiveFormat::TarXz => count_tar_filtered(path, filter, |f| Box::new(xz2::read::XzDecoder::new(f))),
@@ -325,6 +345,7 @@ pub fn count_entries_fast(path: &Path) -> usize {
             });
             n
         }
+        ArchiveFormat::Tar => count_tar_entries(path, |f| Box::new(f)),
         ArchiveFormat::TarGz => count_tar_entries(path, |f| Box::new(flate2::read::GzDecoder::new(f))),
         ArchiveFormat::TarBz2 => count_tar_entries(path, |f| Box::new(bzip2::read::BzDecoder::new(f))),
         ArchiveFormat::TarXz => count_tar_entries(path, |f| Box::new(xz2::read::XzDecoder::new(f))),
@@ -627,6 +648,22 @@ mod tests {
     fn detect_cbr_retourne_none() {
         // CBR = RAR renomme, pas supporte (comme .rar)
         assert_eq!(detect_archive_format(Path::new("comic.cbr")), None);
+    }
+
+    #[test]
+    fn detect_jar_war_ear_apk_ipa_comme_zip() {
+        // Toutes ces extensions sont structurellement des ZIP, le crate `zip` les lit.
+        assert_eq!(detect_archive_format(Path::new("app.jar")), Some(ArchiveFormat::Zip));
+        assert_eq!(detect_archive_format(Path::new("WEBAPP.WAR")), Some(ArchiveFormat::Zip));
+        assert_eq!(detect_archive_format(Path::new("module.ear")), Some(ArchiveFormat::Zip));
+        assert_eq!(detect_archive_format(Path::new("game.apk")), Some(ArchiveFormat::Zip));
+        assert_eq!(detect_archive_format(Path::new("app.ipa")), Some(ArchiveFormat::Zip));
+    }
+
+    #[test]
+    fn detect_tar_non_compresse() {
+        assert_eq!(detect_archive_format(Path::new("backup.tar")), Some(ArchiveFormat::Tar));
+        assert_eq!(detect_archive_format(Path::new("ARCHIVE.TAR")), Some(ArchiveFormat::Tar));
     }
 
     #[test]

@@ -198,6 +198,11 @@ where
     // - archive_phase2 : extraction + pHash sur les images (mode Image)
     // - archive_phase_audio : extraction + fpcalc sur les audios (mode Audio)
     // Phase 2 et phase audio sont mutuellement exclusives (mode Image vs Audio).
+    //
+    // Pour les tar.* le comptage exact requiert de decompresser le stream pour lire
+    // les headers (5-30s sur de gros tar.bz2). On emet une phase "counting_archives"
+    // visible cote frontend avec le nom de l'archive en cours, sinon l'utilisateur voit
+    // l'app figee entre "Lecture des fichiers" et la Phase 1.
     let (archive_phase1_count, archive_phase2_image_count, archive_audio_count) = if params.scan_archives {
         let archive_files: Vec<&DuplicateFile> = all_files_for_archives.iter()
             .filter(|f| archive::detect_archive_format(std::path::Path::new(&f.path)).is_some())
@@ -205,20 +210,23 @@ where
         if archive_files.len() < 2 {
             (0usize, 0usize, 0usize)
         } else {
-            let p1: usize = archive_files.iter()
-                .map(|f| archive::count_entries_fast(std::path::Path::new(&f.path)))
-                .sum::<usize>().max(1);
-            let p2 = if params.find_similar && !params.skip_archive_extraction {
-                archive_files.iter()
-                    .map(|f| archive::count_archive_image_entries(std::path::Path::new(&f.path)))
-                    .sum()
-            } else { 0 };
-            let p3 = if params.find_similar_audio && !params.skip_archive_extraction {
-                archive_files.iter()
-                    .map(|f| archive::count_archive_audio_entries(std::path::Path::new(&f.path)))
-                    .sum()
-            } else { 0 };
-            (p1, p2, p3)
+            let n_arch = archive_files.len();
+            let mut p1: usize = 0;
+            let mut p2: usize = 0;
+            let mut p3: usize = 0;
+            let want_p2 = params.find_similar && !params.skip_archive_extraction;
+            let want_p3 = params.find_similar_audio && !params.skip_archive_extraction;
+            for (i, f) in archive_files.iter().enumerate() {
+                if cancelled.load(Ordering::Relaxed) { break; }
+                // total=0 signale au frontend qu'on est en phase preliminaire (pas de
+                // bar de progression, juste un spinner + label + nom de fichier).
+                on_progress(0, 0, scanned_files, &f.name, i + 1, n_arch, "counting_archives");
+                let path = std::path::Path::new(&f.path);
+                p1 += archive::count_entries_fast(path);
+                if want_p2 { p2 += archive::count_archive_image_entries(path); }
+                if want_p3 { p3 += archive::count_archive_audio_entries(path); }
+            }
+            (p1.max(1), p2, p3)
         }
     } else {
         (0, 0, 0)
@@ -632,14 +640,19 @@ mod tests {
     /// desordre dans un test direct. La monotonie *visible* est garantie par le
     /// filtre max dans `commands/scan.rs` (snapshot ne s'ecrase que si current >=
     /// existing) ; cf. test d'integration scan_progress_monotone_via_throttle.
+    ///
+    /// Les emits avec total=0 sont **preliminaires** (phase counting_archives, avant que
+    /// total_work soit calcule) et exclus de la verification d'invariants. Ils servent
+    /// uniquement a faire vivre l'UI pendant le comptage des entrees d'archives tar/7z.
     fn assert_progress_invariants(recorded: &[(usize, usize)]) {
-        assert!(!recorded.is_empty(), "au moins un emit attendu");
-        let total = recorded[0].1;
-        for (i, &(cur, t)) in recorded.iter().enumerate() {
+        let scan_emits: Vec<(usize, usize)> = recorded.iter().filter(|(_, t)| *t > 0).copied().collect();
+        assert!(!scan_emits.is_empty(), "au moins un emit avec total > 0 attendu");
+        let total = scan_emits[0].1;
+        for (i, &(cur, t)) in scan_emits.iter().enumerate() {
             assert_eq!(t, total, "total doit etre constant (emit #{})", i);
             assert!(cur <= total, "current ne doit jamais depasser total : emit #{} cur={} > total={}", i, cur, total);
         }
-        let max_cur = recorded.iter().map(|(c, _)| *c).max().unwrap();
+        let max_cur = scan_emits.iter().map(|(c, _)| *c).max().unwrap();
         assert_eq!(max_cur, total, "current max doit egaler total (= 100% atteint)");
     }
 

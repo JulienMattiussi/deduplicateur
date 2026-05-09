@@ -76,7 +76,7 @@ pub fn estimate_extraction_size_filtered(
             };
             match format {
                 ArchiveFormat::Zip => estimate_zip(arch_path, filter),
-                ArchiveFormat::TarGz | ArchiveFormat::TarBz2 | ArchiveFormat::TarXz | ArchiveFormat::TarZst => {
+                ArchiveFormat::Tar | ArchiveFormat::TarGz | ArchiveFormat::TarBz2 | ArchiveFormat::TarXz | ArchiveFormat::TarZst => {
                     estimate_tar_fast(arch_path)
                 }
                 ArchiveFormat::SevenZip => estimate_sevenz(arch_path, filter),
@@ -172,7 +172,7 @@ pub fn extract_entries_filtered(
 
         let result = match format {
             ArchiveFormat::Zip => extract_zip(arch_path, arch_idx, &arch_subdir, &mut items, filter, on_entry),
-            ArchiveFormat::TarGz | ArchiveFormat::TarBz2 | ArchiveFormat::TarXz | ArchiveFormat::TarZst => {
+            ArchiveFormat::Tar | ArchiveFormat::TarGz | ArchiveFormat::TarBz2 | ArchiveFormat::TarXz | ArchiveFormat::TarZst => {
                 extract_tar(arch_path, format, arch_idx, &arch_subdir, &mut items, filter, on_entry)
             }
             ArchiveFormat::SevenZip => extract_sevenz(arch_path, arch_idx, &arch_subdir, &mut items, filter, on_entry),
@@ -234,6 +234,7 @@ fn extract_tar(
 ) -> std::io::Result<()> {
     let file = File::open(arch_path)?;
     match format {
+        ArchiveFormat::Tar => extract_tar_inner(tar::Archive::new(file), arch_idx, out_dir, items, filter, on_entry),
         ArchiveFormat::TarGz => extract_tar_inner(tar::Archive::new(flate2::read::GzDecoder::new(file)), arch_idx, out_dir, items, filter, on_entry),
         ArchiveFormat::TarBz2 => extract_tar_inner(tar::Archive::new(bzip2::read::BzDecoder::new(file)), arch_idx, out_dir, items, filter, on_entry),
         ArchiveFormat::TarXz => extract_tar_inner(tar::Archive::new(xz2::read::XzDecoder::new(file)), arch_idx, out_dir, items, filter, on_entry),

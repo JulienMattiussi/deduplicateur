@@ -3,7 +3,7 @@ import { interp, pluralInterp, type Translations } from "../i18n";
 import type { ScanProgress, ScanPhase } from "../types";
 import { ProgressETA } from "./ProgressETA";
 
-const PHASE_ORDER: ScanPhase[] = ["reading", "exact", "images", "videos", "audio", "archives", "archives_phash", "archives_audio"];
+const PHASE_ORDER: ScanPhase[] = ["reading", "counting_archives", "exact", "images", "videos", "audio", "archives", "archives_phash", "archives_audio"];
 
 interface Props {
   progress: ScanProgress | null;
@@ -19,6 +19,7 @@ export function ScanProgressView({ progress, detectionMode, scanArchives, histor
 
   const phaseNames: Record<ScanPhase, string> = {
     reading: t.phaseReading,
+    counting_archives: t.phaseCountingArchives,
     exact: t.phaseExact,
     images: t.phaseImages,
     videos: t.phaseVideos,
@@ -33,7 +34,9 @@ export function ScanProgressView({ progress, detectionMode, scanArchives, histor
     detectionMode === "images" ? ["reading", "exact", "images"] :
     detectionMode === "videos" ? ["reading", "exact", "videos"] :
     ["reading", "exact", "audio"];
-  let relevantPhases: ScanPhase[] = scanArchives ? [...baseRelevant, "archives"] : baseRelevant;
+  // Avec scan_archives, le comptage des archives est visible upfront (peut prendre
+  // qq secondes sur des gros tar.bz2 qui doivent etre decompresses pour lire les headers).
+  let relevantPhases: ScanPhase[] = scanArchives ? [...baseRelevant, "counting_archives", "archives"] : baseRelevant;
   // Phase 2 d'archive (extraction + pHash) ne tourne qu'en mode Image avec scan_archives
   if (scanArchives && detectionMode === "images") {
     relevantPhases = [...relevantPhases, "archives_phash"];
@@ -48,7 +51,9 @@ export function ScanProgressView({ progress, detectionMode, scanArchives, histor
   const lastPhase: ScanPhase = relevantPhases[relevantPhases.length - 1];
   const isLastPhase = phase === lastPhase;
 
-  const isReading = !phase || phase === "reading";
+  // "reading" + "counting_archives" sont des phases preliminaires : pas de barre de
+  // progression (total_work pas encore calcule), juste un spinner + nom du fichier en cours.
+  const isReading = !phase || phase === "reading" || phase === "counting_archives";
   const showBar = !isReading && progress && progress.total > 0;
   const pct = showBar ? Math.min(100, Math.round((progress.current / progress.total) * 100)) : 0;
 
@@ -59,6 +64,7 @@ export function ScanProgressView({ progress, detectionMode, scanArchives, histor
     : phase === "archives" ? t.typeArchives
     : phase === "archives_phash" ? t.typeArchivesPhash
     : phase === "archives_audio" ? t.typeArchivesAudio
+    : phase === "counting_archives" ? t.typeArchives
     : "";
 
   const heartbeat = progress?.current ?? 0;
@@ -77,7 +83,7 @@ export function ScanProgressView({ progress, detectionMode, scanArchives, histor
           );
         })}
       </div>
-      {!isReading && progress?.phase_current != null && (progress.phase_total ?? 0) > 0 && (
+      {progress?.phase_current != null && (progress.phase_total ?? 0) > 0 && phase !== "reading" && (
         <p className="progress-label">
           {interp(t.scanProgress, { n: progress.phase_current, m: progress.phase_total!, type: fileType })}
         </p>
@@ -88,7 +94,12 @@ export function ScanProgressView({ progress, detectionMode, scanArchives, histor
         </p>
       )}
       {isReading ? (
-        <div className="spinner" />
+        <>
+          <div className="spinner" />
+          {phase === "counting_archives" && progress?.file && (
+            <p className="progress-filename">{progress.file}</p>
+          )}
+        </>
       ) : showBar ? (
         <>
           <div className="progress-track">

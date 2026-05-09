@@ -896,11 +896,7 @@ En mode "Comparer avec un autre dossier" : dossier source S et dossier de réfé
 
 **Découpage en livrables** : C1 d'abord (backend complet, testable seul via `cargo test`), puis C2 + C3 ensemble (frontend cohérent), puis C4 (cleanup + doc).
 
----
-
-### Phase 27D - Mode Vidéo (différé)
-
-**Note** : les entrées vidéo dans les archives nécessitent une extraction obligatoire en temp file (ffmpeg/ffprobe travaillent sur des chemins disque). Le gain pratique est faible (les vidéos sont rarement archivées). À traiter séparément si le besoin se confirme.
+**Note sur le mode Vidéo archives** : non implémenté et **abandonné**. Personne ne zippe des vidéos, et si ça arrivait par accident, ce ne serait pas un cas à dédoublonner. Pas la peine d'investir dans le miroir 27D pour la complétude formelle.
 
 ---
 

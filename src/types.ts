@@ -1,4 +1,4 @@
-export type ScanPhase = "reading" | "exact" | "images" | "videos" | "audio" | "archives" | "archives_phash" | "archives_audio";
+export type ScanPhase = "reading" | "counting_archives" | "exact" | "images" | "videos" | "audio" | "archives" | "archives_phash" | "archives_audio";
 
 export interface ScanProgress {
   current: number;
