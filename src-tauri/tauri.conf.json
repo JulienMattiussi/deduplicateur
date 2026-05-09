@@ -38,6 +38,10 @@
       "wix": {
         "bannerPath": "wix/banner.bmp",
         "dialogImagePath": "wix/dialog.bmp"
+      },
+      "nsis": {
+        "headerImage": "nsis/header.bmp",
+        "sidebarImage": "nsis/sidebar.bmp"
       }
     }
   },
