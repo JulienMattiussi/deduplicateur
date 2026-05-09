@@ -253,6 +253,9 @@ sous la racine scannée. Les niveaux plus profonds sont mis à plat (ignorés). 
 Les groupes sont triés par `folder_key` alphabétique, puis par espace gaspillé décroissant
 à l'intérieur de chaque dossier. La clé vide `""` passe donc avant toute lettre.
 
+### `value || undefined` sur un bool requis : "missing required key"
+Pattern piège : `scanArchives: config.scanArchives || undefined` dans les args d'un `invoke`. Quand le bool vaut `false`, l'expression évalue à `undefined`, Tauri sérialise la clé comme absente, et la commande Rust qui attend un `bool` non-optionnel rejette avec "command X missing required key Y". À l'inverse, c'est OK pour des clés déclarées `Option<T>` côté Rust (timestamps, secondaryFolder...). Règle : ne jamais utiliser `|| undefined` sur un bool, passer la valeur telle quelle (`scanArchives: config.scanArchives`).
+
 ### Paramètres Tauri : camelCase JS → snake_case Rust
 Tauri 2 convertit automatiquement les paramètres de commande entre camelCase (JS) et
 snake_case (Rust). Ne pas nommer les paramètres Rust en camelCase.

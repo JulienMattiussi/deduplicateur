@@ -59,7 +59,7 @@ export function buildScanArgsFromConfig(config: ScanConfigShape, lang: string): 
     secondaryFolder: config.scanMode === "compare_folder" ? (config.secondaryFolder || null) : null,
     minModifiedTimestamp: minModifiedTimestamp || undefined,
     maxModifiedTimestamp: maxModifiedTimestamp || undefined,
-    scanArchives: config.scanArchives || undefined,
+    scanArchives: config.scanArchives,
   };
 }
 
@@ -91,6 +91,7 @@ export function buildScanArgsFromProfile(
     includeExtensions: profile.include_extensions,
     minFileSizeKb: profile.min_file_size_kb,
     maxFileSizeKb: profile.max_file_size_kb,
+    scanArchives: false,
   };
 }
 

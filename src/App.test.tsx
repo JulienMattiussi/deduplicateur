@@ -1077,6 +1077,29 @@ describe("S - option Analyser les archives", () => {
     });
   });
 
+  it("checkbox decochee envoie scanArchives: false (pas undefined) dans les args scan", async () => {
+    const user = userEvent.setup();
+    mockInvoke.mockImplementation(
+      makeDefaultMock({
+        scan_folder: baseSummary,
+        get_groups_page: { groups: [], offset: 0, total: 0, has_more: false },
+      })
+    );
+    mockDialogOpen.mockResolvedValue("/home/test");
+
+    render(<App />);
+    await user.click(screen.getByText(/Cliquer pour choisir un dossier/));
+    await waitFor(() => screen.getByText("/home/test"));
+
+    await user.click(screen.getByText("Analyser"));
+
+    await waitFor(() => {
+      const call = mockInvoke.mock.calls.find((c) => c[0] === "scan_folder");
+      expect(call).toBeDefined();
+      expect(call![1]).toHaveProperty("scanArchives", false);
+    });
+  });
+
   it("la section archives s'affiche si archiveGroups.length > 0 apres scan", async () => {
     const user = userEvent.setup();
     const summaryWithArchives = { ...baseSummary, archive_groups_count: 1 };
