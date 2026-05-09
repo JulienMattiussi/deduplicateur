@@ -110,6 +110,12 @@ Deux variantes :
 
 > **Windows** : au premier lancement, SmartScreen peut afficher un avertissement. Cliquer sur « Plus d'informations » puis « Exécuter quand même ».
 
+> **macOS** : l'app n'étant pas signée par un Developer ID Apple, Gatekeeper affiche au premier lancement « Deduplicateur est endommagé et ne peut pas être ouvert » (le message est trompeur, l'app n'est pas corrompue). Glisser l'app dans `/Applications` depuis le `.dmg`, éjecter l'image disque, puis lancer une seule fois dans Terminal :
+> ```bash
+> xattr -cr /Applications/Deduplicateur.app
+> ```
+> L'app se lance ensuite normalement par double-clic. À refaire à chaque nouvelle version téléchargée.
+
 > **Variante light** : ffmpeg et / ou fpcalc doivent être dans le `PATH` système. Voir [docs/ffmpeg.md](docs/ffmpeg.md) et [docs/fpcalc.md](docs/fpcalc.md).
 
 ---
