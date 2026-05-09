@@ -8,7 +8,7 @@ use rayon::prelude::*;
 
 use crate::exact_cache::ExactCache;
 use super::hash::{hash_partial, hash_full};
-use super::types::{DuplicateFile, DuplicateGroup, FileSource, ScanParams};
+use super::types::{sort_files_by_origin, DuplicateFile, DuplicateGroup, FileSource, ScanParams};
 use super::Ctx;
 
 // Phase de hash exact : signature stable pour matcher l'orchestration scanner/mod.rs.
@@ -156,7 +156,8 @@ where
         let partition_groups: Vec<DuplicateGroup> = by_full
             .into_iter()
             .filter(|(_, files)| files.len() >= 2)
-            .map(|(hash, files)| {
+            .map(|(hash, mut files)| {
+                sort_files_by_origin(&mut files);
                 let size = files[0].size;
                 DuplicateGroup {
                     id: uuid::Uuid::new_v4().to_string(),

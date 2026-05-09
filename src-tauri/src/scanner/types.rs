@@ -235,6 +235,13 @@ pub fn is_cross_source_group(group: &DuplicateGroup) -> bool {
     has_primary && has_secondary
 }
 
+/// Trie les fichiers d'un groupe pour qu'a l'affichage le plus ancien recoive
+/// le badge "original" (index 0). Tri par mtime ascendant, puis nom alphabetique
+/// en tiebreaker.
+pub fn sort_files_by_origin(files: &mut [DuplicateFile]) {
+    files.sort_by(|a, b| a.modified.cmp(&b.modified).then_with(|| a.name.cmp(&b.name)));
+}
+
 /// Retire de `candidates` tout fichier dont le chemin apparait deja dans `existing_groups`.
 pub fn filter_exact_candidates(
     candidates: Vec<DuplicateFile>,
@@ -275,7 +282,8 @@ pub fn build_similar_groups(
     let mut groups = Vec::new();
     for (_, indices) in group_map {
         if indices.len() < 2 { continue; }
-        let files: Vec<DuplicateFile> = indices.iter().map(|&i| get_file(i)).collect();
+        let mut files: Vec<DuplicateFile> = indices.iter().map(|&i| get_file(i)).collect();
+        sort_files_by_origin(&mut files);
         let fk = folder_key(&files);
         let g = DuplicateGroup {
             id: uuid::Uuid::new_v4().to_string(),
@@ -319,6 +327,35 @@ mod tests {
             files: paths.iter().map(|p| make_file(p)).collect(),
             folder_key: None, similar: false, video_similar: false, audio_similar: false,
         }
+    }
+
+    fn make_file_at(path: &str, modified: u64) -> DuplicateFile {
+        DuplicateFile { modified, ..make_file(path) }
+    }
+
+    #[test]
+    fn sort_files_by_origin_place_le_plus_ancien_en_premier() {
+        // Cas typique : la copie a une mtime plus recente que l'original.
+        let mut files = vec![
+            make_file_at("Deduplicateur copie.dmg", 200),
+            make_file_at("Deduplicateur.dmg", 100),
+        ];
+        sort_files_by_origin(&mut files);
+        assert_eq!(files[0].name, "Deduplicateur.dmg");
+        assert_eq!(files[1].name, "Deduplicateur copie.dmg");
+    }
+
+    #[test]
+    fn sort_files_by_origin_tiebreaker_alphabetique_si_meme_mtime() {
+        let mut files = vec![
+            make_file_at("z.txt", 100),
+            make_file_at("a.txt", 100),
+            make_file_at("m.txt", 100),
+        ];
+        sort_files_by_origin(&mut files);
+        assert_eq!(files[0].name, "a.txt");
+        assert_eq!(files[1].name, "m.txt");
+        assert_eq!(files[2].name, "z.txt");
     }
 
     #[test]

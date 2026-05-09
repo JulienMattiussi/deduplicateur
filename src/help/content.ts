@@ -189,7 +189,7 @@ The initial **"Collecting files…"** phase (no progress bar) can take a few sec
     body: {
       fr: `Les résultats sont organisés en **groupes** : chaque groupe contient des fichiers identiques ou similaires entre eux.
 
-**Badge "original"** : le premier fichier de chaque groupe reçoit ce badge. C'est une convention d'affichage - tous les fichiers du groupe sont techniquement équivalents.
+**Badge "original"** : le fichier le plus ancien (date de modification la plus basse) de chaque groupe reçoit ce badge. C'est une convention d'affichage utile en pratique ; tous les fichiers du groupe restent techniquement équivalents au byte près.
 
 **Espace en double** : affiché en haut à droite de chaque groupe. C'est l'espace récupéré en ne gardant qu'un seul exemplaire : (nombre de fichiers − 1) × taille.
 
@@ -198,7 +198,7 @@ The initial **"Collecting files…"** phase (no progress bar) can take a few sec
 Cliquez sur l'en-tête d'un groupe **(▾/▸)** pour le déplier ou replier.`,
       en: `Results are organized in **groups**: each group contains identical or similar files.
 
-**"Original" badge**: the first file in each group gets this badge. This is a display convention - all files in the group are technically equivalent.
+**"Original" badge**: the oldest file (lowest modified time) in each group gets this badge. This is a useful display convention; all files in the group remain technically equivalent at the byte level.
 
 **Duplicate space**: shown in the top-right of each group header. It's the space recovered by keeping only one copy: (number of files − 1) × size.
 
@@ -311,7 +311,7 @@ Clicking the **thumbnail** of an image, video, or audio file opens it directly i
     body: {
       fr: `Cliquez sur n'importe quelle ligne de fichier pour la cocher ou la décocher. La ligne entière est cliquable, pas seulement la case à cocher.
 
-**Tout cocher** : sélectionne automatiquement tous les doublons. Le premier fichier de chaque groupe (l'"original") n'est jamais coché automatiquement.
+**Tout cocher** : sélectionne automatiquement tous les doublons. Le fichier le plus ancien de chaque groupe (l'"original") n'est jamais coché automatiquement.
 
 **Désélectionner** : efface toute la sélection courante.
 
@@ -322,7 +322,7 @@ Clicking the **thumbnail** of an image, video, or audio file opens it directly i
 - **Échap** : ferme la boîte de confirmation`,
       en: `Click any file row to check or uncheck it. The entire row is clickable, not just the checkbox.
 
-**Select all**: automatically checks all duplicates. The first file in each group (the "original") is never auto-checked.
+**Select all**: automatically checks all duplicates. The oldest file in each group (the "original") is never auto-checked.
 
 **Deselect**: clears the entire current selection.
 
