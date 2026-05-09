@@ -108,12 +108,12 @@ L'événement `scan:progress` a une sémantique stricte que **toutes les phases 
 - Filtre max dans `commands/scan.rs` (snapshot mutex) : on n'écrase la valeur courante que si `new_current >= existing`. Sans ce filtre, des emits parallèles arrivant out-of-order (thread A `fetch_add=4` mais son emit traverse le mutex après B `fetch_add=5`) feraient reculer le snapshot vu par le frontend.
 - **Comptage des entrées d'archive : exact, pas heuristique.** `count_entries_fast` et `count_archive_image_entries` itèrent réellement les archives (random access pour ZIP, headers pour 7z, décompression du stream pour tar.* avec auto-skip des données via `Drop`). L'ancienne heuristique `size / 100000` sous-estimait systématiquement les tars denses (renpy.tar.bz2 : 2000 estimé vs 3134 réel), faisant atteindre 100% en pleine phase archive. Le coût (quelques secondes au démarrage du scan pour les gros tar) est acceptable pour avoir une barre correcte. Ne JAMAIS revenir à une heuristique basée sur `size`.
 
-Tests d'invariants (`scanner::tests::progression_*`) — **à garder verts en permanence**, sentinelle anti-régression :
+Tests d'invariants (`scanner::tests::progression_*`) - **à garder verts en permanence**, sentinelle anti-régression :
 - `progression_atteint_total_avec_phases_simples` : exact + pHash → atteint pile `total_work`.
 - `progression_atteint_total_avec_archives` : cas le plus complexe (matching silencieux d'archives Phase 2) → atteint pile `total_work` grâce au sync final.
 - `progression_apres_filtre_snapshot_max_strictement_monotone` : avec le filtre max simulé dans le test, la séquence vue par le frontend est strictement croissante.
 - Helper `assert_progress_invariants` : aucun emit ne dépasse `total`, le max atteint == `total`.
-Si l'un de ces tests casse après une modif de phase, c'est probablement une constante `EMITS_*` désalignée ou un sync manquant — ne PAS relâcher l'assertion, corriger la cause.
+Si l'un de ces tests casse après une modif de phase, c'est probablement une constante `EMITS_*` désalignée ou un sync manquant - ne PAS relâcher l'assertion, corriger la cause.
 
 Conséquences pratiques :
 - Pour ajouter une phase nouvelle, il faut définir sa constante `EMITS_*`, l'ajouter à `total_work`, et appeler `sync_to(budget_after_X)` après l'avoir exécutée. Sinon le 100% n'est pas atteint pile.
@@ -158,7 +158,7 @@ Quand un bug ne reproduit pas ou que la cause n'est pas évidente après lecture
 4. Diagnostic immédiat (ou nouvelle hypothèse à tester avec d'autres logs)
 5. **Retirer les logs avant commit**
 
-Exemple vécu : recompute des compteurs d'archives qui ne marchait pas. 3 itérations de spéculations infructueuses. Un seul jeu de logs (état du cache + seuil + compteurs avant/après) a révélé `sim_threshold=0` dans la session — root cause invisible depuis le code seul. À adopter dès qu'un fix "logique" ne suffit pas.
+Exemple vécu : recompute des compteurs d'archives qui ne marchait pas. 3 itérations de spéculations infructueuses. Un seul jeu de logs (état du cache + seuil + compteurs avant/après) a révélé `sim_threshold=0` dans la session - root cause invisible depuis le code seul. À adopter dès qu'un fix "logique" ne suffit pas.
 
 ## Pièges Tauri 2 rencontrés
 

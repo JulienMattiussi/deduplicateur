@@ -52,7 +52,7 @@ Le chemin sélectionné s'affiche dans la zone de sélection. L'analyse ne déma
 
 **Drag and drop**: you can also drag a folder directly from your file explorer onto the application window. A blue "Drop a folder here" banner confirms detection.
 
-The selected path is shown in the selection area. The scan does not start automatically — click **Scan** to launch.`,
+The selected path is shown in the selection area. The scan does not start automatically - click **Scan** to launch.`,
     },
   },
 
@@ -161,14 +161,14 @@ The selected path is shown in the selection area. The scan does not start automa
     body: {
       fr: `Cliquez sur **Analyser** pour démarrer. Le bouton est grisé si aucun dossier n'est sélectionné.
 
-Pendant l'analyse, une barre de progression indique le nombre de fichiers traités et le total. En dessous s'affiche en bleu le **nombre de doublons trouvés au total** jusqu'à ce stade du scan — ce compteur est cumulatif sur toutes les phases (doublons exacts, images similaires, vidéos, audio). Une estimation du temps restant s'affiche après quelques secondes : "environ 2 min", "presque fini"…
+Pendant l'analyse, une barre de progression indique le nombre de fichiers traités et le total. En dessous s'affiche en bleu le **nombre de doublons trouvés au total** jusqu'à ce stade du scan - ce compteur est cumulatif sur toutes les phases (doublons exacts, images similaires, vidéos, audio). Une estimation du temps restant s'affiche après quelques secondes : "environ 2 min", "presque fini"…
 
 La première phase **"Collecte des fichiers…"** (sans barre de progression) peut durer quelques secondes sur les très grands dossiers.
 
 **Annuler** : cliquez sur le bouton "Annuler" pour interrompre le scan. Les groupes déjà trouvés sont conservés et affichés avec un bandeau orange **"Résultats partiels"**. Vous pouvez supprimer des fichiers même sur des résultats partiels.`,
       en: `Click **Scan** to start. The button is grayed out if no folder is selected.
 
-During the scan, a progress bar shows processed files vs. total. Below it, a blue counter shows the **total number of duplicate groups found so far** — this counter is cumulative across all phases (exact, similar images, videos, audio). A time estimate appears after a few seconds: "about 2 min", "almost done"…
+During the scan, a progress bar shows processed files vs. total. Below it, a blue counter shows the **total number of duplicate groups found so far** - this counter is cumulative across all phases (exact, similar images, videos, audio). A time estimate appears after a few seconds: "about 2 min", "almost done"…
 
 The initial **"Collecting files…"** phase (no progress bar) can take a few seconds on very large folders.
 
@@ -189,7 +189,7 @@ The initial **"Collecting files…"** phase (no progress bar) can take a few sec
     body: {
       fr: `Les résultats sont organisés en **groupes** : chaque groupe contient des fichiers identiques ou similaires entre eux.
 
-**Badge "original"** : le premier fichier de chaque groupe reçoit ce badge. C'est une convention d'affichage — tous les fichiers du groupe sont techniquement équivalents.
+**Badge "original"** : le premier fichier de chaque groupe reçoit ce badge. C'est une convention d'affichage - tous les fichiers du groupe sont techniquement équivalents.
 
 **Espace en double** : affiché en haut à droite de chaque groupe. C'est l'espace récupéré en ne gardant qu'un seul exemplaire : (nombre de fichiers − 1) × taille.
 
@@ -198,7 +198,7 @@ The initial **"Collecting files…"** phase (no progress bar) can take a few sec
 Cliquez sur l'en-tête d'un groupe **(▾/▸)** pour le déplier ou replier.`,
       en: `Results are organized in **groups**: each group contains identical or similar files.
 
-**"Original" badge**: the first file in each group gets this badge. This is a display convention — all files in the group are technically equivalent.
+**"Original" badge**: the first file in each group gets this badge. This is a display convention - all files in the group are technically equivalent.
 
 **Duplicate space**: shown in the top-right of each group header. It's the space recovered by keeping only one copy: (number of files − 1) × size.
 
@@ -224,12 +224,12 @@ Click a group header **(▾/▸)** to expand or collapse it.`,
 - 🎵 **X fichiers audio similaires / identiques**
 - **X fichiers identiques** (autres types)
 
-**Similaires** signifie que les fichiers ont été rapprochés par empreinte visuelle ou acoustique — pas forcément identiques bit à bit. **Identiques** signifie même contenu exact.
+**Similaires** signifie que les fichiers ont été rapprochés par empreinte visuelle ou acoustique - pas forcément identiques bit à bit. **Identiques** signifie même contenu exact.
 
 Chaque ligne affiche toujours une **icône de type** dans la première colonne :
 - Images, vidéos : miniature générée (cliquable pour ouvrir dans l'application par défaut)
 - Audio : bouton lecture
-- Autres fichiers : icône selon la catégorie — PDF, archive (zip, rar…), code source, document texte (doc, txt, md…), tableur (xls, csv…), présentation, ou icône générique
+- Autres fichiers : icône selon la catégorie - PDF, archive (zip, rar…), code source, document texte (doc, txt, md…), tableur (xls, csv…), présentation, ou icône générique
 
 Pour les images, vidéos et audio, la ligne affiche aussi la **taille** individuelle et la **durée** (vidéos/audio).`,
       en: `Each group header shows an icon and description based on the detected type:
@@ -239,12 +239,12 @@ Pour les images, vidéos et audio, la ligne affiche aussi la **taille** individu
 - 🎵 **X similar / identical audio files**
 - **X identical files** (other types)
 
-**Similar** means files were matched by visual or acoustic fingerprint — not necessarily bit-for-bit identical. **Identical** means exact same content.
+**Similar** means files were matched by visual or acoustic fingerprint - not necessarily bit-for-bit identical. **Identical** means exact same content.
 
 Every row always shows a **type icon** in the first column:
 - Images, videos: generated thumbnail (click to open in the default app)
 - Audio: play button
-- Other files: icon based on category — PDF, archive (zip, rar…), source code, text document (doc, txt, md…), spreadsheet (xls, csv…), presentation, or generic icon
+- Other files: icon based on category - PDF, archive (zip, rar…), source code, text document (doc, txt, md…), spreadsheet (xls, csv…), presentation, or generic icon
 
 For images, videos, and audio, the row also shows individual **size** and **duration** (videos/audio).`,
     },
@@ -283,14 +283,14 @@ For images, videos, and audio, the row also shows individual **size** and **dura
     body: {
       fr: `Chaque ligne affiche un **bouton dossier** (icône 📁) à droite du chemin. Cliquez dessus pour ouvrir le dossier contenant ce fichier dans l'explorateur de votre système (Finder sur macOS, Nautilus/Dolphin sur Linux, Explorateur sur Windows).
 
-**Chemin tronqué** : si le chemin est trop long, il est coupé par la gauche — la partie la plus informative (la fin) reste toujours visible. Survolez le chemin pour afficher le chemin complet dans une infobulle.
+**Chemin tronqué** : si le chemin est trop long, il est coupé par la gauche - la partie la plus informative (la fin) reste toujours visible. Survolez le chemin pour afficher le chemin complet dans une infobulle.
 
 **Point orange** : quand deux fichiers ou plus du même groupe sont dans le même dossier, un point orange apparaît devant leur chemin. Survolez le point pour lire l'explication.
 
 Cliquer sur la **miniature** d'une image, d'une vidéo ou d'un fichier audio ouvre directement le fichier dans l'application par défaut.`,
       en: `Each row shows a **folder button** (📁 icon) to the right of the path. Click it to open the folder containing the file in your system's file manager (Finder on macOS, Nautilus/Dolphin on Linux, Explorer on Windows).
 
-**Truncated path**: if the path is too long, it is clipped from the left — the most informative part (the end) always stays visible. Hover over the path to see the full path in a tooltip.
+**Truncated path**: if the path is too long, it is clipped from the left - the most informative part (the end) always stays visible. Hover over the path to see the full path in a tooltip.
 
 **Orange dot**: when two or more files in the same group are in the same folder, an orange dot appears before their path. Hover the dot to read the explanation.
 
@@ -351,7 +351,7 @@ Clicking the **thumbnail** of an image, video, or audio file opens it directly i
 - **Garder le plus grand fichier** : utile pour l'audio et la vidéo où le fichier le plus lourd est généralement de meilleure qualité.
 - **Garder dans le dossier prioritaire** : voir l'article dédié.
 
-La règle ne remplace pas une sélection manuelle — vous pouvez affiner manuellement après avoir appliqué une règle.`,
+La règle ne remplace pas une sélection manuelle - vous pouvez affiner manuellement après avoir appliqué une règle.`,
       en: `The **"Rule:"** dropdown lets you choose a strategy, then click **Apply** to apply it to all groups at once.
 
 - **Keep newest**: checks everything except the most recently modified file in each group.
@@ -360,7 +360,7 @@ La règle ne remplace pas une sélection manuelle — vous pouvez affiner manuel
 - **Keep largest file**: useful for audio and video where the heavier file is usually better quality.
 - **Keep in priority folder**: see the dedicated article.
 
-The rule does not replace manual selection — you can fine-tune manually after applying a rule.`,
+The rule does not replace manual selection - you can fine-tune manually after applying a rule.`,
     },
   },
 
@@ -379,7 +379,7 @@ Saisissez un chemin partiel ou complet dans le champ **"Chemin prioritaire…"**
 
 **Si plusieurs fichiers sont dans le dossier prioritaire** : seul le plus récent parmi eux est conservé, les autres sont cochés.
 
-**Si aucun fichier n'est dans le dossier prioritaire** : aucun fichier n'est coché dans ce groupe. C'est intentionnel — l'app préfère ne rien sélectionner plutôt que supprimer par erreur.
+**Si aucun fichier n'est dans le dossier prioritaire** : aucun fichier n'est coché dans ce groupe. C'est intentionnel - l'app préfère ne rien sélectionner plutôt que supprimer par erreur.
 
 Le chemin est comparé par inclusion : saisir "Photos importantes" suffit si c'est dans le chemin complet.`,
       en: `The **"Keep in priority folder"** rule checks all files except those located in the specified path.
@@ -388,7 +388,7 @@ Enter a partial or full path in the **"Priority path…"** field that appears wh
 
 **If multiple files are in the priority folder**: only the most recent among them is kept, the others are checked.
 
-**If no file is in the priority folder**: no file is checked in that group. This is intentional — the app prefers leaving a group unselected rather than deleting by mistake.
+**If no file is in the priority folder**: no file is checked in that group. This is intentional - the app prefers leaving a group unselected rather than deleting by mistake.
 
 Path matching is by inclusion: typing "Important Photos" is enough if it's part of the full path.`,
     },
@@ -513,20 +513,20 @@ This mode is ideal for photo or music libraries organized by folder.`,
     body: {
       fr: `**Mode côte à côte** (défaut) : les deux images sélectionnées s'affichent en parallèle avec leurs métadonnées complètes (dimensions, format, date EXIF, taille, nom de fichier).
 
-**Mode superposition** : cliquez sur le bouton **⧉** pour basculer. Un curseur horizontal vous permet de révéler progressivement l'une ou l'autre image — faites glisser pour comparer les zones de transition.
+**Mode superposition** : cliquez sur le bouton **⧉** pour basculer. Un curseur horizontal vous permet de révéler progressivement l'une ou l'autre image - faites glisser pour comparer les zones de transition.
 
 **Choisir les images affichées** : des onglets en haut de chaque colonne (Gauche / Droite) permettent de sélectionner quel fichier du groupe s'affiche de chaque côté. Vous pouvez ainsi comparer n'importe quelle paire.
 
-**Garder celui-ci** : bouton sous chaque image. Il sélectionne les autres fichiers du groupe (les "doublons" à supprimer) et désélectionne celui-ci — indiquant que c'est le fichier à conserver.
+**Garder celui-ci** : bouton sous chaque image. Il sélectionne les autres fichiers du groupe (les "doublons" à supprimer) et désélectionne celui-ci - indiquant que c'est le fichier à conserver.
 
 Le bouton **📂** à côté du nom de dossier ouvre directement le dossier du fichier dans le gestionnaire de fichiers.`,
       en: `**Side-by-side mode** (default): the two selected images are displayed side by side with full metadata (dimensions, format, EXIF date, size, filename).
 
-**Overlay mode**: click the **⧉** button to switch. A horizontal slider lets you progressively reveal one image over the other — drag to compare transition areas.
+**Overlay mode**: click the **⧉** button to switch. A horizontal slider lets you progressively reveal one image over the other - drag to compare transition areas.
 
 **Choose displayed images**: tabs at the top of each column (Left / Right) let you select which file from the group appears on each side. You can compare any pair.
 
-**Keep this one**: button below each image. It checks the other files in the group (the "duplicates" to delete) and unchecks this one — indicating this is the file to keep.
+**Keep this one**: button below each image. It checks the other files in the group (the "duplicates" to delete) and unchecks this one - indicating this is the file to keep.
 
 The **📂** button next to the folder name opens the file's folder directly in the file manager.`,
     },
