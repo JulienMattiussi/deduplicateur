@@ -325,7 +325,7 @@ describe("F - chargement des metadonnees", () => {
     });
   });
 
-  it("n'appelle pas get_video_metadata si video_metadata est deja present", async () => {
+  it("appelle get_video_metadata systematiquement (cache de session peut manquer les infos audio)", async () => {
     const groupWithMeta = {
       ...group2,
       files: [
@@ -335,7 +335,8 @@ describe("F - chargement des metadonnees", () => {
     };
     renderComp({ groups: [groupWithMeta] });
     await waitFor(() => {
-      expect(mockInvoke).not.toHaveBeenCalledWith("get_video_metadata", expect.anything());
+      const calls = mockInvoke.mock.calls.filter((c) => c[0] === "get_video_metadata");
+      expect(calls.length).toBeGreaterThanOrEqual(2);
     });
   });
 

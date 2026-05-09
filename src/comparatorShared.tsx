@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import type { DuplicateGroup, DuplicateFile } from "./types";
 import { formatSize, dirname } from "./utils";
 import { useLang } from "./LangContext";
-import { revealInFolder } from "./fileActions";
+import { revealInFolder, openFile } from "./fileActions";
 
 /**
  * Construit une URL pour le serveur media local (audio/video) a partir d'un chemin disque.
@@ -246,6 +246,14 @@ export function MetaBlockBase({
       <div className="comparator-meta-row">
         <span className="comparator-meta-label">{t.colName}</span>
         <span className="comparator-meta-value comparator-meta-filename">{file.name}</span>
+        <button
+          className="btn-ghost btn-sm comparator-reveal-btn"
+          title={t.openFileBtn}
+          onClick={() => openFile(file.path)}
+          data-testid="comparator-open-file-btn"
+        >
+          ⏵
+        </button>
       </div>
       <div className="comparator-meta-row">
         <span className="comparator-meta-label">{t.colFolder}</span>

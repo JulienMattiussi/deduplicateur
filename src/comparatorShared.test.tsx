@@ -2,7 +2,10 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { LangProvider } from "./LangContext";
-import { KeepButton, toMediaUrl } from "./comparatorShared";
+import { KeepButton, MetaBlockBase, toMediaUrl } from "./comparatorShared";
+
+const mockInvoke = vi.fn();
+vi.mock("@tauri-apps/api/core", () => ({ invoke: (...args: any[]) => mockInvoke(...args) }));
 
 describe("toMediaUrl", () => {
   it("normalise les separateurs Windows en /", () => {
@@ -52,5 +55,29 @@ describe("KeepButton", () => {
     renderBtn(false, onKeep);
     await user.click(screen.getByRole("button"));
     expect(onKeep).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("MetaBlockBase - bouton ouvrir le fichier", () => {
+  function renderBlock() {
+    const file = { path: "/a/b/c.mp4", name: "c.mp4", size: 1024, modified: 0 };
+    return render(
+      <LangProvider>
+        <MetaBlockBase file={file} />
+      </LangProvider>
+    );
+  }
+
+  it("affiche un bouton lecteur (testid)", () => {
+    renderBlock();
+    expect(screen.getByTestId("comparator-open-file-btn")).toBeInTheDocument();
+  });
+
+  it("appelle invoke('open_file') au clic", async () => {
+    const user = userEvent.setup();
+    mockInvoke.mockReset();
+    renderBlock();
+    await user.click(screen.getByTestId("comparator-open-file-btn"));
+    expect(mockInvoke).toHaveBeenCalledWith("open_file", { path: "/a/b/c.mp4" });
   });
 });

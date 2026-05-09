@@ -519,7 +519,7 @@ This mode is ideal for photo or music libraries organized by folder.`,
 
 **Garder celui-ci** : bouton sous chaque image. Il sélectionne les autres fichiers du groupe (les "doublons" à supprimer) et désélectionne celui-ci - indiquant que c'est le fichier à conserver.
 
-Le bouton **📂** à côté du nom de dossier ouvre directement le dossier du fichier dans le gestionnaire de fichiers.`,
+Le bouton **📂** à côté du nom de dossier ouvre le dossier du fichier dans le gestionnaire de fichiers. Le bouton **⏵** à côté du nom du fichier ouvre directement le fichier dans le lecteur système (utile pour comparer dans un lecteur externe sans fermer le comparateur).`,
       en: `**Side-by-side mode** (default): the two selected images are displayed side by side with full metadata (dimensions, format, EXIF date, size, filename).
 
 **Overlay mode**: click the **⧉** button to switch. A horizontal slider lets you progressively reveal one image over the other - drag to compare transition areas.
@@ -528,7 +528,7 @@ Le bouton **📂** à côté du nom de dossier ouvre directement le dossier du f
 
 **Keep this one**: button below each image. It checks the other files in the group (the "duplicates" to delete) and unchecks this one - indicating this is the file to keep.
 
-The **📂** button next to the folder name opens the file's folder directly in the file manager.`,
+The **📂** button next to the folder name opens the file's folder in the file manager. The **⏵** button next to the file name opens the file directly in the system player (useful to compare in an external player without closing the comparator).`,
     },
   },
 
@@ -549,7 +549,7 @@ The **📂** button next to the folder name opens the file's folder directly in 
 
 **Formats lus directement** : \`.mp4\`, \`.webm\`, \`.mov\` (avec H.264/H.265). Les autres conteneurs (\`.flv\`, \`.mkv\`, \`.ts\`...) sont remuxés à la volée vers \`.mp4\` via ffmpeg si le codec vidéo est compatible (H.264, H.265, VP9). Une mention **"Préparation de la vidéo..."** s'affiche pendant l'opération (généralement instantanée car sans réencodage).
 
-**Format non lu** (\`.avi\` MPEG-4 ASP, \`.wmv\`, codecs anciens...) : un message s'affiche à la place du lecteur. Cliquer sur l'icône **📂** ouvre le fichier dans le lecteur système (VLC, MPV...). Les métadonnées du footer restent disponibles pour la comparaison.
+**Format non lu** (\`.avi\` MPEG-4 ASP, \`.wmv\`, codecs anciens comme \`vp6f\`...) : un message s'affiche à la place du lecteur. Cliquer sur l'icône **⏵** à côté du nom du fichier dans le footer ouvre le fichier dans le lecteur système (VLC, MPV...). Les métadonnées du footer restent disponibles pour la comparaison.
 
 **Navigation entre groupes** : utilisez les boutons **◀** et **▶** ou les touches **← →** du clavier pour passer d'un groupe au suivant sans fermer le comparateur.
 
@@ -560,7 +560,7 @@ The **📂** button next to the folder name opens the file's folder directly in 
 
 **Directly playable formats**: \`.mp4\`, \`.webm\`, \`.mov\` (with H.264/H.265). Other containers (\`.flv\`, \`.mkv\`, \`.ts\`...) are remuxed on the fly to \`.mp4\` via ffmpeg when the video codec is compatible (H.264, H.265, VP9). A **"Preparing video..."** message appears during the operation (usually instant since no reencoding).
 
-**Unsupported format** (\`.avi\` MPEG-4 ASP, \`.wmv\`, legacy codecs...): a message replaces the player. Click the **📂** icon to open the file in your system player (VLC, MPV...). Footer metadata stays available for comparison.
+**Unsupported format** (\`.avi\` MPEG-4 ASP, \`.wmv\`, legacy codecs like \`vp6f\`...): a message replaces the player. Click the **⏵** icon next to the file name in the footer to open the file in your system player (VLC, MPV...). Footer metadata stays available for comparison.
 
 **Navigate between groups**: use the **◀** and **▶** buttons or the keyboard **← →** arrow keys to move between video groups without closing the comparator.
 
@@ -603,14 +603,14 @@ The **📂** button next to the folder name opens the file's folder directly in 
 
 Le bouton affiche **"✓ Garder celui-ci"** quand ce fichier est effectivement conservé (tous les autres sont cochés).
 
-Le bouton **📂** à côté du nom de dossier ouvre directement le dossier du fichier dans le gestionnaire de fichiers.
+Le bouton **📂** à côté du nom de dossier ouvre le dossier du fichier dans le gestionnaire de fichiers. Le bouton **⏵** à côté du nom du fichier ouvre directement le fichier dans le lecteur système (utile pour comparer dans un lecteur externe sans fermer le comparateur).
 
 La suppression effective se fait ensuite depuis la liste principale via le bouton "Supprimer N fichiers". Les fichiers supprimés sont envoyés dans la corbeille - récupérables.`,
       en: `Below each video, the **"Keep this one"** button marks the other files in the group as to be deleted and removes this file from the selection.
 
 The button shows **"✓ Keep this one"** when this file is actually kept (all others are checked).
 
-The **📂** button next to the folder name opens the file's folder directly in the file manager.
+The **📂** button next to the folder name opens the file's folder in the file manager. The **⏵** button next to the file name opens the file directly in the system player (useful to compare in an external player without closing the comparator).
 
 The actual deletion is done from the main list via the "Delete N files" button. Deleted files are sent to the trash - recoverable.`,
     },
@@ -652,12 +652,12 @@ Navigate between groups using the **◀ ▶** buttons or the **← →** keyboar
 
 Les metadonnees sous chaque lecteur (nom du fichier, dossier, taille, duree) permettent de comparer les fichiers avant de choisir.
 
-Le bouton **📂** a cote du dossier ouvre directement le dossier du fichier dans le gestionnaire de fichiers.`,
+Le bouton **📂** a cote du dossier ouvre le dossier du fichier dans le gestionnaire de fichiers. Le bouton **⏵** a cote du nom du fichier ouvre directement le fichier dans le lecteur audio systeme.`,
       en: `Click **Keep this one** under the desired player: all other files in the group are checked for deletion and the comparator closes.
 
 The metadata below each player (file name, folder, size, duration) lets you compare files before choosing.
 
-The **📂** button next to the folder path opens the file's folder directly in the file manager.`,
+The **📂** button next to the folder path opens the file's folder in the file manager. The **⏵** button next to the file name opens the file directly in the system audio player.`,
     },
   },
   {

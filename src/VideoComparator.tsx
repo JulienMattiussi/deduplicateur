@@ -140,26 +140,20 @@ export function VideoComparator({
 
   useEffect(() => {
     if (!nav.hasValidGroup) return;
-    setLeftMeta(null);
     const lf = nav.group.files[nav.effectiveLeftIdx];
-    if (lf.video_metadata) {
-      setLeftMeta(lf.video_metadata);
-    } else {
-      invoke<VideoMetadata>("get_video_metadata", { path: lf.path })
-        .then(setLeftMeta).catch(() => {});
-    }
+    // Affichage immediat depuis la session (sans champs audio si cache pre-feature),
+    // puis refetch ffprobe pour avoir les vraies infos audio.
+    setLeftMeta(lf.video_metadata ?? null);
+    invoke<VideoMetadata>("get_video_metadata", { path: lf.path })
+      .then(setLeftMeta).catch(() => {});
   }, [nav.groupIdx, nav.effectiveLeftIdx]);
 
   useEffect(() => {
     if (!nav.hasValidGroup) return;
-    setRightMeta(null);
     const rf = nav.group.files[nav.effectiveRightIdx];
-    if (rf.video_metadata) {
-      setRightMeta(rf.video_metadata);
-    } else {
-      invoke<VideoMetadata>("get_video_metadata", { path: rf.path })
-        .then(setRightMeta).catch(() => {});
-    }
+    setRightMeta(rf.video_metadata ?? null);
+    invoke<VideoMetadata>("get_video_metadata", { path: rf.path })
+      .then(setRightMeta).catch(() => {});
   }, [nav.groupIdx, nav.effectiveRightIdx]);
 
   // Preparation pour la lecture : direct, remux ffmpeg, ou unsupported.
