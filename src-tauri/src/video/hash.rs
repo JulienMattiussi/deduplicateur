@@ -23,6 +23,10 @@ pub struct VideoMetadata {
     pub width: u32,
     pub height: u32,
     pub codec: String,
+    #[serde(default)]
+    pub audio_codec: Option<String>,
+    #[serde(default)]
+    pub audio_channels: Option<u8>,
 }
 
 /// Verifie que ffprobe et ffmpeg sont disponibles (binaire bundte ou PATH).
@@ -80,7 +84,13 @@ pub fn get_video_metadata(path: &str) -> Option<VideoMetadata> {
         .unwrap_or("unknown")
         .to_string();
 
-    Some(VideoMetadata { duration_secs: duration, width, height, codec })
+    let audio_stream = json["streams"]
+        .as_array()
+        .and_then(|arr| arr.iter().find(|s| s["codec_type"].as_str() == Some("audio")));
+    let audio_codec = audio_stream.and_then(|s| s["codec_name"].as_str().map(String::from));
+    let audio_channels = audio_stream.and_then(|s| s["channels"].as_u64().map(|n| n as u8));
+
+    Some(VideoMetadata { duration_secs: duration, width, height, codec, audio_codec, audio_channels })
 }
 
 /// Extrait n_frames hashes perceptuels (mean hash 8x8 = 64 bits) uniformement

@@ -265,7 +265,7 @@ pub fn run() {
     use commands::files::{
         check_path_is_dir, delete_files, get_archive_entry_thumbnail, get_archive_entry_url,
         get_image_meta, get_image_thumbnail, get_video_metadata, get_video_thumbnail,
-        open_archive_entry, open_file, reveal_in_folder,
+        open_archive_entry, open_file, prepare_video_for_playback, reveal_in_folder,
     };
     use commands::ignore::{clear_all_ignored, clear_ignore_entry, get_ignore_list, ignore_group};
     use commands::scan::{cancel_scan, scan_folder};
@@ -295,6 +295,8 @@ pub fn run() {
                 if archive_preview.exists() {
                     let _ = std::fs::remove_dir_all(&archive_preview);
                 }
+                // Purge des remux video temporaires de la session precedente.
+                video::purge_remux_cache(&data_dir);
             }
             if let Some(window) = app.get_webview_window("main") {
                 let icon_bytes = include_bytes!("../icons/128x128.png");
@@ -337,6 +339,7 @@ pub fn run() {
             set_audio_config,
             check_path_is_dir,
             get_video_metadata,
+            prepare_video_for_playback,
             get_image_meta,
             export_results,
             list_profiles,
@@ -604,6 +607,8 @@ mod tests {
             width: 1920,
             height: 1080,
             codec: "h264".to_string(),
+            audio_codec: None,
+            audio_channels: None,
         });
         let mut sd = make_file("/a/sd.mp4", 500, 200);
         sd.video_metadata = Some(VideoMetadata {
@@ -611,6 +616,8 @@ mod tests {
             width: 1280,
             height: 720,
             codec: "h264".to_string(),
+            audio_codec: None,
+            audio_channels: None,
         });
         let groups = vec![make_group(vec![sd, hd])];
         let result = select_files_to_delete(&groups, "highest_resolution", None);
@@ -626,6 +633,8 @@ mod tests {
             width: 1920,
             height: 1080,
             codec: "h264".to_string(),
+            audio_codec: None,
+            audio_channels: None,
         });
         let mut b = make_file("/a/b.mp4", 200, 50);
         b.video_metadata = Some(VideoMetadata {
@@ -633,6 +642,8 @@ mod tests {
             width: 1920,
             height: 1080,
             codec: "h264".to_string(),
+            audio_codec: None,
+            audio_channels: None,
         });
         let groups = vec![make_group(vec![a, b])];
         let result = select_files_to_delete(&groups, "highest_resolution", None);
@@ -665,6 +676,8 @@ mod tests {
             width: 1920,
             height: 1080,
             codec: "jpeg".to_string(),
+            audio_codec: None,
+            audio_channels: None,
         });
         let other = make_file("/a/doc.pdf", 200, 200);
         let groups = vec![make_group(vec![other, img])];

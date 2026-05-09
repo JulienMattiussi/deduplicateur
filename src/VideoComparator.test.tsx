@@ -22,8 +22,9 @@ Object.defineProperty(HTMLMediaElement.prototype, "pause", {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockInvoke.mockImplementation((cmd: string) => {
+  mockInvoke.mockImplementation((cmd: string, args?: any) => {
     if (cmd === "get_media_server_port") return Promise.resolve(9876);
+    if (cmd === "prepare_video_for_playback") return Promise.resolve({ kind: "Direct", path: args?.path ?? "" });
     return Promise.resolve(null);
   });
 });
@@ -96,6 +97,61 @@ describe("A - rendu de base", () => {
     renderComp();
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith("get_media_server_port");
+    });
+  });
+
+  it("appelle prepare_video_for_playback pour chaque cote au montage", async () => {
+    renderComp();
+    await waitFor(() => {
+      const calls = mockInvoke.mock.calls.filter((c) => c[0] === "prepare_video_for_playback");
+      expect(calls.length).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  it("affiche le placeholder unsupported quand prepare retourne Unsupported", async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "get_media_server_port") return Promise.resolve(9876);
+      if (cmd === "prepare_video_for_playback") return Promise.resolve({ kind: "Unsupported" });
+      if (cmd === "get_video_metadata") return Promise.resolve({ duration_secs: 60, width: 640, height: 480, codec: "mpeg4" });
+      return Promise.resolve(null);
+    });
+    renderComp();
+    await waitFor(() => {
+      expect(screen.getByTestId("video-unsupported-left")).toBeInTheDocument();
+      expect(screen.getByTestId("video-unsupported-right")).toBeInTheDocument();
+    });
+    expect(screen.queryAllByTestId(/^video-(left|right)$/)).toHaveLength(0);
+  });
+
+  it("affiche les infos audio dans le footer (codec + canaux)", async () => {
+    mockInvoke.mockImplementation((cmd: string, args?: any) => {
+      if (cmd === "get_media_server_port") return Promise.resolve(9876);
+      if (cmd === "prepare_video_for_playback") return Promise.resolve({ kind: "Direct", path: args?.path ?? "" });
+      if (cmd === "get_video_metadata") return Promise.resolve({
+        duration_secs: 60, width: 1920, height: 1080, codec: "h264",
+        audio_codec: "aac", audio_channels: 2,
+      });
+      return Promise.resolve(null);
+    });
+    renderComp();
+    await waitFor(() => {
+      expect(screen.getAllByText(/aac stereo/i).length).toBeGreaterThan(0);
+    });
+  });
+
+  it("affiche 'aucun son' quand audio_codec est null", async () => {
+    mockInvoke.mockImplementation((cmd: string, args?: any) => {
+      if (cmd === "get_media_server_port") return Promise.resolve(9876);
+      if (cmd === "prepare_video_for_playback") return Promise.resolve({ kind: "Direct", path: args?.path ?? "" });
+      if (cmd === "get_video_metadata") return Promise.resolve({
+        duration_secs: 60, width: 640, height: 480, codec: "mpeg4",
+        audio_codec: null, audio_channels: null,
+      });
+      return Promise.resolve(null);
+    });
+    renderComp();
+    await waitFor(() => {
+      expect(screen.getAllByText(/aucun son/i).length).toBeGreaterThan(0);
     });
   });
 

@@ -411,6 +411,18 @@ let path = tool_finder::find_tool("fpcalc")
 let mut cmd = Command::new(&path);
 ```
 
+### WebView2/WebKit : conteneurs vidéo non lus nativement (`.avi`, `.flv`, `.mkv`, `.wmv`)
+Le `<video>` HTML5 dans WebView2 (Windows) et WebKitGTK (Linux) ne lit que `.mp4`, `.webm`, `.mov`, `.ogg` nativement. **Le codec n'est pas le problème** (un H.264 dans un `.flv` ne charge pas alors que le même H.264 dans un `.mp4` fonctionne) - c'est le **conteneur**.
+
+Solution : module `video::playback::prepare_for_playback` qui classifie chaque fichier en `Direct` / `Remuxed` / `Unsupported` avant que le `<video>` reçoive sa `src` :
+- **Direct** : extension dans { mp4, m4v, webm, ogg, ogv, oga } → pas de transformation, sert le fichier original via le media server.
+- **Remuxed** : extension dans { flv, mkv, ts, m2ts, mts, mov, 3gp, 3g2 } ET codec dans { h264, hevc, vp8, vp9, av1 } → ffmpeg `-c copy -movflags +faststart` vers `app_local_data_dir/video_remux/<hash>.mp4` (quasi instantané, pas de reencodage). Fallback réencodage audio en aac si l'audio n'est pas mp4-compatible.
+- **Unsupported** : tout le reste (`.avi` mpeg4, `.wmv`, codecs anciens) → l'UI affiche un placeholder + bouton "ouvrir dans lecteur système".
+
+Le tempdir `video_remux/` est purgé au démarrage de l'app (`lib.rs::run` setup). Les noms de fichiers sont déterministes (hash de path+mtime+size) pour réutiliser le remux entre lancements **dans la même session** (purge au boot suivant).
+
+Côté frontend : `prepare_video_for_playback(path)` est appelé dans `useEffect` du VideoComparator pour chaque côté ; pendant l'attente, état `preparing` qui affiche un spinner.
+
 ### Lecture de fichiers media dans Tauri/Linux : utiliser un serveur HTTP local
 Trois approches ont ete essayees pour servir des fichiers video locaux dans un `<video>` element :
 

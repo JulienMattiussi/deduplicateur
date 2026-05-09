@@ -15,6 +15,10 @@ pub struct VideoCacheEntry {
     pub width: u32,
     pub height: u32,
     pub codec: String,
+    #[serde(default)]
+    pub audio_codec: Option<String>,
+    #[serde(default)]
+    pub audio_channels: Option<u8>,
 }
 
 /// Cache des frame hashes video entre les scans.
@@ -69,7 +73,7 @@ mod tests {
     use tempfile::TempDir;
 
     fn make_entry(mtime: u64, size: u64, n_frames: usize) -> VideoCacheEntry {
-        VideoCacheEntry { mtime, size, n_frames, hashes: vec![0u64, 1u64, 2u64], duration_secs: 10.0, width: 1920, height: 1080, codec: "h264".into() }
+        VideoCacheEntry { mtime, size, n_frames, hashes: vec![0u64, 1u64, 2u64], duration_secs: 10.0, width: 1920, height: 1080, codec: "h264".into(), audio_codec: None, audio_channels: None }
     }
 
     #[test]

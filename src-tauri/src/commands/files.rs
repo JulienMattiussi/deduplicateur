@@ -266,6 +266,20 @@ pub async fn get_video_metadata(path: String) -> Result<crate::video::VideoMetad
 }
 
 #[tauri::command]
+pub async fn prepare_video_for_playback(
+    app: tauri::AppHandle,
+    path: String,
+) -> Result<crate::video::PreparedVideo, String> {
+    use tauri::Manager;
+    let data_dir = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
+    tauri::async_runtime::spawn_blocking(move || {
+        Ok(crate::video::prepare_for_playback(&path, &data_dir))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 pub async fn get_image_meta(path: String) -> Result<ImageMeta, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let (width, height) = image::image_dimensions(&path).map_err(|e| e.to_string())?;

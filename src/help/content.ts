@@ -545,14 +545,22 @@ The **📂** button next to the folder name opens the file's folder directly in 
     body: {
       fr: `Le bouton **"Comparer"** s'affiche dans l'en-tête de chaque groupe de vidéos (similaires ou identiques). Cliquez-le pour ouvrir le comparateur plein écran.
 
-**Deux lecteurs côte à côte** : chaque vidéo s'affiche dans son propre lecteur. Vous pouvez voir les métadonnées sous chaque vidéo : nom, taille, résolution, durée, codec.
+**Deux lecteurs côte à côte** : chaque vidéo s'affiche dans son propre lecteur. Vous pouvez voir les métadonnées sous chaque vidéo : nom, taille, résolution, durée, codec **vidéo** et codec **audio** (avec nombre de canaux). La mention **"aucun son"** apparaît si la piste audio est absente, ce qui permet de détecter qu'une copie a perdu sa bande son.
+
+**Formats lus directement** : \`.mp4\`, \`.webm\`, \`.mov\` (avec H.264/H.265). Les autres conteneurs (\`.flv\`, \`.mkv\`, \`.ts\`...) sont remuxés à la volée vers \`.mp4\` via ffmpeg si le codec vidéo est compatible (H.264, H.265, VP9). Une mention **"Préparation de la vidéo..."** s'affiche pendant l'opération (généralement instantanée car sans réencodage).
+
+**Format non lu** (\`.avi\` MPEG-4 ASP, \`.wmv\`, codecs anciens...) : un message s'affiche à la place du lecteur. Cliquer sur l'icône **📂** ouvre le fichier dans le lecteur système (VLC, MPV...). Les métadonnées du footer restent disponibles pour la comparaison.
 
 **Navigation entre groupes** : utilisez les boutons **◀** et **▶** ou les touches **← →** du clavier pour passer d'un groupe au suivant sans fermer le comparateur.
 
 **Fermer** : bouton **✕** en haut à droite, ou touche **Échap**.`,
       en: `The **"Compare"** button appears in the header of each video group (similar or identical). Click it to open the full-screen comparator.
 
-**Two players side by side**: each video is shown in its own player. Metadata is displayed below each video: name, size, resolution, duration, codec.
+**Two players side by side**: each video is shown in its own player. Metadata below each video: name, size, resolution, duration, **video** codec and **audio** codec (with channel count). The label **"no sound"** appears if the audio track is missing, which helps spotting a copy that lost its soundtrack.
+
+**Directly playable formats**: \`.mp4\`, \`.webm\`, \`.mov\` (with H.264/H.265). Other containers (\`.flv\`, \`.mkv\`, \`.ts\`...) are remuxed on the fly to \`.mp4\` via ffmpeg when the video codec is compatible (H.264, H.265, VP9). A **"Preparing video..."** message appears during the operation (usually instant since no reencoding).
+
+**Unsupported format** (\`.avi\` MPEG-4 ASP, \`.wmv\`, legacy codecs...): a message replaces the player. Click the **📂** icon to open the file in your system player (VLC, MPV...). Footer metadata stays available for comparison.
 
 **Navigate between groups**: use the **◀** and **▶** buttons or the keyboard **← →** arrow keys to move between video groups without closing the comparator.
 

@@ -55,6 +55,8 @@ where
                     width: e.width,
                     height: e.height,
                     codec: e.codec.clone(),
+                    audio_codec: e.audio_codec.clone(),
+                    audio_channels: e.audio_channels,
                 }))
         })
         .collect();
@@ -139,6 +141,8 @@ where
                 width: meta.width,
                 height: meta.height,
                 codec: meta.codec.clone(),
+                audio_codec: meta.audio_codec.clone(),
+                audio_channels: meta.audio_channels,
             });
         }
         all_hashes[i] = hashes;

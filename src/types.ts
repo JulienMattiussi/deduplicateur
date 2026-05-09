@@ -16,7 +16,14 @@ export interface VideoMetadata {
   width: number;
   height: number;
   codec: string;
+  audio_codec?: string | null;
+  audio_channels?: number | null;
 }
+
+export type PreparedVideo =
+  | { kind: "Direct"; path: string }
+  | { kind: "Remuxed"; path: string }
+  | { kind: "Unsupported" };
 
 export interface AudioMetadata {
   duration_secs: number;
