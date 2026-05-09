@@ -2016,6 +2016,7 @@
 
 .comparator-image-area {
   flex: 1;
+  position: relative;
   overflow: hidden;
   display: flex;
   align-items: center;
