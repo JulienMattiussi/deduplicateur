@@ -30,10 +30,10 @@ export function useResults(setError: (e: string | null) => void) {
     return map;
   }, [groups]);
 
-  async function loadPage(offset: number, append: boolean) {
+  async function loadPage(offset: number, append: boolean, limit: number = 50) {
     setLoadingMore(true);
     try {
-      const page = await invoke<GroupsPage>("get_groups_page", { offset, limit: 50 });
+      const page = await invoke<GroupsPage>("get_groups_page", { offset, limit });
       if (append) {
         startTransition(() => {
           setGroups((prev) => [...prev, ...page.groups]);
@@ -50,7 +50,7 @@ export function useResults(setError: (e: string | null) => void) {
     }
   }
 
-  async function loadFolderPage(folderKey: string) {
+  async function loadFolderPage(folderKey: string, limit: number = 50) {
     const state = folderState[folderKey];
     if (state?.loading) return;
     const offset = state?.offset ?? 0;
@@ -59,7 +59,7 @@ export function useResults(setError: (e: string | null) => void) {
       [folderKey]: { loading: true, hasMore: state?.hasMore ?? true, offset },
     }));
     try {
-      const page = await invoke<GroupsPage>("get_folder_groups_page", { folderKey, offset, limit: 50 });
+      const page = await invoke<GroupsPage>("get_folder_groups_page", { folderKey, offset, limit });
       startTransition(() => {
         setGroups((prev) => [...prev, ...page.groups]);
         setFolderState((prev) => ({

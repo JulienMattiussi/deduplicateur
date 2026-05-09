@@ -158,6 +158,7 @@ export default function App() {
       .filter((g) => g.files.length > 1);
     const removedCount = results.groups.length - updatedGroups.length;
     const newLoadedWasted = updatedGroups.reduce((acc, g) => acc + g.size * (g.files.length - 1), 0);
+    const folderRemoved = new Map<string, number>();
 
     startTransition(() => {
       results.setGroups(updatedGroups);
@@ -175,6 +176,9 @@ export default function App() {
             d.wasted += oldW - newW;
             folderDelta.set(key, d);
           }
+        }
+        for (const [key, d] of folderDelta) {
+          if (d.groups > 0) folderRemoved.set(key, d.groups);
         }
         results.setFolderSummaries((prev) =>
           prev
@@ -197,6 +201,19 @@ export default function App() {
           .filter((ag) => ag.archives.length > 1)
       );
     });
+
+    // Recharger ce qui manque depuis le backend pour rester a 50 affiches.
+    if (removedCount > 0) {
+      if (summary?.by_folder) {
+        for (const [key, n] of folderRemoved) {
+          if (results.folderState[key]?.hasMore !== false) {
+            results.loadFolderPage(key, n);
+          }
+        }
+      } else if (results.hasMore) {
+        results.loadPage(updatedGroups.length, true, removedCount);
+      }
+    }
   }
 
   async function resumeSession(id: string) {
@@ -293,10 +310,30 @@ export default function App() {
     const group = results.groups.find((g) => g.id === groupId);
     if (!group) return;
     const wasted = group.size * (group.files.length - 1);
+    const remainingGroups = results.groups.filter((g) => g.id !== groupId);
+    const folderKey = group.folder_key ?? "";
     startTransition(() => {
-      results.setGroups(results.groups.filter((g) => g.id !== groupId));
+      results.setGroups(remainingGroups);
       setSummary((s) => s ? { ...s, total_groups: s.total_groups - 1, total_wasted_bytes: s.total_wasted_bytes - wasted } : null);
+      if (summary?.by_folder) {
+        results.setFolderSummaries((prev) =>
+          prev
+            .map((fs) => fs.folder_key === folderKey
+              ? { ...fs, group_count: fs.group_count - 1, total_wasted_bytes: fs.total_wasted_bytes - wasted }
+              : fs)
+            .filter((fs) => fs.group_count > 0)
+        );
+      }
     });
+
+    if (summary?.by_folder) {
+      if (results.folderState[folderKey]?.hasMore !== false) {
+        results.loadFolderPage(folderKey, 1);
+      }
+    } else if (results.hasMore) {
+      results.loadPage(remainingGroups.length, true, 1);
+    }
+
     try {
       await invoke("ignore_group", { groupId });
       await loadIgnoredEntries();

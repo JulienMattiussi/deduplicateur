@@ -301,6 +301,88 @@ describe("E - pagination", () => {
   });
 });
 
+// ---- F : rechargement automatique apres suppression ----
+describe("F - rechargement auto apres suppression pour rester a 50 affiches", () => {
+  it("recharge depuis le backend quand un groupe disparait et hasMore=true", async () => {
+    const user = userEvent.setup();
+
+    const group1 = { id: "g1", hash: "a", size: 1024, files: [
+      { path: "/a/file1.txt", size: 1024, name: "file1.txt", modified: 1 },
+      { path: "/a/file2.txt", size: 1024, name: "file2.txt", modified: 2 },
+    ]};
+    const summaryWithMore = { ...baseSummary, total_groups: 60, total_wasted_bytes: 1024 };
+    let pageCalls = 0;
+
+    mockInvoke.mockImplementation(
+      makeDefaultMock({
+        scan_folder: summaryWithMore,
+        get_groups_page: () => {
+          pageCalls++;
+          if (pageCalls === 1) {
+            return Promise.resolve({ groups: [group1], offset: 0, total: 60, has_more: true });
+          }
+          return Promise.resolve({ groups: [], offset: 0, total: 59, has_more: true });
+        },
+        delete_files: [],
+      })
+    );
+    mockDialogOpen.mockResolvedValue("/home/test");
+
+    render(<App />);
+    await user.click(screen.getByText(/Cliquer pour choisir un dossier/));
+    await waitFor(() => screen.getByText("/home/test"));
+    await user.click(screen.getByText("Analyser"));
+    await waitFor(() => screen.getByText(/Afficher 50 de plus/));
+
+    // Supprimer file1 -> le groupe tombe a 1 fichier, donc disparait
+    await user.click(within(screen.getAllByTestId("group-files")[0]).getAllByRole("checkbox")[0]);
+    await user.click(await screen.findByText(/Supprimer \d+ fichier/));
+    await user.click(await screen.findByRole("button", { name: "Supprimer" }));
+
+    // Verification : appel de get_groups_page avec offset=0 (updatedGroups vide) et limit=1 (combler 1 groupe disparu)
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("get_groups_page", { offset: 0, limit: 1 });
+    });
+  });
+
+  it("ne recharge pas quand hasMore=false", async () => {
+    const user = userEvent.setup();
+
+    const group1 = { id: "g1", hash: "a", size: 1024, files: [
+      { path: "/a/file1.txt", size: 1024, name: "file1.txt", modified: 1 },
+      { path: "/a/file2.txt", size: 1024, name: "file2.txt", modified: 2 },
+    ]};
+    const summaryNoMore = { ...baseSummary, total_groups: 1, total_wasted_bytes: 1024 };
+
+    mockInvoke.mockImplementation(
+      makeDefaultMock({
+        scan_folder: summaryNoMore,
+        get_groups_page: { groups: [group1], offset: 0, total: 1, has_more: false },
+        delete_files: [],
+      })
+    );
+    mockDialogOpen.mockResolvedValue("/home/test");
+
+    render(<App />);
+    await user.click(screen.getByText(/Cliquer pour choisir un dossier/));
+    await waitFor(() => screen.getByText("/home/test"));
+    await user.click(screen.getByText("Analyser"));
+    await waitFor(() => screen.getByText("file1.txt"));
+
+    const callsBefore = mockInvoke.mock.calls.filter((c) => c[0] === "get_groups_page").length;
+
+    await user.click(within(screen.getAllByTestId("group-files")[0]).getAllByRole("checkbox")[0]);
+    await user.click(await screen.findByText(/Supprimer \d+ fichier/));
+    await user.click(await screen.findByRole("button", { name: "Supprimer" }));
+
+    // Attendre que la suppression soit traitee
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("delete_files", expect.anything()));
+
+    const callsAfter = mockInvoke.mock.calls.filter((c) => c[0] === "get_groups_page").length;
+    expect(callsAfter).toBe(callsBefore);
+  });
+});
+
 // ---- G : bascule de langue ----
 describe("G - bascule de langue", () => {
   it("affiche 'Scan' en anglais après clic sur EN", async () => {
