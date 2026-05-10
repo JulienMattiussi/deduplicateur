@@ -160,6 +160,14 @@ Voir [AGENTS.md](AGENTS.md) pour les règles de développement, les pièges conn
 
 ---
 
+## Soutenir le projet
+
+Si Déduplicateur vous est utile, vous pouvez offrir un café à l'auteur :
+
+<a href="https://buymeacoffee.com/julienmattiussi" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="40"></a>
+
+---
+
 ## Licence
 
 MIT - voir [LICENSE](LICENSE). Copyright (c) 2024 YavaDeus.
