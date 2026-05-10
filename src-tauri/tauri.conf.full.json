@@ -1,5 +1,5 @@
 {
-  "productName": "deduplicateur-full",
+  "productName": "Deduplicateur-full",
   "bundle": {
     "externalBin": ["binaries/fpcalc", "binaries/ffmpeg", "binaries/ffprobe"]
   }

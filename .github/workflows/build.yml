@@ -171,22 +171,22 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         run: npx tauri build --config src-tauri/tauri.conf.full.json --bundles ${{ matrix.bundles }}
 
-      # productName="deduplicateur-full" => fichiers nommés deduplicateur-full_*
+      # productName="Deduplicateur-full" => fichiers nommés Deduplicateur-full_*
       - name: Publish tagged release Windows full
         if: startsWith(github.ref, 'refs/tags/v') && runner.os == 'Windows'
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            src-tauri/target/release/bundle/nsis/deduplicateur-full_*.exe
-            src-tauri/target/release/bundle/msi/deduplicateur-full_*.msi
+            src-tauri/target/release/bundle/nsis/Deduplicateur-full_*.exe
+            src-tauri/target/release/bundle/msi/Deduplicateur-full_*.msi
 
       - name: Publish tagged release Linux full
         if: startsWith(github.ref, 'refs/tags/v') && runner.os == 'Linux'
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            src-tauri/target/release/bundle/appimage/deduplicateur-full_*.AppImage
-            src-tauri/target/release/bundle/deb/deduplicateur-full_*.deb
+            src-tauri/target/release/bundle/appimage/Deduplicateur-full_*.AppImage
+            src-tauri/target/release/bundle/deb/Deduplicateur-full_*.deb
 
   # ================================================================
   # Job macOS : tag uniquement (runner 10x plus cher)
