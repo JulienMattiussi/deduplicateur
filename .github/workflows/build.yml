@@ -66,6 +66,16 @@ jobs:
       - name: Build light
         run: npm run tauri build -- --bundles ${{ matrix.bundles }}
 
+      # softprops/action-gh-release met a jour la release mais ne deplace pas le tag git
+      # quand il existe deja. Sans ca, les archives "Source code" attachees a la release "latest"
+      # restent figees sur le commit du premier push. On force le tag a pointer sur HEAD ici,
+      # uniquement sur Linux pour eviter une race avec le job Windows en parallele.
+      - name: Move latest tag to current commit
+        if: github.ref == 'refs/heads/main' && runner.os == 'Linux'
+        run: |
+          git tag -f latest
+          git push origin -f latest
+
       - name: Publish rolling release Windows light (latest)
         if: github.ref == 'refs/heads/main' && runner.os == 'Windows'
         uses: softprops/action-gh-release@v2
