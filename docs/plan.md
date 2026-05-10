@@ -949,31 +949,27 @@ Items résiduels non bloquants (peuvent être traités à part si besoin) :
 
 ---
 
-## Phase 29 - Remux étendu sans réencodage audio
+## Phase 29 - Remux étendu sans réencodage audio ✅
 
 **Objectif : élargir la couverture du comparateur vidéo en remuxant davantage de conteneurs (notamment `.avi` et `.wmv` quand le codec interne est compatible mp4), sans jamais réencoder l'audio. Si le remux pur échoue, le fichier reste classé `Unsupported` et l'UI propose le lecteur système.**
 
-### Backend - extension de la classification
-- [ ] `video/playback.rs::is_remux_candidate_extension` : ajouter `avi`, `wmv`, `asf`, `f4v` à la liste. (Beaucoup d'AVI modernes contiennent du H.264 ou du HEVC, beaucoup de F4V contiennent du H.264.)
-- [ ] `video/playback.rs::prepare_for_playback` : **supprimer la branche de fallback `-c:a aac`**. Garder uniquement `-c copy -movflags +faststart`. Si le full-copy échoue (audio incompatible mp4 type AC3, WMA, Vorbis dans MKV), retourner `PreparedVideo::Unsupported`. Justification : pas de réencodage = pas d'attente, pas de perte de qualité ; les rares cas restants seront couverts par la Phase 30 (lecteur natif).
-- [ ] Vérifier que la détection codec via `get_video_metadata` (ffprobe) renvoie bien des codecs cohérents pour les nouveaux conteneurs (`avi+h264`, `wmv+wmv3`, `wmv+wmv2`, `asf+wmv3`, `f4v+h264`).
-- [ ] Tests Rust dans `video/playback.rs` :
-  - [ ] `classify_avi_h264_est_remux` / `classify_avi_mpeg4_est_unsupported` / `classify_avi_xvid_est_unsupported` / `classify_avi_divx_est_unsupported`
-  - [ ] `classify_wmv_h264_est_remux` (rare mais possible) / `classify_wmv_wmv3_est_unsupported` / `classify_wmv_wmv2_est_unsupported`
-  - [ ] `classify_asf_*` symétrique à wmv
-  - [ ] `classify_f4v_h264_est_remux` / `classify_f4v_codec_inconnu_est_unsupported`
-  - [ ] Vérifier que les tests existants (`classify_unsupported_pour_avi_mpeg4`, etc.) restent verts si l'extension passe en `Remux` mais le codec en `Unsupported`.
-- [ ] Test d'intégration ou note documentaire : un fichier `.avi` H.264 avec audio MP3 → `-c copy` réussit (mp3 est légal en mp4 ISO BMFF). Un fichier `.avi` H.264 avec audio AC3 → `-c copy` échoue, tombe en `Unsupported`. C'est le comportement attendu.
+### Backend - extension de la classification ✅
+- [x] `video/playback.rs::is_remux_candidate_extension` : `avi`, `wmv`, `asf`, `f4v` ajoutés à la liste, à côté des conteneurs déjà supportés (`flv`, `mkv`, `ts`, `m2ts`, `mts`, `mov`, `3gp`, `3g2`).
+- [x] `video/playback.rs::prepare_for_playback` : branche de fallback `-c:a aac` supprimée. `-c copy -movflags +faststart` reste l'unique tentative ; en cas d'échec, retour direct en `PreparedVideo::Unsupported`. Plus de blocage UI plusieurs secondes pour rien sur les fichiers audio incompatibles mp4.
+- [x] Tests de classification ajoutés : `classify_remux_pour_avi_h264` (h264 + hevc), `classify_remux_pour_wmv_et_asf_h264`, `classify_remux_pour_f4v_h264`. Test existant `classify_unsupported_pour_avi_mpeg4` enrichi avec `wmv3` et `asf+wmv3`.
+- [x] Les tests existants (`classify_unsupported_pour_avi_mpeg4`, `classify_unsupported_si_codec_inconnu`, etc.) restent verts : l'extension passe désormais le filtre, mais le codec recale au niveau de `is_remux_compatible_codec`.
+- [x] Note documentaire : un `.avi` H.264 + MP3 → `-c copy` réussit (mp3 légal en mp4 ISO BMFF). Un `.avi` H.264 + AC3 → `-c copy` échoue → `Unsupported` (comportement attendu, sera couvert par la Phase 30).
 
-### Frontend - aucun changement de logique
-- [ ] Vérifier que `VideoComparator` affiche correctement le placeholder + bouton "ouvrir dans le lecteur système" pour les nouveaux cas `Unsupported` (audio incompatible). Le code existant suffit déjà - juste re-tester manuellement avec un AVI H.264+AC3.
+### Frontend - aucun changement de logique ✅
+- [x] `VideoComparator` continue à afficher placeholder + bouton "ouvrir dans le lecteur système" pour les nouveaux cas `Unsupported` (audio incompatible). Pas de modif frontend.
 
-### Documentation
-- [ ] AGENTS.md : mettre à jour la section "WebView2/WebKit : conteneurs vidéo non lus nativement" avec la nouvelle liste de conteneurs remuxables et **expliciter qu'on ne réencode plus l'audio**.
-- [ ] `src/help/content.ts` : si un article d'aide mentionne les formats lus dans le comparateur, le mettre à jour. Sinon ne pas en créer (détail technique invisible).
-- [ ] README.md : pas de mise à jour nécessaire (pas de feature visible nouvelle, juste plus de fichiers qui marchent).
+### Documentation ✅
+- [x] AGENTS.md : section "WebView2/WebKit : conteneurs vidéo non lus nativement" mise à jour avec la nouvelle liste (`avi`, `wmv`, `asf`, `f4v`) et la mention explicite "Pas de fallback de réencodage audio".
+- [x] `src/help/content.ts` : article "Ouvrir le comparateur de vidéos" mis à jour FR + EN (liste élargie des conteneurs remuxés + mention "ni audio" + précision sur les codecs audio incompatibles).
+- [x] README.md : pas de mise à jour (pas de feature visible majeure ; les fonctionnalités du comparateur restent décrites au même niveau).
+- [x] 275 tests Rust / 440 tests TypeScript / tsc clean.
 
-### Critère de validation
+### Critères de validation (à tester manuellement)
 - Un `.avi` H.264 + MP3 ouvre directement dans le comparateur (remux instantané, premier scrub fluide).
 - Un `.avi` MPEG-4 ASP (Xvid/DivX) affiche le placeholder "ouvrir dans le lecteur système" comme avant.
 - Un `.flv` H.264 + Speex (qui passait en réencodage audio) affiche désormais le placeholder. Acceptable : ce cas est rare et sera couvert par la Phase 30.

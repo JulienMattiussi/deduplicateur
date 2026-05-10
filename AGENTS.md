@@ -438,8 +438,8 @@ Le `<video>` HTML5 dans WebView2 (Windows) et WebKitGTK (Linux) ne lit que `.mp4
 
 Solution : module `video::playback::prepare_for_playback` qui classifie chaque fichier en `Direct` / `Remuxed` / `Unsupported` avant que le `<video>` reçoive sa `src` :
 - **Direct** : extension dans { mp4, m4v, webm, ogg, ogv, oga } → pas de transformation, sert le fichier original via le media server.
-- **Remuxed** : extension dans { flv, mkv, ts, m2ts, mts, mov, 3gp, 3g2 } ET codec dans { h264, hevc, vp8, vp9, av1 } → ffmpeg `-c copy -movflags +faststart` vers `app_local_data_dir/video_remux/<hash>.mp4` (quasi instantané, pas de reencodage). Fallback réencodage audio en aac si l'audio n'est pas mp4-compatible.
-- **Unsupported** : tout le reste (`.avi` mpeg4, `.wmv`, codecs anciens) → l'UI affiche un placeholder + bouton "ouvrir dans lecteur système".
+- **Remuxed** : extension dans { flv, mkv, ts, m2ts, mts, mov, 3gp, 3g2, **avi, wmv, asf, f4v** } ET codec dans { h264, hevc, vp8, vp9, av1 } → ffmpeg `-c copy -movflags +faststart` vers `app_local_data_dir/video_remux/<hash>.mp4` (quasi instantané, pas de reencodage vidéo NI audio).
+- **Unsupported** : tout le reste (`.avi` mpeg4 / Xvid / DivX, `.wmv` WMV2/WMV3, audio AC3 / WMA / Vorbis / Speex incompatible mp4, codecs anciens) → l'UI affiche un placeholder + bouton "ouvrir dans lecteur système". **Pas de fallback de réencodage audio** : si `-c copy` échoue, on tombe directement en Unsupported pour ne pas figer l'UI plusieurs secondes/minutes par fichier. Ces cas seront pris en charge par la Phase 30 (lecteur natif libmpv).
 
 Le tempdir `video_remux/` est purgé au démarrage de l'app (`lib.rs::run` setup). Les noms de fichiers sont déterministes (hash de path+mtime+size) pour réutiliser le remux entre lancements **dans la même session** (purge au boot suivant).
 

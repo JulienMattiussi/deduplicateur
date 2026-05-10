@@ -37,8 +37,15 @@ fn is_direct_extension(ext: &str) -> bool {
 }
 
 /// Extensions que ffmpeg peut remuxer (changer de conteneur sans reencoder le flux).
+/// `avi`, `wmv`, `asf`, `f4v` sont accepts pour les cas modernes (H.264/HEVC dans un
+/// conteneur ancien). Les codecs internes sont filtres par `is_remux_compatible_codec` :
+/// un AVI MPEG-4 ASP / Xvid / DivX retombera donc en `Unsupported`.
 fn is_remux_candidate_extension(ext: &str) -> bool {
-    matches!(ext, "flv" | "mkv" | "ts" | "m2ts" | "mts" | "mov" | "3gp" | "3g2")
+    matches!(
+        ext,
+        "flv" | "mkv" | "ts" | "m2ts" | "mts" | "mov" | "3gp" | "3g2"
+            | "avi" | "wmv" | "asf" | "f4v"
+    )
 }
 
 /// Codecs que le WebView lit dans un conteneur mp4 (apres remux).
@@ -130,10 +137,12 @@ pub fn prepare_for_playback(path: &str, data_dir: &Path) -> PreparedVideo {
                 .map(|p| p.to_string_lossy().into_owned())
                 .unwrap_or_else(|| "ffmpeg".to_string());
 
-            // -c copy : pas de reencodage. -movflags +faststart : metadata en debut de fichier (streaming).
-            // Audio remux : les conteneurs non-mp4 contiennent souvent de l'aac/ac3 lisible direct ;
-            // si le codec audio n'est pas compatible mp4 (ex. flv contenant speex), -c:a copy echoue.
-            // On retombe alors sur reencodage audio en aac, video toujours en copy.
+            // -c copy : pas de reencodage video ni audio. -movflags +faststart : metadata
+            // en debut de fichier (streaming). Si l'audio n'est pas compatible mp4 (AC3, WMA,
+            // Speex, Vorbis...), `-c copy` echoue et on retourne Unsupported : le reencodage
+            // audio (ancien fallback) est volontairement absent pour ne pas bloquer la lecture
+            // de plusieurs secondes/minutes a chaque ouverture du comparateur. Ces cas seront
+            // pris en charge par la Phase 30 (lecteur natif libmpv).
             let ok_full_copy = Command::new(&ffmpeg)
                 .args(["-y", "-i", path, "-c", "copy", "-movflags", "+faststart"])
                 .arg(&target)
@@ -143,20 +152,6 @@ pub fn prepare_for_playback(path: &str, data_dir: &Path) -> PreparedVideo {
                 .unwrap_or(false);
 
             if ok_full_copy {
-                return PreparedVideo::Remuxed(target.to_string_lossy().into_owned());
-            }
-
-            // Retry : reencode audio uniquement.
-            let _ = std::fs::remove_file(&target);
-            let ok_audio_reencode = Command::new(&ffmpeg)
-                .args(["-y", "-i", path, "-c:v", "copy", "-c:a", "aac", "-movflags", "+faststart"])
-                .arg(&target)
-                .no_window()
-                .output()
-                .map(|o| o.status.success() && target.exists() && std::fs::metadata(&target).map(|m| m.len() > 0).unwrap_or(false))
-                .unwrap_or(false);
-
-            if ok_audio_reencode {
                 PreparedVideo::Remuxed(target.to_string_lossy().into_owned())
             } else {
                 let _ = std::fs::remove_file(&target);
@@ -193,9 +188,32 @@ mod tests {
     }
 
     #[test]
+    fn classify_remux_pour_avi_h264() {
+        // AVI moderne : conteneur ancien mais codec compatible mp4.
+        assert_eq!(classify(Some("avi"), Some("h264")), PrepareKind::Remux);
+        assert_eq!(classify(Some("avi"), Some("hevc")), PrepareKind::Remux);
+    }
+
+    #[test]
+    fn classify_remux_pour_wmv_et_asf_h264() {
+        // Rare mais existe : H.264 dans un conteneur ASF/WMV.
+        assert_eq!(classify(Some("wmv"), Some("h264")), PrepareKind::Remux);
+        assert_eq!(classify(Some("asf"), Some("h264")), PrepareKind::Remux);
+    }
+
+    #[test]
+    fn classify_remux_pour_f4v_h264() {
+        // F4V est un conteneur Adobe (proche du mp4) qui contient typiquement du H.264.
+        assert_eq!(classify(Some("f4v"), Some("h264")), PrepareKind::Remux);
+    }
+
+    #[test]
     fn classify_unsupported_pour_avi_mpeg4() {
+        // mpeg4 ASP / Xvid / DivX : non remuxable en mp4 ISO BMFF.
         assert_eq!(classify(Some("avi"), Some("mpeg4")), PrepareKind::Unsupported);
         assert_eq!(classify(Some("wmv"), Some("wmv2")), PrepareKind::Unsupported);
+        assert_eq!(classify(Some("wmv"), Some("wmv3")), PrepareKind::Unsupported);
+        assert_eq!(classify(Some("asf"), Some("wmv3")), PrepareKind::Unsupported);
         assert_eq!(classify(Some("flv"), Some("flv1")), PrepareKind::Unsupported);
     }
 
