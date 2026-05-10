@@ -143,6 +143,7 @@ where
                 codec: meta.codec.clone(),
                 audio_codec: meta.audio_codec.clone(),
                 audio_channels: meta.audio_channels,
+                algorithm_version: crate::video::hash::HASH_ALGORITHM_VERSION,
             });
         }
         all_hashes[i] = hashes;

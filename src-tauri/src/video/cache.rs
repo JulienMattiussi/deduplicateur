@@ -19,6 +19,11 @@ pub struct VideoCacheEntry {
     pub audio_codec: Option<String>,
     #[serde(default)]
     pub audio_channels: Option<u8>,
+    /// Version de l'algorithme de hash. 0 si absent (ancien cache pre-detection
+    /// des bandes noires). On n'utilise un cache hit que si la version correspond
+    /// a HASH_ALGORITHM_VERSION (cf. video/hash.rs).
+    #[serde(default)]
+    pub algorithm_version: u8,
 }
 
 /// Cache des frame hashes video entre les scans.
@@ -44,10 +49,14 @@ impl VideoCache {
         save_json_map(&self.entries, data_dir, "video_cache.json", &mut self.dirty)
     }
 
-    /// Retourne l'entree si elle est valide (mtime, size et n_frames identiques).
+    /// Retourne l'entree si elle est valide (mtime, size, n_frames et algorithm_version identiques).
+    /// Les entrees pre-versioning (algorithm_version = 0) sont ignorees.
     pub fn get(&self, path: &str, mtime: u64, size: u64, n_frames: usize) -> Option<&VideoCacheEntry> {
         self.entries.get(path).filter(|e| {
-            e.mtime == mtime && e.size == size && e.n_frames == n_frames
+            e.mtime == mtime
+                && e.size == size
+                && e.n_frames == n_frames
+                && e.algorithm_version == crate::video::hash::HASH_ALGORITHM_VERSION
         })
     }
 
@@ -73,7 +82,7 @@ mod tests {
     use tempfile::TempDir;
 
     fn make_entry(mtime: u64, size: u64, n_frames: usize) -> VideoCacheEntry {
-        VideoCacheEntry { mtime, size, n_frames, hashes: vec![0u64, 1u64, 2u64], duration_secs: 10.0, width: 1920, height: 1080, codec: "h264".into(), audio_codec: None, audio_channels: None }
+        VideoCacheEntry { mtime, size, n_frames, hashes: vec![0u64, 1u64, 2u64], duration_secs: 10.0, width: 1920, height: 1080, codec: "h264".into(), audio_codec: None, audio_channels: None, algorithm_version: crate::video::hash::HASH_ALGORITHM_VERSION }
     }
 
     #[test]

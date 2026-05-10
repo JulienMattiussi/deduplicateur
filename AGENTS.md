@@ -411,6 +411,18 @@ let path = tool_finder::find_tool("fpcalc")
 let mut cmd = Command::new(&path);
 ```
 
+### Hash vidéo : détection des bandes noires obligatoire pour le mean hash 8x8
+Le mean hash 8x8 perceptuel est trop grossier pour distinguer deux vidéos verticales (format mobile 9:16) placées dans un canvas paysage 16:9 sur fond noir. Toutes ces vidéos partagent la même "structure" globale (bandes noires aux côtés + sujet centré), produisant des hashes quasi identiques → faux positifs à 95 %+ de similarité.
+
+Solution : avant de hasher chaque frame, détecter les bandes noires (luminance moyenne <= 16/255 par colonne / ligne) et n'appliquer le crop que si elles sont **présentes sur TOUTES les frames extraites** (intersection min). Le crop isole le sujet réel, le hash devient discriminant.
+
+Pipeline (`video/hash.rs::extract_frame_hashes`) :
+1. Pass 1 : extraction de chaque frame en `128xN` grayscale via ffmpeg `scale=128:-2`. Détection des bandes noires par frame.
+2. Intersection : `min` de chaque côté sur toutes les frames. Si une seule frame n'a pas la bande, le min tombe à 0 → pas de crop sur ce côté. Évite de cropper à cause d'une frame transitoire (ex. fondu noir au milieu).
+3. Pass 2 : crop selon l'intersection + resize logiciel 8x8 (moyenne par bloc) + `mean_hash_64`.
+
+**Important** : tout changement à cet algo invalide les hashes en cache. Utiliser la constante `HASH_ALGORITHM_VERSION` dans `video/hash.rs` et bumper sa valeur. Le `VideoCacheEntry::algorithm_version` est ignoré au get si différent → recalcul progressif au prochain scan.
+
 ### WebView2/WebKit : conteneurs vidéo non lus nativement (`.avi`, `.flv`, `.mkv`, `.wmv`)
 Le `<video>` HTML5 dans WebView2 (Windows) et WebKitGTK (Linux) ne lit que `.mp4`, `.webm`, `.mov`, `.ogg` nativement. **Le codec n'est pas le problème** (un H.264 dans un `.flv` ne charge pas alors que le même H.264 dans un `.mp4` fonctionne) - c'est le **conteneur**.
 
