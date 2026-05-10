@@ -170,4 +170,4 @@ Si Déduplicateur vous est utile, vous pouvez offrir un café à l'auteur :
 
 ## Licence
 
-MIT - voir [LICENSE](LICENSE). Copyright (c) 2024 YavaDeus.
+MIT - voir [LICENSE](LICENSE). Copyright (c) 2026 YavaDeus.
