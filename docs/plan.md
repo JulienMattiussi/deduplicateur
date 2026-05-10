@@ -933,3 +933,125 @@ Items résiduels non bloquants (peuvent être traités à part si besoin) :
 - [x] Tooltips checkbox "Sous-dossiers" et "Analyser les archives" mentionnent explicitement que l'option **multiplie la durée du scan**.
 - [x] AGENTS.md : 3 règles impératives ajoutées (Vision d'ensemble avant patch local, Sémantique de la progression, Architecture cache pour opérations lazy, Cohérence des seuils, Diagnostic par logs avant code) ; section "Sémantique de la progression" mise à jour avec le nouveau modèle.
 - [x] 245 tests Rust / 426 tests TypeScript / tsc clean.
+
+---
+
+## Phase 29 - Remux étendu sans réencodage audio
+
+**Objectif : élargir la couverture du comparateur vidéo en remuxant davantage de conteneurs (notamment `.avi` et `.wmv` quand le codec interne est compatible mp4), sans jamais réencoder l'audio. Si le remux pur échoue, le fichier reste classé `Unsupported` et l'UI propose le lecteur système.**
+
+### Backend - extension de la classification
+- [ ] `video/playback.rs::is_remux_candidate_extension` : ajouter `avi`, `wmv`, `asf`, `f4v` à la liste. (Beaucoup d'AVI modernes contiennent du H.264 ou du HEVC, beaucoup de F4V contiennent du H.264.)
+- [ ] `video/playback.rs::prepare_for_playback` : **supprimer la branche de fallback `-c:a aac`**. Garder uniquement `-c copy -movflags +faststart`. Si le full-copy échoue (audio incompatible mp4 type AC3, WMA, Vorbis dans MKV), retourner `PreparedVideo::Unsupported`. Justification : pas de réencodage = pas d'attente, pas de perte de qualité ; les rares cas restants seront couverts par la Phase 30 (lecteur natif).
+- [ ] Vérifier que la détection codec via `get_video_metadata` (ffprobe) renvoie bien des codecs cohérents pour les nouveaux conteneurs (`avi+h264`, `wmv+wmv3`, `wmv+wmv2`, `asf+wmv3`, `f4v+h264`).
+- [ ] Tests Rust dans `video/playback.rs` :
+  - [ ] `classify_avi_h264_est_remux` / `classify_avi_mpeg4_est_unsupported` / `classify_avi_xvid_est_unsupported` / `classify_avi_divx_est_unsupported`
+  - [ ] `classify_wmv_h264_est_remux` (rare mais possible) / `classify_wmv_wmv3_est_unsupported` / `classify_wmv_wmv2_est_unsupported`
+  - [ ] `classify_asf_*` symétrique à wmv
+  - [ ] `classify_f4v_h264_est_remux` / `classify_f4v_codec_inconnu_est_unsupported`
+  - [ ] Vérifier que les tests existants (`classify_unsupported_pour_avi_mpeg4`, etc.) restent verts si l'extension passe en `Remux` mais le codec en `Unsupported`.
+- [ ] Test d'intégration ou note documentaire : un fichier `.avi` H.264 avec audio MP3 → `-c copy` réussit (mp3 est légal en mp4 ISO BMFF). Un fichier `.avi` H.264 avec audio AC3 → `-c copy` échoue, tombe en `Unsupported`. C'est le comportement attendu.
+
+### Frontend - aucun changement de logique
+- [ ] Vérifier que `VideoComparator` affiche correctement le placeholder + bouton "ouvrir dans le lecteur système" pour les nouveaux cas `Unsupported` (audio incompatible). Le code existant suffit déjà - juste re-tester manuellement avec un AVI H.264+AC3.
+
+### Documentation
+- [ ] AGENTS.md : mettre à jour la section "WebView2/WebKit : conteneurs vidéo non lus nativement" avec la nouvelle liste de conteneurs remuxables et **expliciter qu'on ne réencode plus l'audio**.
+- [ ] `src/help/content.ts` : si un article d'aide mentionne les formats lus dans le comparateur, le mettre à jour. Sinon ne pas en créer (détail technique invisible).
+- [ ] README.md : pas de mise à jour nécessaire (pas de feature visible nouvelle, juste plus de fichiers qui marchent).
+
+### Critère de validation
+- Un `.avi` H.264 + MP3 ouvre directement dans le comparateur (remux instantané, premier scrub fluide).
+- Un `.avi` MPEG-4 ASP (Xvid/DivX) affiche le placeholder "ouvrir dans le lecteur système" comme avant.
+- Un `.flv` H.264 + Speex (qui passait en réencodage audio) affiche désormais le placeholder. Acceptable : ce cas est rare et sera couvert par la Phase 30.
+
+---
+
+## Phase 30 - Lecteur vidéo natif embarqué (libmpv)
+
+**Objectif : lire dans le comparateur **tous** les formats que ffmpeg sait décoder, sans transcodage et sans dépendre des codecs supportés par WebView2/WebKitGTK. Couvre les cas que la Phase 29 laisse en `Unsupported` (codecs anciens type MPEG-4 ASP, WMV3, audio non-mp4 type AC3/WMA/Vorbis).**
+
+**Approche :** intégrer `libmpv` (binding `libmpv2` ou `mpv-rs`) comme moteur de rendu, embarqué en **fenêtre native fille** par-dessus l'emplacement DOM du `<video>`. Deux instances libmpv côté Rust pour le comparateur, synchronisation maître/esclave côté Rust (commande IPC unique `seek_both` / `play_both` / `pause_both`), placeholders DOM + `ResizeObserver` côté React pour communiquer la position au backend.
+
+### Décisions architecturales préalables
+- [ ] **Choix du binding** : étudier `libmpv2` (binding récent, maintenu) vs `mpv-rs` (plus ancien). Critères : Send+Sync, support OpenGL/D3D11 render API, gestion des évènements property changes. Ouvrir une issue de décision dans le commit.
+- [ ] **Stratégie d'overlay** :
+  - Windows : `HWND` enfant créée via `CreateWindowExW`, parentée à la fenêtre Tauri (`HWND` accessible via `tauri::Window::hwnd()`). libmpv configuré avec `wid=<hwnd>` pour rendu in-place.
+  - Linux X11 : `XID` enfant via `GtkSocket`/`XEmbed`, ou directement `wid=<xid>` libmpv. Récupérer le XID natif de la fenêtre Tauri via `gtk_window` -> `gdk_window` -> `gdk_x11_window_get_xid`.
+  - Linux Wayland : `wid` n'est pas supporté côté Wayland (pas d'embedding cross-process). **Fallback : afficher le comparateur dans une nouvelle `tauri::WebviewWindow` séparée** (toujours sur Wayland uniquement) ou utiliser `gl-cb` (mpv render callback OpenGL) si on arrive à partager le contexte GL avec WebKitGTK. Décider en début de phase ; commencer par le fallback "fenêtre séparée" (plus simple, fonctionnel).
+- [ ] **Politique de fallback** : la Phase 30 ajoute un mode **optionnel**. Garder les chemins `Direct` / `Remuxed` de la Phase 29 actifs pour les formats où le `<video>` HTML5 marche très bien (préférable : pas de fenêtre native, copie d'écran propre, accel hardware via le navigateur). Le lecteur natif est utilisé uniquement quand `prepare_for_playback` retourne `Unsupported`, ou via une option utilisateur "toujours utiliser le lecteur natif".
+
+### Backend Rust - moteur de lecture
+- [ ] Nouveau module `video/native_player.rs` :
+  - [ ] Struct `NativePlayer { mpv: Arc<Mpv>, window_id: NativeHandle, last_geometry: Mutex<Option<Rect>> }`
+  - [ ] `NativePlayer::create(parent_window: &tauri::Window, geometry: Rect) -> Result<NativePlayer>` : crée la HWND/XID enfant, instancie libmpv avec `wid=<id>`, configure (`hwdec=auto`, `keep-open=yes`, `pause=yes`, `audio=yes/no` selon master/slave).
+  - [ ] `set_geometry(&self, rect: Rect)` : déplace/redimensionne la fenêtre native. Sur Windows : `SetWindowPos` + `SWP_NOREDRAW` pendant le drag. Sur Linux X11 : `XMoveResizeWindow`.
+  - [ ] `load(&self, path: &str)` : commande mpv `loadfile`.
+  - [ ] `play() / pause() / seek(t: f64) / set_visible(bool)` : commandes mpv.
+  - [ ] `current_time() -> f64`, `duration() -> f64` (lecture des properties).
+  - [ ] `Drop` : `mpv_destroy` + détruire la fenêtre native.
+- [ ] Gestion DPI (Windows + Linux HiDPI) : convertir CSS px -> physical px avant `SetWindowPos`. Récupérer le scale factor via `tauri::Window::scale_factor()`.
+- [ ] `Send + Sync` sur `Arc<Mpv>` : libmpv est thread-safe pour les commandes ; vérifier que le binding choisi expose ça correctement, sinon wrapper avec `Mutex`.
+- [ ] **Pool de players** : `NativePlayerRegistry` côté Tauri state (`HashMap<u64, Arc<NativePlayer>>`) pour que le frontend puisse référencer un lecteur via un id stable. Création/destruction via commandes.
+
+### Backend Rust - commandes Tauri
+- [ ] `native_player_create(geometry: {x, y, w, h}) -> u64` (retourne un id).
+- [ ] `native_player_destroy(id: u64)`.
+- [ ] `native_player_load(id: u64, path: String)`.
+- [ ] `native_player_set_geometry(id: u64, geometry: Rect)`.
+- [ ] `native_player_set_visible(id: u64, visible: bool)`.
+- [ ] `native_player_play_pair(left_id: u64, right_id: u64)` / `pause_pair` / `seek_pair(t: f64)` : opérations atomiques sur deux lecteurs (master/slave). Évite la latence d'aller-retour individuel.
+- [ ] `native_player_get_state(id: u64) -> { current_time, duration, paused }` (polling depuis le frontend, ou évènements Tauri push depuis property observers libmpv).
+- [ ] **Évènements push** : property observers libmpv (`time-pos`, `pause`, `eof-reached`) émettent vers le frontend via `window.emit("native_player:state", { id, ... })` à la cadence raisonnable (debounce 100ms).
+- [ ] Tests Rust : difficile sans display server. Au minimum : test de création/destruction "headless" via mocks (le binding libmpv permet souvent un `vo=null` pour tests CI). Si impossible, tester juste la logique de pool/registry sans réelle fenêtre.
+
+### Frontend React
+- [ ] Nouveau composant `<NativeVideo ref={...} />` :
+  - [ ] Affiche un `<div>` placeholder (background noir) qui occupe l'emplacement souhaité.
+  - [ ] `useEffect` au mount : `invoke("native_player_create", { geometry })` -> stocke l'id.
+  - [ ] `ResizeObserver` sur le placeholder + listener `scroll` sur les ancêtres scrollables : à chaque changement, `invoke("native_player_set_geometry", { id, geometry })`.
+  - [ ] `IntersectionObserver` : `set_visible(false)` quand le placeholder sort du viewport (sinon la fenêtre native reste affichée par-dessus la zone scrollée hors-écran). Bug subtil mais critique sur Windows.
+  - [ ] `onUnmount` : `native_player_destroy`.
+  - [ ] Méthodes exposées via `useImperativeHandle` : `load`, `play`, `pause`, `seek`, `getState`.
+  - [ ] Listener `tauri.listen("native_player:state", ...)` pour les évènements push.
+- [ ] **Z-order : modal/overlay** : quand un dialog DOM s'ouvre par-dessus, masquer automatiquement le lecteur natif (`set_visible(false)`). Hook `useNativePlayerVisibility(dialogOpen: boolean)`.
+- [ ] **Capture d'écran / impression** : le lecteur natif n'apparaît pas dans les screenshots de la WebView. Documenter cette limite.
+
+### Intégration au comparateur vidéo
+- [ ] `VideoComparator.tsx` : nouveau mode "lecteur natif" activé quand `prepare_for_playback` retourne `Unsupported`. Le composant gère deux `<NativeVideo>` au lieu de deux `<video>`.
+- [ ] Sync maître/esclave : le composant gauche commande `native_player_play_pair` / `pause_pair` / `seek_pair` (atomique côté Rust, plus fiable que le pattern actuel sur le `<video>` HTML5).
+- [ ] Conserver le mode `<video>` HTML5 pour les `Direct` et `Remuxed` (meilleure intégration DOM, pas de surcouche native).
+- [ ] **Option utilisateur "toujours utiliser le lecteur natif"** dans les préférences : court-circuite le `<video>` HTML5 même pour les `Direct/Remuxed`. Utile pour debug et pour les utilisateurs qui veulent une expérience uniforme.
+
+### Plateforme Linux Wayland - fallback fenêtre séparée
+- [ ] Détection runtime : `std::env::var("XDG_SESSION_TYPE") == "wayland"` (ou `WAYLAND_DISPLAY` set).
+- [ ] Si Wayland : ouvrir le comparateur dans une **nouvelle `tauri::WebviewWindow`** dédiée (pas un overlay) via `WebviewWindowBuilder`. Cette fenêtre embarque elle-même les `<NativeVideo>` mais en "plein cadre" - libmpv crée alors la fenêtre native comme enfant de cette fenêtre dédiée, et la sync HWND/XID est triviale (pas de scroll, pas de resize fréquent).
+- [ ] Tester sur GNOME/Wayland (la session par défaut sur Ubuntu récent).
+
+### Build et dépendances
+- [ ] `Cargo.toml` : ajouter `libmpv2` (ou équivalent) avec feature flag `native-player` pour permettre une build sans libmpv si besoin.
+- [ ] **Bundling libmpv** :
+  - Windows : télécharger `mpv-1.dll` officiel, placer dans `src-tauri/binaries/`, déclarer en `externalBin`. Adapter `build.rs` (placeholder en dev, comme pour fpcalc).
+  - Linux : dépendre de `libmpv-dev` côté CI build, lier dynamiquement (`libmpv.so.2`). Ajouter à la liste des paquets dans README + `.github/workflows/build.yml`.
+  - macOS : non concerné (pas dans le scope du projet).
+- [ ] Adapter `scripts/download-fpcalc.sh` -> `scripts/download-tools.sh` pour récupérer aussi mpv-1.dll en CI.
+- [ ] Vérifier qu'on peut **désactiver la feature `native-player`** pour que la build "light" (cf. Phase 26) reste fonctionnelle sans libmpv.
+
+### Documentation
+- [ ] AGENTS.md : nouvelle section "Lecteur vidéo natif (libmpv)" décrivant le pattern overlay HWND/XID, les pièges Z-order, le fallback Wayland, la sync maître/esclave côté Rust.
+- [ ] `src/help/content.ts` : nouvel article bilingue "Lecteur vidéo natif" expliquant pourquoi il existe (formats anciens), comment l'activer manuellement, ses limites (z-order modal, pas de capture d'écran).
+- [ ] README.md : section Stack technique mentionne libmpv ; section Fonctionnalités mentionne "support de tous les formats vidéo via lecteur natif intégré" ; instructions Linux : ajouter `libmpv-dev` à la liste de paquets.
+
+### Tests
+- [ ] Tests Rust pour la logique de registry/pool (sans réel mpv si pas possible en CI).
+- [ ] Tests TypeScript : `NativeVideo.test.tsx` (mock `invoke` + `IntersectionObserver` + `ResizeObserver`) - vérifie que `create` est appelé au mount, `destroy` au unmount, `set_geometry` lors d'un resize simulé, `set_visible(false)` lors d'un IntersectionObserver `isIntersecting=false`.
+- [ ] Tests d'intégration manuels : checklist dans la PR avec captures (Windows + Linux X11 + Linux Wayland).
+
+### Critère de validation
+- Un `.avi` MPEG-4 ASP (Xvid) qui affichait le placeholder en Phase 29 s'ouvre désormais dans le comparateur via le lecteur natif et joue correctement.
+- Un `.flv` H.264 + Speex audio (qui était en `Unsupported` en Phase 29) joue avec son.
+- Sur Windows : redimensionner la fenêtre principale ou scroller fait suivre les deux fenêtres natives sans artefact visible (latence < 50 ms).
+- Sur Linux X11 : idem.
+- Sur Linux Wayland : ouvrir le comparateur ouvre une fenêtre dédiée plein-cadre, la lecture fonctionne (pas d'overlay).
+- Ouvrir un modal DOM (ex. confirmation de suppression) **par-dessus** le comparateur : les deux fenêtres natives se masquent automatiquement et réapparaissent à la fermeture.
+- Build "light" (Phase 26) : compile sans libmpv, le lecteur natif est désactivé silencieusement, l'app reste fonctionnelle pour les formats supportés par la Phase 29.
