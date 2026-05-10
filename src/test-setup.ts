@@ -12,3 +12,12 @@ import "@testing-library/jest-dom";
   unobserve() {}
   disconnect() {}
 };
+
+// ResizeObserver non plus n'existe pas dans jsdom (utilise par NativeVideo, etc.).
+// Mock minimal qui ne fire pas de callback - les tests qui ont besoin d'observer
+// un resize peuvent appeler manuellement update() via le code testable.
+(globalThis as unknown as Record<string, unknown>).ResizeObserver = class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+};

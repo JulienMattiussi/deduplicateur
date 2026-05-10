@@ -5,6 +5,8 @@ import { formatDurationSecs } from "./utils";
 import { useLang } from "./LangContext";
 import type { ComparatorProps } from "./comparatorShared";
 import { useComparatorNav, ComparatorShell, MetaBlockBase, KeepButton, toMediaUrl } from "./comparatorShared";
+import { isNativePlayerAvailable } from "./components/NativeVideo";
+import { NativeComparatorBody } from "./components/NativeComparatorBody";
 
 function formatAudio(meta: VideoMetadata, noneLabel: string): string {
   if (!meta.audio_codec) return noneLabel;
@@ -131,11 +133,13 @@ export function VideoComparator({
   const [rightMeta, setRightMeta] = useState<VideoMetadata | null>(null);
   const [leftPrep, setLeftPrep] = useState<PreparedVideo | null>(null);
   const [rightPrep, setRightPrep] = useState<PreparedVideo | null>(null);
+  const [nativeAvailable, setNativeAvailable] = useState(false);
   const leftVideoRef = useRef<HTMLVideoElement>(null);
   const rightVideoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     invoke<number>("get_media_server_port").then(setMediaPort).catch(() => {});
+    isNativePlayerAvailable().then(setNativeAvailable).catch(() => setNativeAvailable(false));
   }, []);
 
   useEffect(() => {
@@ -192,6 +196,11 @@ export function VideoComparator({
   const leftSrc = mediaPort && leftPath ? toMediaUrl(leftPath, mediaPort) : undefined;
   const rightSrc = mediaPort && rightPath ? toMediaUrl(rightPath, mediaPort) : undefined;
 
+  // Bascule en lecteur natif libmpv si l'un des deux cotes n'est pas lisible par
+  // le `<video>` HTML5 ET que la machine supporte le natif. Les deux cotes passent
+  // alors en natif pour conserver une sync coherente (un master/slave pur libmpv).
+  const useNative = nativeAvailable && !leftPreparing && !rightPreparing && (leftUnsupported || rightUnsupported);
+
   function syncPlay() {
     const rv = rightVideoRef.current;
     const lv = leftVideoRef.current;
@@ -206,6 +215,26 @@ export function VideoComparator({
     const lv = leftVideoRef.current;
     const rv = rightVideoRef.current;
     if (lv && rv) rv.currentTime = lv.currentTime;
+  }
+
+  if (useNative) {
+    return (
+      <ComparatorShell
+        nav={nav}
+        groups={groups}
+        title={t.videoComparator}
+        onClose={onClose}
+      >
+        <NativeComparatorBody
+          leftPath={leftFile.path}
+          rightPath={rightFile.path}
+          leftMetaSlot={<VideoMetaBlock file={leftFile} meta={leftMeta} />}
+          rightMetaSlot={<VideoMetaBlock file={rightFile} meta={rightMeta} />}
+          leftKeepSlot={<KeepButton kept={isKept(leftFile)} onKeep={() => keepFile(leftFile.path)} />}
+          rightKeepSlot={<KeepButton kept={isKept(rightFile)} onKeep={() => keepFile(rightFile.path)} />}
+        />
+      </ComparatorShell>
+    );
   }
 
   return (

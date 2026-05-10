@@ -14,6 +14,13 @@ fn main() {
                 let _ = std::fs::write(&name, b"");
             }
         }
+        // libmpv-2.dll : reference comme resource dans tauri.conf.json. Sur Windows,
+        // remplace par le vrai DLL via scripts/download-mpv.sh avant le build. Sur
+        // Linux/macOS, le placeholder vide existe juste pour que Tauri ne refuse pas
+        // de bundler (libmpv vient du systeme via apt/brew).
+        if !std::path::Path::new("binaries/libmpv-2.dll").exists() {
+            let _ = std::fs::write("binaries/libmpv-2.dll", b"");
+        }
     }
 
     tauri_build::build()

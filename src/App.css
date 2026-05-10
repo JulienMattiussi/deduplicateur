@@ -2951,3 +2951,83 @@
   cursor: pointer;
   user-select: none;
 }
+
+/* ── Lecteur natif libmpv (Phase 30) ────────────────────────────────────── */
+
+/* Body alternatif : meme grille que le comparator-body classique mais on reserve
+   de la place en bas pour la barre de controles native qui flotte position:fixed. */
+.comparator-body-native {
+  position: relative;
+  padding-bottom: 90px;
+}
+
+/* Le placeholder div sur lequel la fenetre native vient se poser. La fenetre native
+   couvre cette zone exactement (set_geometry envoye via ResizeObserver). */
+.native-video-placeholder {
+  background: black;
+  position: relative;
+  border-radius: 4px;
+}
+
+/* Barre de controles unique pilotant la paire master/slave via play_pair / seek_pair.
+   Position:fixed bottom car la fenetre native serait sinon par-dessus une barre
+   inline (z-order natif > webview). */
+.native-controls {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 1rem;
+  background: rgba(0, 0, 0, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 999px;
+  color: #fff;
+  z-index: 1000;
+  min-width: 60%;
+  max-width: 80%;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+}
+
+.native-controls-button {
+  background: transparent;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.native-controls-button:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+.native-controls-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.native-controls-time {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.85rem;
+  min-width: 50px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.native-controls-scrubber {
+  flex: 1;
+  cursor: pointer;
+  accent-color: #4f8ef7;
+}
+
+.native-controls-error {
+  color: #ff6666;
+  font-size: 0.8rem;
+  margin-right: 0.5rem;
+}

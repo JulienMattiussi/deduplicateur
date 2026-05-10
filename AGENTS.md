@@ -576,3 +576,29 @@ reader.for_each_entries(|entry, stream| {
     Ok(true)  // continuer
 })?;
 ```
+
+### Lecteur video natif libmpv : fenetre fille + wid + paire master/slave
+La Phase 30 ajoute un lecteur libmpv embarque pour decoder les codecs/conteneurs que le `<video>` HTML5 ne sait pas lire (MPEG-4 ASP, WMV3, Xvid/DivX, audio AC3/WMA/Vorbis, etc.).
+
+**Architecture cle** :
+1. Une fenetre native (HWND child sur Windows, sous-fenetre X11 sur Linux) est creee par-dessus l'emplacement DOM d'un placeholder. Sur Wayland, pas de support (pas d'API d'embedding cross-process), retombe en `Unsupported` placeholder.
+2. libmpv est instanciee avec `wid=<handle>` pour rendre directement dans cette fenetre.
+3. Sync maitre/esclave via le registre Rust : commandes `play_pair / pause_pair / seek_pair` qui acquerent les Mutex des deux instances dans un ordre fixe (id ascendant) pour eviter les deadlocks. Cas particulier `left == right` traite via `with` simple.
+4. Frontend : ResizeObserver + scroll listener envoient `set_geometry` au backend a chaque changement de layout. IntersectionObserver cache la fenetre native quand le placeholder sort du viewport (sinon elle reste affichee par-dessus le contenu suivant - le z-order natif est toujours superieur a la WebView).
+5. Une barre de controles DOM en `position: fixed` flotte sous les videos (par-dessus la WebView, mais en dessous de la fenetre native qui est positionnee plus haut). C'est l'envers de l'UX habituelle, mais necessaire car les controles DOM ne peuvent pas s'afficher SUR la fenetre native.
+
+**Pieges connus** :
+- Les fenetres natives sont **toujours au-dessus** du DOM. Quand un modal s'ouvre par-dessus le comparateur, passer `hidden=true` au composant pour qu'il appelle `set_visible(false)` sur la fenetre native, sinon le modal est cache derriere.
+- Les screenshots de la WebView Tauri ne contiennent pas la fenetre native (composition separee). Ce n'est pas un probleme pour le comparateur, mais documenter la limite.
+- DPI scaling : le frontend envoie des pixels CSS, le backend convertit en pixels physiques via `tauri::Window::scale_factor()` avant SetWindowPos / configure_window.
+- libmpv2-sys necessite libmpv-dev sur Linux (apt) et libmpv-2.dll + mpv.lib + headers dans `src-tauri/binaries/` sur Windows. Sur Windows, le build script `scripts/download-mpv.sh` recupere ces fichiers ; en CI le step est conditionnel a `runner.os == 'Windows'`. Variable d'env `LIBMPV_PATH` doit pointer sur ce repertoire avant `cargo build` sur Windows.
+- Feature flag Cargo `native-player` (default ON) : permet de builder sans libmpv (`--no-default-features`) pour de la review de code ou des environnements minimaux. Les commandes Tauri `native_player_*` retournent alors `feature_disabled` et le frontend retombe sur le placeholder + bouton lecteur systeme.
+
+**Fichiers cles** :
+- `src-tauri/src/native_player/mod.rs` (exports + types Rect / PlayerState)
+- `src-tauri/src/native_player/platform.rs` (impl Win32 et X11 conditionnelle, detection Wayland)
+- `src-tauri/src/native_player/player.rs` (wrapper `Mpv` + lifecycle)
+- `src-tauri/src/native_player/registry.rs` (HashMap<id, Arc<Mutex<NativePlayer>>>, with_pair, lock ordering)
+- `src-tauri/src/commands/native_player.rs` (10 commandes Tauri, gating feature via cfg)
+- `src/components/NativeVideo.tsx` (composant placeholder + ref imperatif)
+- `src/components/NativeComparatorBody.tsx` (orchestration deux NativeVideo + barre de controles)

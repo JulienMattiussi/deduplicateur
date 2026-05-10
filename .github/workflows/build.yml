@@ -81,7 +81,21 @@ jobs:
             librsvg2-dev \
             patchelf \
             libssl-dev \
-            squashfs-tools
+            squashfs-tools \
+            libmpv-dev
+
+      # Sur Windows : telecharge libmpv-2.dll + mpv.lib + headers pour le build natif
+      # (Phase 30). Sur Linux le paquet libmpv-dev fait office d'equivalent et expose
+      # mpv.pc pour pkg-config.
+      - name: Download libmpv (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: bash scripts/download-mpv.sh
+
+      - name: Set LIBMPV_PATH (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: echo "LIBMPV_PATH=$(realpath src-tauri/binaries)" >> "$GITHUB_ENV"
 
       - name: Install npm dependencies
         run: npm ci
@@ -239,11 +253,14 @@ jobs:
         with:
           workspaces: src-tauri
 
+      # macOS : libmpv via Homebrew. Build sans cette feature pour eviter d'avoir a
+      # bundler libmpv dans le .dmg (les utilisateurs Mac sont rares + Phase 30 vise
+      # surtout Windows). On garde la feature off explicitement.
       - name: Install npm dependencies
         run: npm ci
 
-      - name: Build macOS
-        run: npm run tauri build -- --bundles dmg,app
+      - name: Build macOS (sans native-player)
+        run: npm run tauri build -- --bundles dmg,app --no-default-features
 
       - name: Publish tagged release macOS
         uses: softprops/action-gh-release@v2

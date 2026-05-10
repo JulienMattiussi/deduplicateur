@@ -17,7 +17,7 @@ Outil de détection et suppression de fichiers en double - rapide, local, sans c
 - **Détection exacte** - filtrage en cascade taille → hash xxhash3, parallélisé sur tous les cœurs, cache inter-scans pour accélérer les rescans
 - **Similarité images, vidéos et audio** - même contenu en formats / résolutions / qualités différents (gradient hash, ffmpeg, fpcalc / chromaprint), seuils configurables
 - **Scan d'archives** - ZIP, tar.*, 7z : compare le contenu entre archives, en exact ou similaire (images / audio)
-- **Comparateurs côte à côte** - images (slider de superposition), vidéos (lecture synchronisée) et audio (lecteurs synchronisés), avec métadonnées et bouton "Garder celui-ci"
+- **Comparateurs côte à côte** - images (slider de superposition), vidéos (lecture synchronisée, lecteur natif libmpv pour les codecs anciens) et audio (lecteurs synchronisés), avec métadonnées et bouton "Garder celui-ci"
 - **Modes de scan** - dossier complet, par sous-dossier indépendant, ou comparaison entre deux dossiers
 - **Sessions persistantes** - chaque scan est sauvegardé et reprend après redémarrage sans rescanner
 - **Sélection assistée** - règles automatiques (plus haute résolution, plus récent, dossier prioritaire...), liste d'ignorés persistante, raccourcis clavier
@@ -83,6 +83,7 @@ Groupes triés par espace gaspillé
 | Similarité images | image_hasher |
 | Similarité vidéos | ffmpeg / ffprobe (subprocess) |
 | Similarité audio | fpcalc / chromaprint (subprocess) |
+| Lecteur vidéo natif | libmpv (Phase 30) |
 | Frontend | React 18 + TypeScript |
 | Bundler | Vite + Tauri CLI |
 | CI / CD | GitHub Actions |
@@ -125,7 +126,7 @@ Deux variantes :
 **Prérequis :**
 - [Rust](https://rustup.rs) (toolchain MSVC sur Windows)
 - Node.js 22+ et npm
-- Linux : `sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev patchelf`
+- Linux : `sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev patchelf libmpv-dev` (libmpv-dev nécessaire pour le lecteur natif vidéo de la Phase 30 ; sinon builder avec `--no-default-features` pour le désactiver)
 - Windows : Visual Studio Build Tools (« Développement Desktop en C++ »), WebView2
 
 **Développement :**

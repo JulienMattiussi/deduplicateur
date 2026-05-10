@@ -549,7 +549,7 @@ The **📂** button next to the folder name opens the file's folder in the file 
 
 **Formats lus directement** : \`.mp4\`, \`.webm\`, \`.mov\` (avec H.264/H.265). Les autres conteneurs (\`.flv\`, \`.mkv\`, \`.ts\`, \`.avi\`, \`.wmv\`, \`.asf\`, \`.f4v\`, \`.3gp\`...) sont remuxés à la volée vers \`.mp4\` via ffmpeg quand le codec vidéo est compatible (H.264, H.265, VP9, AV1). Une mention **"Préparation de la vidéo..."** s'affiche pendant l'opération (généralement instantanée car sans réencodage vidéo ni audio).
 
-**Format non lu** (\`.avi\` MPEG-4 ASP / Xvid / DivX, \`.wmv\` WMV2/WMV3, audio AC3 / WMA / Vorbis non compatibles mp4, codecs anciens comme \`vp6f\`...) : un message s'affiche à la place du lecteur. Cliquer sur l'icône **⏵** à côté du nom du fichier dans le footer ouvre le fichier dans le lecteur système (VLC, MPV...). Les métadonnées du footer restent disponibles pour la comparaison.
+**Format non lu par le moteur HTML5** (\`.avi\` MPEG-4 ASP / Xvid / DivX, \`.wmv\` WMV2/WMV3, audio AC3 / WMA / Vorbis non compatibles mp4, codecs anciens comme \`vp6f\`...) : sur Windows et Linux X11, un **lecteur vidéo natif** intégré (libmpv) prend automatiquement le relais et joue le fichier directement. Une barre de contrôles (lecture, pause, scrubber) flotte en bas du comparateur. Sur Linux Wayland ou en cas d'erreur, un message s'affiche et l'icône **⏵** à côté du nom du fichier ouvre le fichier dans le lecteur système (VLC, MPV...).
 
 **Navigation entre groupes** : utilisez les boutons **◀** et **▶** ou les touches **← →** du clavier pour passer d'un groupe au suivant sans fermer le comparateur.
 
@@ -560,7 +560,7 @@ The **📂** button next to the folder name opens the file's folder in the file 
 
 **Directly playable formats**: \`.mp4\`, \`.webm\`, \`.mov\` (with H.264/H.265). Other containers (\`.flv\`, \`.mkv\`, \`.ts\`, \`.avi\`, \`.wmv\`, \`.asf\`, \`.f4v\`, \`.3gp\`...) are remuxed on the fly to \`.mp4\` via ffmpeg when the video codec is compatible (H.264, H.265, VP9, AV1). A **"Preparing video..."** message appears during the operation (usually instant since no video or audio reencoding happens).
 
-**Unsupported format** (\`.avi\` MPEG-4 ASP / Xvid / DivX, \`.wmv\` WMV2/WMV3, AC3 / WMA / Vorbis audio not compatible with mp4, legacy codecs like \`vp6f\`...): a message replaces the player. Click the **⏵** icon next to the file name in the footer to open the file in your system player (VLC, MPV...). Footer metadata stays available for comparison.
+**Format not playable by the HTML5 engine** (\`.avi\` MPEG-4 ASP / Xvid / DivX, \`.wmv\` WMV2/WMV3, AC3 / WMA / Vorbis audio not compatible with mp4, legacy codecs like \`vp6f\`...): on Windows and Linux X11, an embedded **native video player** (libmpv) automatically takes over and plays the file directly. A control bar (play, pause, scrubber) floats at the bottom of the comparator. On Linux Wayland or if an error occurs, a message replaces the player and the **⏵** icon next to the file name opens it in your system player (VLC, MPV...).
 
 **Navigate between groups**: use the **◀** and **▶** buttons or the keyboard **← →** arrow keys to move between video groups without closing the comparator.
 

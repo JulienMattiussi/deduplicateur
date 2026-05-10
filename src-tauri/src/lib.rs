@@ -5,6 +5,7 @@ mod commands;
 mod exact_cache;
 mod filters;
 mod ignore_list;
+mod native_player;
 mod phash;
 mod profiles;
 mod scanner;
@@ -268,6 +269,12 @@ pub fn run() {
         open_archive_entry, open_file, prepare_video_for_playback, reveal_in_folder,
     };
     use commands::ignore::{clear_all_ignored, clear_ignore_entry, get_ignore_list, ignore_group};
+    use commands::native_player::{
+        native_player_available, native_player_create, native_player_destroy,
+        native_player_get_state, native_player_load, native_player_pause_pair,
+        native_player_play_pair, native_player_seek_pair, native_player_set_geometry,
+        native_player_set_visible,
+    };
     use commands::scan::{cancel_scan, scan_folder};
     use commands::session::{
         delete_session, export_results, get_folder_groups_page, get_groups_page,
@@ -308,6 +315,7 @@ pub fn run() {
         })
         .manage(CancelFlag(Arc::new(AtomicBool::new(false))))
         .manage(ScanCache(Mutex::new(None)))
+        .manage(native_player::NativePlayerRegistry::new())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_shell::init())
@@ -357,6 +365,16 @@ pub fn run() {
             get_archive_comparison,
             check_archive_disk_space,
             list_archive_paths,
+            native_player_available,
+            native_player_create,
+            native_player_destroy,
+            native_player_load,
+            native_player_play_pair,
+            native_player_pause_pair,
+            native_player_seek_pair,
+            native_player_set_geometry,
+            native_player_set_visible,
+            native_player_get_state,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

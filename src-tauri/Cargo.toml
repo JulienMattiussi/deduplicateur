@@ -9,11 +9,37 @@ edition = "2021"
 name = "deduplicateur_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[features]
+# Lecteur video natif libmpv pour les codecs non lus par la WebView (MPEG-4 ASP, WMV3,
+# audio AC3/WMA/Vorbis, etc.). Active par defaut. Pour builder sans libmpv (review
+# de code, environnement sans la lib), passer --no-default-features.
+default = ["native-player"]
+native-player = [
+    "dep:libmpv2",
+    "dep:raw-window-handle",
+    "dep:windows",
+    "dep:x11rb",
+]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = ["image-png"] }
+libmpv2 = { version = "5", optional = true }
+raw-window-handle = { version = "0.6", optional = true }
+
+# Win32 : creation et redimensionnement de la HWND fille qui accueille mpv (Phase 30).
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_Graphics_Gdi",
+], optional = true }
+
+# X11 : creation et redimensionnement de la sous-fenetre XID qui accueille mpv (Phase 30).
+[target.'cfg(target_os = "linux")'.dependencies]
+x11rb = { version = "0.13", optional = true }
 tokio = { version = "1", features = ["time", "net", "io-util", "rt-multi-thread"] }
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
 percent-encoding = "2"

@@ -976,91 +976,60 @@ Items résiduels non bloquants (peuvent être traités à part si besoin) :
 
 ---
 
-## Phase 30 - Lecteur vidéo natif embarqué (libmpv)
+## Phase 30 - Lecteur vidéo natif embarqué (libmpv) ✅
 
-**Objectif : lire dans le comparateur **tous** les formats que ffmpeg sait décoder, sans transcodage et sans dépendre des codecs supportés par WebView2/WebKitGTK. Couvre les cas que la Phase 29 laisse en `Unsupported` (codecs anciens type MPEG-4 ASP, WMV3, audio non-mp4 type AC3/WMA/Vorbis).**
+**Objectif : lire dans le comparateur tous les formats que ffmpeg sait décoder, sans transcodage et sans dépendre des codecs supportés par WebView2/WebKitGTK. Couvre les cas que la Phase 29 laisse en `Unsupported` (codecs anciens type MPEG-4 ASP, WMV3, audio non-mp4 type AC3/WMA/Vorbis).**
 
-**Approche :** intégrer `libmpv` (binding `libmpv2` ou `mpv-rs`) comme moteur de rendu, embarqué en **fenêtre native fille** par-dessus l'emplacement DOM du `<video>`. Deux instances libmpv côté Rust pour le comparateur, synchronisation maître/esclave côté Rust (commande IPC unique `seek_both` / `play_both` / `pause_both`), placeholders DOM + `ResizeObserver` côté React pour communiquer la position au backend.
+**Approche livrée** : `libmpv2` 5.0.3 (binding Rust récent et maintenu), embarqué via `wid=<HWND/XID>` dans une fenêtre fille créée par-dessus un placeholder DOM. Deux instances libmpv côté Rust, sync maître/esclave via les commandes `play_pair` / `pause_pair` / `seek_pair`. Frontend : composant `<NativeVideo>` + `<NativeComparatorBody>` qui pilotent les deux instances, bascule automatique depuis le `<video>` HTML5 quand au moins un côté du comparateur est `Unsupported`. Wayland non supporté (placeholder fallback) ; macOS pas implémenté (feature flag off).
 
-### Décisions architecturales préalables
-- [ ] **Choix du binding** : étudier `libmpv2` (binding récent, maintenu) vs `mpv-rs` (plus ancien). Critères : Send+Sync, support OpenGL/D3D11 render API, gestion des évènements property changes. Ouvrir une issue de décision dans le commit.
-- [ ] **Stratégie d'overlay** :
-  - Windows : `HWND` enfant créée via `CreateWindowExW`, parentée à la fenêtre Tauri (`HWND` accessible via `tauri::Window::hwnd()`). libmpv configuré avec `wid=<hwnd>` pour rendu in-place.
-  - Linux X11 : `XID` enfant via `GtkSocket`/`XEmbed`, ou directement `wid=<xid>` libmpv. Récupérer le XID natif de la fenêtre Tauri via `gtk_window` -> `gdk_window` -> `gdk_x11_window_get_xid`.
-  - Linux Wayland : `wid` n'est pas supporté côté Wayland (pas d'embedding cross-process). **Fallback : afficher le comparateur dans une nouvelle `tauri::WebviewWindow` séparée** (toujours sur Wayland uniquement) ou utiliser `gl-cb` (mpv render callback OpenGL) si on arrive à partager le contexte GL avec WebKitGTK. Décider en début de phase ; commencer par le fallback "fenêtre séparée" (plus simple, fonctionnel).
-- [ ] **Politique de fallback** : la Phase 30 ajoute un mode **optionnel**. Garder les chemins `Direct` / `Remuxed` de la Phase 29 actifs pour les formats où le `<video>` HTML5 marche très bien (préférable : pas de fenêtre native, copie d'écran propre, accel hardware via le navigateur). Le lecteur natif est utilisé uniquement quand `prepare_for_playback` retourne `Unsupported`, ou via une option utilisateur "toujours utiliser le lecteur natif".
+### Backend Rust - moteur de lecture ✅
+- [x] Nouveau top-level module `native_player/` (mod.rs, platform.rs, player.rs, registry.rs).
+- [x] `NativePlayer::create(parent_handle, rect, audio)` crée la fenêtre native fille (HWND child Win32 sur Windows, sous-fenêtre X11 via x11rb sur Linux), instancie `Mpv::with_initializer` avec `wid`, `hwdec=auto-safe`, `osc=no`, `pause=yes`, `keep-open=yes`, `mute=true` quand audio=false (slave).
+- [x] Méthodes : `load`, `play`, `pause`, `seek`, `set_geometry`, `set_visible`, `set_muted`, `state` (snapshot `current_time / duration / paused / eof / loaded`).
+- [x] Drop ordonné : libmpv2 termine `Mpv` automatiquement avant le drop de `NativeWindow` qui détruit la HWND/XID.
+- [x] Gestion DPI : conversion CSS px → physical px via `tauri::Window::scale_factor()` dans les commandes `create` / `set_geometry`.
+- [x] Send+Sync : `unsafe impl` sur `NativePlayer` et `NativeWindow` ; toutes les opérations passent par les Mutex du registre, libmpv est documenté thread-safe.
 
-### Backend Rust - moteur de lecture
-- [ ] Nouveau module `video/native_player.rs` :
-  - [ ] Struct `NativePlayer { mpv: Arc<Mpv>, window_id: NativeHandle, last_geometry: Mutex<Option<Rect>> }`
-  - [ ] `NativePlayer::create(parent_window: &tauri::Window, geometry: Rect) -> Result<NativePlayer>` : crée la HWND/XID enfant, instancie libmpv avec `wid=<id>`, configure (`hwdec=auto`, `keep-open=yes`, `pause=yes`, `audio=yes/no` selon master/slave).
-  - [ ] `set_geometry(&self, rect: Rect)` : déplace/redimensionne la fenêtre native. Sur Windows : `SetWindowPos` + `SWP_NOREDRAW` pendant le drag. Sur Linux X11 : `XMoveResizeWindow`.
-  - [ ] `load(&self, path: &str)` : commande mpv `loadfile`.
-  - [ ] `play() / pause() / seek(t: f64) / set_visible(bool)` : commandes mpv.
-  - [ ] `current_time() -> f64`, `duration() -> f64` (lecture des properties).
-  - [ ] `Drop` : `mpv_destroy` + détruire la fenêtre native.
-- [ ] Gestion DPI (Windows + Linux HiDPI) : convertir CSS px -> physical px avant `SetWindowPos`. Récupérer le scale factor via `tauri::Window::scale_factor()`.
-- [ ] `Send + Sync` sur `Arc<Mpv>` : libmpv est thread-safe pour les commandes ; vérifier que le binding choisi expose ça correctement, sinon wrapper avec `Mutex`.
-- [ ] **Pool de players** : `NativePlayerRegistry` côté Tauri state (`HashMap<u64, Arc<NativePlayer>>`) pour que le frontend puisse référencer un lecteur via un id stable. Création/destruction via commandes.
+### Registre + commandes Tauri ✅
+- [x] `NativePlayerRegistry` : `Mutex<HashMap<u64, Arc<Mutex<NativePlayer>>>>` + `AtomicU64` pour les ids stables. Sur Linux, `Mutex<Option<NativeWindowFactory>>` partage la connexion X11 entre toutes les instances.
+- [x] `with_pair(left, right, f)` : lock ordering ascendant pour éviter les deadlocks ; cas spécial `left == right` traité via `with` simple (sinon double-lock du même Mutex).
+- [x] `is_wayland_session()` détecte WAYLAND_DISPLAY / XDG_SESSION_TYPE et fait échouer `create` tôt avec "wayland_unsupported" au lieu d'une erreur cryptique.
+- [x] 10 commandes Tauri dans `commands/native_player.rs` : `available`, `create`, `destroy`, `load`, `play_pair`, `pause_pair`, `seek_pair`, `set_geometry`, `set_visible`, `get_state`. Toutes gated `#[cfg(feature = "native-player")]` ; quand off, retournent `feature_disabled` au lieu d'erreurs cryptiques.
 
-### Backend Rust - commandes Tauri
-- [ ] `native_player_create(geometry: {x, y, w, h}) -> u64` (retourne un id).
-- [ ] `native_player_destroy(id: u64)`.
-- [ ] `native_player_load(id: u64, path: String)`.
-- [ ] `native_player_set_geometry(id: u64, geometry: Rect)`.
-- [ ] `native_player_set_visible(id: u64, visible: bool)`.
-- [ ] `native_player_play_pair(left_id: u64, right_id: u64)` / `pause_pair` / `seek_pair(t: f64)` : opérations atomiques sur deux lecteurs (master/slave). Évite la latence d'aller-retour individuel.
-- [ ] `native_player_get_state(id: u64) -> { current_time, duration, paused }` (polling depuis le frontend, ou évènements Tauri push depuis property observers libmpv).
-- [ ] **Évènements push** : property observers libmpv (`time-pos`, `pause`, `eof-reached`) émettent vers le frontend via `window.emit("native_player:state", { id, ... })` à la cadence raisonnable (debounce 100ms).
-- [ ] Tests Rust : difficile sans display server. Au minimum : test de création/destruction "headless" via mocks (le binding libmpv permet souvent un `vo=null` pour tests CI). Si impossible, tester juste la logique de pool/registry sans réelle fenêtre.
+### Frontend React ✅
+- [x] `src/components/NativeVideo.tsx` : composant `forwardRef<NativeVideoHandle>` avec `useImperativeHandle` exposant `load / play / pause / seek / getState / getId`. Crée le player au mount, le détruit au unmount. ResizeObserver + scroll listener pour `set_geometry`, IntersectionObserver pour `set_visible` quand hors viewport. Prop `hidden` pour masquer manuellement (modal DOM par-dessus).
+- [x] `isNativePlayerAvailable()` : invoke + cache module pour éviter les requêtes répétées.
+- [x] `src/components/NativeComparatorBody.tsx` : orchestre deux `<NativeVideo>` (gauche audio=true / droite audio=false), barre de contrôles `position: fixed` (play/pause, scrubber, time/duration), polling `get_state` à 250 ms tant que le composant est monté.
 
-### Frontend React
-- [ ] Nouveau composant `<NativeVideo ref={...} />` :
-  - [ ] Affiche un `<div>` placeholder (background noir) qui occupe l'emplacement souhaité.
-  - [ ] `useEffect` au mount : `invoke("native_player_create", { geometry })` -> stocke l'id.
-  - [ ] `ResizeObserver` sur le placeholder + listener `scroll` sur les ancêtres scrollables : à chaque changement, `invoke("native_player_set_geometry", { id, geometry })`.
-  - [ ] `IntersectionObserver` : `set_visible(false)` quand le placeholder sort du viewport (sinon la fenêtre native reste affichée par-dessus la zone scrollée hors-écran). Bug subtil mais critique sur Windows.
-  - [ ] `onUnmount` : `native_player_destroy`.
-  - [ ] Méthodes exposées via `useImperativeHandle` : `load`, `play`, `pause`, `seek`, `getState`.
-  - [ ] Listener `tauri.listen("native_player:state", ...)` pour les évènements push.
-- [ ] **Z-order : modal/overlay** : quand un dialog DOM s'ouvre par-dessus, masquer automatiquement le lecteur natif (`set_visible(false)`). Hook `useNativePlayerVisibility(dialogOpen: boolean)`.
-- [ ] **Capture d'écran / impression** : le lecteur natif n'apparaît pas dans les screenshots de la WebView. Documenter cette limite.
+### Intégration au comparateur vidéo ✅
+- [x] `VideoComparator.tsx` : `useNative = nativeAvailable && (leftUnsupported || rightUnsupported)`. Si vrai, render `NativeComparatorBody` ; sinon comportement existant `<video>` HTML5. Conserve donc les Direct/Remuxed sur le moteur HTML5 pour leur excellente intégration DOM.
+- [x] Slot pattern : `leftMetaSlot`, `rightMetaSlot`, `leftKeepSlot`, `rightKeepSlot` permettent à `NativeComparatorBody` de réutiliser les méta-blocks et boutons "Garder" du comparateur normal.
 
-### Intégration au comparateur vidéo
-- [ ] `VideoComparator.tsx` : nouveau mode "lecteur natif" activé quand `prepare_for_playback` retourne `Unsupported`. Le composant gère deux `<NativeVideo>` au lieu de deux `<video>`.
-- [ ] Sync maître/esclave : le composant gauche commande `native_player_play_pair` / `pause_pair` / `seek_pair` (atomique côté Rust, plus fiable que le pattern actuel sur le `<video>` HTML5).
-- [ ] Conserver le mode `<video>` HTML5 pour les `Direct` et `Remuxed` (meilleure intégration DOM, pas de surcouche native).
-- [ ] **Option utilisateur "toujours utiliser le lecteur natif"** dans les préférences : court-circuite le `<video>` HTML5 même pour les `Direct/Remuxed`. Utile pour debug et pour les utilisateurs qui veulent une expérience uniforme.
+### Plateforme Wayland / macOS - fallback placeholder ✅
+- [x] Wayland : `is_wayland_session()` détecte la session, `create` retourne "wayland_unsupported", le frontend retombe sur le placeholder + bouton "ouvrir dans le lecteur système" exactement comme avant la Phase 30.
+- [x] macOS : feature `native-player` désactivée par défaut sur macOS dans le job CI dédié (`--no-default-features` lors du build .dmg). Pas d'overhead libmpv sur Mac.
 
-### Plateforme Linux Wayland - fallback fenêtre séparée
-- [ ] Détection runtime : `std::env::var("XDG_SESSION_TYPE") == "wayland"` (ou `WAYLAND_DISPLAY` set).
-- [ ] Si Wayland : ouvrir le comparateur dans une **nouvelle `tauri::WebviewWindow`** dédiée (pas un overlay) via `WebviewWindowBuilder`. Cette fenêtre embarque elle-même les `<NativeVideo>` mais en "plein cadre" - libmpv crée alors la fenêtre native comme enfant de cette fenêtre dédiée, et la sync HWND/XID est triviale (pas de scroll, pas de resize fréquent).
-- [ ] Tester sur GNOME/Wayland (la session par défaut sur Ubuntu récent).
+### Build et dépendances ✅
+- [x] `Cargo.toml` : feature `native-player` (default ON) qui active `libmpv2 = "5"`, `raw-window-handle = "0.6"`, `windows = "0.59"` (target Windows uniquement), `x11rb = "0.13"` (target Linux uniquement). Buildable sans la feature pour review/CI minimaliste : `cargo build --no-default-features`.
+- [x] `scripts/download-mpv.sh` : télécharge libmpv-2.dll + mpv.lib + headers depuis zhongfly/mpv-winbuild (release figée pour stabilité). No-op sur Linux/macOS.
+- [x] `build.rs` : crée un placeholder vide `binaries/libmpv-2.dll` quand absent (dev sans build script lancé), comme pour fpcalc/ffmpeg/ffprobe.
+- [x] `tauri.conf.json` : `bundle.resources` ajoute `binaries/libmpv-2.dll` → installé à côté du .exe sur Windows. Sur Linux le placeholder vide est bundlé mais inoffensif (libmpv vient de `libmpv2` système via `apt install libmpv-dev`).
+- [x] `.github/workflows/build.yml` : `libmpv-dev` ajouté à la liste apt-get Linux ; étape `Download libmpv (Windows)` exécute `scripts/download-mpv.sh` ; `LIBMPV_PATH` exporté pour libmpv2-sys ; macOS build avec `--no-default-features`.
 
-### Build et dépendances
-- [ ] `Cargo.toml` : ajouter `libmpv2` (ou équivalent) avec feature flag `native-player` pour permettre une build sans libmpv si besoin.
-- [ ] **Bundling libmpv** :
-  - Windows : télécharger `mpv-1.dll` officiel, placer dans `src-tauri/binaries/`, déclarer en `externalBin`. Adapter `build.rs` (placeholder en dev, comme pour fpcalc).
-  - Linux : dépendre de `libmpv-dev` côté CI build, lier dynamiquement (`libmpv.so.2`). Ajouter à la liste des paquets dans README + `.github/workflows/build.yml`.
-  - macOS : non concerné (pas dans le scope du projet).
-- [ ] Adapter `scripts/download-fpcalc.sh` -> `scripts/download-tools.sh` pour récupérer aussi mpv-1.dll en CI.
-- [ ] Vérifier qu'on peut **désactiver la feature `native-player`** pour que la build "light" (cf. Phase 26) reste fonctionnelle sans libmpv.
+### Documentation ✅
+- [x] AGENTS.md : nouvelle section "Lecteur video natif libmpv : fenetre fille + wid + paire master/slave" décrivant l'architecture (HWND child / X11 sub-window / wid), les pièges (z-order modal, screenshots WebView, DPI scaling, dépendances build), la liste des fichiers clés, et la stratégie feature flag.
+- [x] README.md : ajout de "lecteur natif libmpv pour les codecs anciens" dans la section Comparateurs côté à côte ; nouvelle ligne "Lecteur vidéo natif | libmpv (Phase 30)" dans Stack technique ; ajout de `libmpv-dev` à la liste des paquets Linux requis pour la compilation.
+- [x] `src/help/content.ts` : article "Ouvrir le comparateur de vidéos" mis à jour FR + EN pour mentionner le lecteur natif (couvre tous les formats restants après la Phase 29).
 
-### Documentation
-- [ ] AGENTS.md : nouvelle section "Lecteur vidéo natif (libmpv)" décrivant le pattern overlay HWND/XID, les pièges Z-order, le fallback Wayland, la sync maître/esclave côté Rust.
-- [ ] `src/help/content.ts` : nouvel article bilingue "Lecteur vidéo natif" expliquant pourquoi il existe (formats anciens), comment l'activer manuellement, ses limites (z-order modal, pas de capture d'écran).
-- [ ] README.md : section Stack technique mentionne libmpv ; section Fonctionnalités mentionne "support de tous les formats vidéo via lecteur natif intégré" ; instructions Linux : ajouter `libmpv-dev` à la liste de paquets.
+### Tests ✅
+- [x] Tests Rust : 3 tests dans `native_player::registry::tests` (id strictement croissant, destroy id inexistant ne panic pas, destroy_all vide la map). Couvre la logique de registry sans nécessiter un display server.
+- [x] Tests TypeScript : 8 tests dans `src/components/NativeVideo.test.tsx` (mock invoke + ResizeObserver + IntersectionObserver dans test-setup.ts) - create au mount, destroy au unmount, onReady avec id, onError sur wayland_unsupported, load via ref, getState via ref, getState par défaut quand pas initialisé, isNativePlayerAvailable cache.
+- [x] 278 tests Rust / 448 tests TypeScript / tsc clean.
 
-### Tests
-- [ ] Tests Rust pour la logique de registry/pool (sans réel mpv si pas possible en CI).
-- [ ] Tests TypeScript : `NativeVideo.test.tsx` (mock `invoke` + `IntersectionObserver` + `ResizeObserver`) - vérifie que `create` est appelé au mount, `destroy` au unmount, `set_geometry` lors d'un resize simulé, `set_visible(false)` lors d'un IntersectionObserver `isIntersecting=false`.
-- [ ] Tests d'intégration manuels : checklist dans la PR avec captures (Windows + Linux X11 + Linux Wayland).
-
-### Critère de validation
+### Critères de validation (à tester sur Windows)
 - Un `.avi` MPEG-4 ASP (Xvid) qui affichait le placeholder en Phase 29 s'ouvre désormais dans le comparateur via le lecteur natif et joue correctement.
 - Un `.flv` H.264 + Speex audio (qui était en `Unsupported` en Phase 29) joue avec son.
-- Sur Windows : redimensionner la fenêtre principale ou scroller fait suivre les deux fenêtres natives sans artefact visible (latence < 50 ms).
-- Sur Linux X11 : idem.
-- Sur Linux Wayland : ouvrir le comparateur ouvre une fenêtre dédiée plein-cadre, la lecture fonctionne (pas d'overlay).
-- Ouvrir un modal DOM (ex. confirmation de suppression) **par-dessus** le comparateur : les deux fenêtres natives se masquent automatiquement et réapparaissent à la fermeture.
-- Build "light" (Phase 26) : compile sans libmpv, le lecteur natif est désactivé silencieusement, l'app reste fonctionnelle pour les formats supportés par la Phase 29.
+- Sur Windows : redimensionner la fenêtre principale ou scroller fait suivre les deux fenêtres natives ; latence visible < 50 ms (acceptable).
+- Sur Linux Wayland : le comparateur retombe sur le placeholder existant, comme en Phase 29.
+- Build "light" / "full" : compile + bundle, libmpv-2.dll présent à côté de l'exe sur Windows.
+- Build sans la feature : `cargo build --no-default-features` réussit, les commandes `native_player_*` retournent `feature_disabled`.
