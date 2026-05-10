@@ -160,6 +160,16 @@ Quand un bug ne reproduit pas ou que la cause n'est pas évidente après lecture
 
 Exemple vécu : recompute des compteurs d'archives qui ne marchait pas. 3 itérations de spéculations infructueuses. Un seul jeu de logs (état du cache + seuil + compteurs avant/après) a révélé `sim_threshold=0` dans la session - root cause invisible depuis le code seul. À adopter dès qu'un fix "logique" ne suffit pas.
 
+## Règle impérative - Filtres d'affichage : appliquer APRÈS la persistance, jamais avant
+
+Quand un filtre n'a de sens que pour la vue (liste d'ignorés, filtre texte, etc.) et doit pouvoir être annulé plus tard, l'appliquer **après** `save_session` / `save_*` et **uniquement** sur la copie retournée au frontend. La persistance disque garde l'état complet ; le filtre est recalculé à chaque load.
+
+Sinon le filtre devient durable et irréversible : par exemple, retirer un groupe de la liste d'ignorés ne pourrait plus le faire réapparaître dans une session déjà sauvegardée (les données ont été retirées du fichier au moment du `save`).
+
+Exemple vécu : `load_session` retournait initialement les groupes ignorés malgré la liste d'ignorés. Le fix applique `apply_ignore_filter` **après** le bloc `if dirty { save_session(...) }`, pas avant. Le `LoadedSession` cache la vue filtrée mais le fichier sur disque reste intact. Tests `commands::session::tests::apply_ignore_filter_*` figent ce contrat.
+
+Pattern : on persiste la **vérité terrain** (groupes existants sur disque, recompute des compteurs liés à des données réellement modifiées) ; on filtre **par-dessus** pour l'affichage. Si la même règle vaut pour un futur filtre (texte, source, taille, etc.) qui doit être ajustable à chaud sans rescan, suivre la même séparation.
+
 ## Pièges Tauri 2 rencontrés
 
 ### Permissions manquantes → clic sans effet

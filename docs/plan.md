@@ -936,6 +936,19 @@ Items résiduels non bloquants (peuvent être traités à part si besoin) :
 
 ---
 
+## Correctifs post-1.0.0
+
+### Liste d'ignorés appliquée au rechargement de session ✅
+
+**Bug** : au chargement d'une session historisée, les groupes ajoutés à la liste d'ignorés *après* le scan d'origine réapparaissaient dans la liste affichée. La liste d'ignorés n'était appliquée qu'à la création du scan, pas au reload.
+
+- [x] [src-tauri/src/commands/session.rs::load_session](../src-tauri/src/commands/session.rs) charge `IgnoreList::keys_set()` avant le `spawn_blocking` puis applique le filtre **après** `save_session`. La session sur disque garde tous les groupes originaux ; le filtre n'est qu'une vue affichée. Permet à `clear_ignore_entry` de restaurer le groupe au prochain reload.
+- [x] Nouvelle fonction pure `apply_ignore_filter(groups, summary, ignored_keys) -> (groups, summary)` qui recalcule `total_groups` et `total_wasted_bytes` quand au moins un groupe est filtré ; no-op si la liste est vide.
+- [x] 3 tests Rust : `apply_ignore_filter_retire_les_groupes_dans_la_liste`, `apply_ignore_filter_passthrough_si_aucun_match`, `apply_ignore_filter_no_op_si_liste_vide`.
+- [x] 272 tests Rust / 440 tests TypeScript / tsc clean.
+
+---
+
 ## Phase 29 - Remux étendu sans réencodage audio
 
 **Objectif : élargir la couverture du comparateur vidéo en remuxant davantage de conteneurs (notamment `.avi` et `.wmv` quand le codec interne est compatible mp4), sans jamais réencoder l'audio. Si le remux pur échoue, le fichier reste classé `Unsupported` et l'UI propose le lecteur système.**

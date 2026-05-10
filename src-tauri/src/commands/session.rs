@@ -177,6 +177,14 @@ pub async fn load_session(app: tauri::AppHandle, id: String) -> Result<ScanSumma
     let file = read_session_file(&app, &id)
         .ok_or_else(|| "Session introuvable".to_string())?;
 
+    // Liste d'ignores : appliquee a la vue affichee uniquement, JAMAIS persistee dans
+    // le fichier de session. Permet a clear_ignore_entry de restaurer le groupe au
+    // prochain reload (sinon "retirer de la liste d'ignores" deviendrait sans effet
+    // pour les sessions deja chargees).
+    let ignored_keys = crate::app_data_dir(&app)
+        .map(|d| crate::ignore_list::IgnoreList::load(&d).keys_set())
+        .unwrap_or_default();
+
     // Le re-hashing potentiel des archives (ensure_cache_for_groups) peut prendre plusieurs
     // secondes ; on libere le thread Tauri pendant pour ne pas geler l'UI.
     let (groups, summary, archive_groups, archive_entries_cache, dirty) = tauri::async_runtime::spawn_blocking(move || {
@@ -240,14 +248,43 @@ pub async fn load_session(app: tauri::AppHandle, id: String) -> Result<ScanSumma
         save_session(&app, &summary, &groups, &archive_groups, &archive_entries_cache);
     }
 
-    let result = summary.clone();
+    // Filtre d'affichage applique APRES save : la session sur disque garde tous les
+    // groupes originaux, le frontend ne voit que ceux absents de la liste d'ignores.
+    let (displayed_groups, displayed_summary) = apply_ignore_filter(groups, summary, &ignored_keys);
+
+    let result = displayed_summary.clone();
     *app.state::<ScanCache>().0.lock().unwrap() = Some(LoadedSession {
-        summary,
-        groups,
+        summary: displayed_summary,
+        groups: displayed_groups,
         archive_groups,
         archive_entries_cache,
     });
     Ok(result)
+}
+
+/// Filtre les groupes contre la liste d'ignores et recalcule total_groups +
+/// total_wasted_bytes du summary si au moins un groupe a ete retire. Pure : sans I/O.
+fn apply_ignore_filter(
+    groups: Vec<DuplicateGroup>,
+    mut summary: ScanSummary,
+    ignored_keys: &std::collections::HashSet<String>,
+) -> (Vec<DuplicateGroup>, ScanSummary) {
+    if ignored_keys.is_empty() {
+        return (groups, summary);
+    }
+    let original_count = groups.len();
+    let displayed: Vec<DuplicateGroup> = groups
+        .into_iter()
+        .filter(|g| {
+            let paths: Vec<String> = g.files.iter().map(|f| f.path.clone()).collect();
+            !ignored_keys.contains(&crate::ignore_list::group_ignore_key(&paths))
+        })
+        .collect();
+    if displayed.len() != original_count {
+        summary.total_groups = displayed.len();
+        summary.total_wasted_bytes = crate::recalc_wasted_bytes(&displayed);
+    }
+    (displayed, summary)
 }
 
 #[tauri::command]
@@ -378,4 +415,112 @@ pub async fn export_results(
         _ => return Err(format!("Format inconnu: {}", format)),
     };
     std::fs::write(&output_path, content).map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::scanner::DuplicateFile;
+    use std::collections::HashSet;
+
+    fn make_group(id: &str, size: u64, paths: &[&str]) -> DuplicateGroup {
+        DuplicateGroup {
+            id: id.to_string(),
+            hash: format!("hash-{}", id),
+            size,
+            files: paths
+                .iter()
+                .map(|p| DuplicateFile {
+                    path: (*p).to_string(),
+                    name: std::path::Path::new(p)
+                        .file_name()
+                        .map(|f| f.to_string_lossy().into_owned())
+                        .unwrap_or_default(),
+                    size,
+                    modified: 0,
+                    video_metadata: None,
+                    audio_metadata: None,
+                    source: None,
+                })
+                .collect(),
+            folder_key: None,
+            similar: false,
+            video_similar: false,
+            audio_similar: false,
+        }
+    }
+
+    fn make_summary(total_groups: usize, total_wasted: u64) -> ScanSummary {
+        ScanSummary {
+            id: "test".into(),
+            folder: "/test".into(),
+            total_wasted_bytes: total_wasted,
+            total_groups,
+            scanned_files: 0,
+            duration_ms: 0,
+            by_folder: false,
+            total_folders: 0,
+            partial: false,
+            recursive: false,
+            find_similar: false,
+            find_similar_videos: false,
+            ffmpeg_missing: false,
+            find_similar_audio: false,
+            fpcalc_missing: false,
+            archive_groups_count: 0,
+            scan_archives: false,
+            sim_threshold: None,
+            video_sim_threshold: None,
+            audio_sim_threshold: None,
+        }
+    }
+
+    #[test]
+    fn apply_ignore_filter_retire_les_groupes_dans_la_liste() {
+        let g1 = make_group("g1", 1000, &["/a/1.txt", "/a/1bis.txt"]);
+        let g2 = make_group("g2", 2000, &["/b/2.txt", "/b/2bis.txt"]);
+        let g3 = make_group("g3", 3000, &["/c/3.txt", "/c/3bis.txt"]);
+
+        let g2_paths: Vec<String> = g2.files.iter().map(|f| f.path.clone()).collect();
+        let mut ignored = HashSet::new();
+        ignored.insert(crate::ignore_list::group_ignore_key(&g2_paths));
+
+        let summary = make_summary(3, 1000 + 2000 + 3000);
+        let (displayed, displayed_summary) = apply_ignore_filter(vec![g1, g2, g3], summary, &ignored);
+
+        assert_eq!(displayed.len(), 2);
+        assert!(displayed.iter().all(|g| g.id != "g2"));
+        assert_eq!(displayed_summary.total_groups, 2);
+        assert_eq!(displayed_summary.total_wasted_bytes, 1000 + 3000);
+    }
+
+    #[test]
+    fn apply_ignore_filter_passthrough_si_aucun_match() {
+        let g1 = make_group("g1", 1000, &["/a/1.txt", "/a/1bis.txt"]);
+        let g2 = make_group("g2", 2000, &["/b/2.txt", "/b/2bis.txt"]);
+        let summary = make_summary(2, 3000);
+
+        let mut ignored = HashSet::new();
+        ignored.insert("clef-qui-ne-matche-aucun-groupe".to_string());
+
+        let (displayed, displayed_summary) =
+            apply_ignore_filter(vec![g1, g2], summary, &ignored);
+
+        assert_eq!(displayed.len(), 2);
+        assert_eq!(displayed_summary.total_groups, 2);
+        assert_eq!(displayed_summary.total_wasted_bytes, 3000);
+    }
+
+    #[test]
+    fn apply_ignore_filter_no_op_si_liste_vide() {
+        let g1 = make_group("g1", 1000, &["/a/1.txt", "/a/1bis.txt"]);
+        let summary = make_summary(1, 1000);
+        let ignored = HashSet::new();
+
+        let (displayed, displayed_summary) = apply_ignore_filter(vec![g1], summary, &ignored);
+
+        assert_eq!(displayed.len(), 1);
+        assert_eq!(displayed_summary.total_groups, 1);
+        assert_eq!(displayed_summary.total_wasted_bytes, 1000);
+    }
 }
