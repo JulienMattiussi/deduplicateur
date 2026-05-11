@@ -41,6 +41,13 @@ export function NativeComparatorBody({
     loaded: false,
   });
   const [scrubbing, setScrubbing] = useState(false);
+  const [volume, setVolume] = useState(100);
+
+  // Applique le volume sur le master des qu'il est pret (et a chaque changement).
+  useEffect(() => {
+    if (leftId == null) return;
+    leftRef.current?.setVolume(volume).catch(() => {});
+  }, [leftId, volume]);
 
   // Charge le fichier dans chaque instance des qu'elle est prete et que le path change.
   useEffect(() => {
@@ -192,6 +199,22 @@ export function NativeComparatorBody({
         <span className="native-controls-time">
           {formatDurationSecs(state.duration)}
         </span>
+        <span
+          className="native-controls-volume-icon"
+          aria-label={volume === 0 ? "Volume coupé" : `Volume ${Math.round(volume)}%`}
+        >
+          {volume === 0 ? "🔇" : volume < 50 ? "🔉" : "🔊"}
+        </span>
+        <input
+          type="range"
+          className="native-controls-volume"
+          min={0}
+          max={100}
+          step={1}
+          value={volume}
+          onChange={(e) => setVolume(Number(e.target.value))}
+          aria-label="Volume"
+        />
       </div>
     </div>
   );

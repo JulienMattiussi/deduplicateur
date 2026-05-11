@@ -11,13 +11,26 @@ export interface ScanProgress {
   groups_found?: number;
 }
 
+export interface AudioTrack {
+  index: number;
+  codec: string;
+  channels?: number | null;
+  channel_layout?: string | null;
+  language?: string | null;
+  title?: string | null;
+  default?: boolean;
+}
+
 export interface VideoMetadata {
   duration_secs: number;
   width: number;
   height: number;
   codec: string;
+  /** Piste audio par défaut (rétrocompat sessions pré-multi-pistes). */
   audio_codec?: string | null;
   audio_channels?: number | null;
+  /** Toutes les pistes audio détectées. Vide si ancienne session. */
+  audio_tracks?: AudioTrack[];
 }
 
 export type PreparedVideo =

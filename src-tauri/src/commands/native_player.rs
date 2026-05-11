@@ -243,6 +243,24 @@ pub async fn native_player_set_visible(
 }
 
 #[tauri::command]
+pub async fn native_player_set_volume(
+    registry: tauri::State<'_, Arc<NativePlayerRegistry>>,
+    id: u64,
+    volume: f64,
+) -> Result<(), String> {
+    #[cfg(feature = "native-player")]
+    {
+        // mpv set_property("volume") est thread-safe, pas besoin de main-thread.
+        registry.with(id, |p| p.set_volume(volume))
+    }
+    #[cfg(not(feature = "native-player"))]
+    {
+        let _ = (registry, id, volume);
+        Err("native_player: feature_disabled".into())
+    }
+}
+
+#[tauri::command]
 pub async fn native_player_get_state(
     registry: tauri::State<'_, Arc<NativePlayerRegistry>>,
     id: u64,

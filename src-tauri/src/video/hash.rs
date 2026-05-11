@@ -17,16 +17,47 @@ impl NoWindowExt for Command {
     }
 }
 
+/// Une piste audio dans un conteneur video. Les MKV / MP4 modernes peuvent en avoir
+/// plusieurs (VO + VF, commentaires, descripteurs accessibilite, etc.).
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct AudioTrack {
+    /// Index de stream dans le conteneur (utile pour ffmpeg/mpv).
+    pub index: u32,
+    /// "aac", "ac3", "dts", "opus"...
+    pub codec: String,
+    /// Nombre de canaux (1=mono, 2=stereo, 6=5.1, 8=7.1...).
+    #[serde(default)]
+    pub channels: Option<u8>,
+    /// "stereo", "5.1", "7.1" - plus parlant que channels seul.
+    #[serde(default)]
+    pub channel_layout: Option<String>,
+    /// Code ISO 639-2 ("fre", "eng", "jpn"...) ou ISO 639-1 selon le conteneur.
+    #[serde(default)]
+    pub language: Option<String>,
+    /// Titre humain de la piste s'il a ete defini par le muxer ("French AC3", "Director's commentary"...).
+    #[serde(default)]
+    pub title: Option<String>,
+    /// Piste marquee "default" dans le conteneur - lue par defaut par les lecteurs.
+    #[serde(default)]
+    pub default: bool,
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct VideoMetadata {
     pub duration_secs: f64,
     pub width: u32,
     pub height: u32,
     pub codec: String,
+    /// Premiere piste audio - garde pour retrocompatibilite (sessions sauvegardees
+    /// avant l'ajout de `audio_tracks`). Le frontend prefere `audio_tracks` quand
+    /// elle est non vide.
     #[serde(default)]
     pub audio_codec: Option<String>,
     #[serde(default)]
     pub audio_channels: Option<u8>,
+    /// Liste complete des pistes audio detectees par ffprobe.
+    #[serde(default)]
+    pub audio_tracks: Vec<AudioTrack>,
 }
 
 /// Verifie que ffprobe et ffmpeg sont disponibles (binaire bundte ou PATH).
@@ -84,13 +115,52 @@ pub fn get_video_metadata(path: &str) -> Option<VideoMetadata> {
         .unwrap_or("unknown")
         .to_string();
 
-    let audio_stream = json["streams"]
+    // Toutes les pistes audio du conteneur (1+ sur les MKV / MP4 multilingues).
+    let audio_tracks: Vec<AudioTrack> = json["streams"]
         .as_array()
-        .and_then(|arr| arr.iter().find(|s| s["codec_type"].as_str() == Some("audio")));
-    let audio_codec = audio_stream.and_then(|s| s["codec_name"].as_str().map(String::from));
-    let audio_channels = audio_stream.and_then(|s| s["channels"].as_u64().map(|n| n as u8));
+        .map(|arr| {
+            arr.iter()
+                .filter(|s| s["codec_type"].as_str() == Some("audio"))
+                .map(|s| {
+                    let tags = &s["tags"];
+                    AudioTrack {
+                        index: s["index"].as_u64().unwrap_or(0) as u32,
+                        codec: s["codec_name"]
+                            .as_str()
+                            .unwrap_or("unknown")
+                            .to_string(),
+                        channels: s["channels"].as_u64().map(|n| n as u8),
+                        channel_layout: s["channel_layout"]
+                            .as_str()
+                            .map(String::from),
+                        language: tags["language"]
+                            .as_str()
+                            .map(String::from),
+                        title: tags["title"].as_str().map(String::from),
+                        default: s["disposition"]["default"].as_u64() == Some(1),
+                    }
+                })
+                .collect()
+        })
+        .unwrap_or_default();
 
-    Some(VideoMetadata { duration_secs: duration, width, height, codec, audio_codec, audio_channels })
+    // Champs de retrocompat : on prend la piste "default" si presente, sinon la 1re.
+    let primary = audio_tracks
+        .iter()
+        .find(|t| t.default)
+        .or_else(|| audio_tracks.first());
+    let audio_codec = primary.map(|t| t.codec.clone());
+    let audio_channels = primary.and_then(|t| t.channels);
+
+    Some(VideoMetadata {
+        duration_secs: duration,
+        width,
+        height,
+        codec,
+        audio_codec,
+        audio_channels,
+        audio_tracks,
+    })
 }
 
 /// Version de l'algorithme de hash video. Bumper a chaque changement qui invalide

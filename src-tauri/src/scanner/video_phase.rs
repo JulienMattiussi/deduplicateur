@@ -57,6 +57,7 @@ where
                     codec: e.codec.clone(),
                     audio_codec: e.audio_codec.clone(),
                     audio_channels: e.audio_channels,
+                    audio_tracks: e.audio_tracks.clone(),
                 }))
         })
         .collect();
@@ -143,6 +144,7 @@ where
                 codec: meta.codec.clone(),
                 audio_codec: meta.audio_codec.clone(),
                 audio_channels: meta.audio_channels,
+                audio_tracks: meta.audio_tracks.clone(),
                 algorithm_version: crate::video::hash::HASH_ALGORITHM_VERSION,
             });
         }

@@ -82,6 +82,14 @@ impl NativePlayer {
         self.mpv.set_property("mute", muted).map_err(err)
     }
 
+    /// Volume sur l'echelle mpv : 0..100 = normal, jusqu'a 130 pour boost (capped par
+    /// libmpv apres). Pas de gestion fine de clipping ici - cote frontend slider 0..100.
+    pub fn set_volume(&self, volume: f64) -> Result<(), String> {
+        self.mpv
+            .set_property("volume", volume.clamp(0.0, 130.0))
+            .map_err(err)
+    }
+
     /// Snapshot de l'etat courant. Cache les erreurs en valeurs par defaut pour ne
     /// pas faire echouer les polls cote frontend.
     pub fn state(&self) -> PlayerState {

@@ -19,6 +19,11 @@ pub struct VideoCacheEntry {
     pub audio_codec: Option<String>,
     #[serde(default)]
     pub audio_channels: Option<u8>,
+    /// Toutes les pistes audio du conteneur. `serde(default)` = Vec vide pour les
+    /// entrees de cache anterieures a la Phase multi-pistes ; les fields legacy
+    /// audio_codec/audio_channels servent alors de fallback.
+    #[serde(default)]
+    pub audio_tracks: Vec<crate::video::hash::AudioTrack>,
     /// Version de l'algorithme de hash. 0 si absent (ancien cache pre-detection
     /// des bandes noires). On n'utilise un cache hit que si la version correspond
     /// a HASH_ALGORITHM_VERSION (cf. video/hash.rs).
@@ -82,7 +87,7 @@ mod tests {
     use tempfile::TempDir;
 
     fn make_entry(mtime: u64, size: u64, n_frames: usize) -> VideoCacheEntry {
-        VideoCacheEntry { mtime, size, n_frames, hashes: vec![0u64, 1u64, 2u64], duration_secs: 10.0, width: 1920, height: 1080, codec: "h264".into(), audio_codec: None, audio_channels: None, algorithm_version: crate::video::hash::HASH_ALGORITHM_VERSION }
+        VideoCacheEntry { mtime, size, n_frames, hashes: vec![0u64, 1u64, 2u64], duration_secs: 10.0, width: 1920, height: 1080, codec: "h264".into(), audio_codec: None, audio_channels: None, audio_tracks: Vec::new(), algorithm_version: crate::video::hash::HASH_ALGORITHM_VERSION }
     }
 
     #[test]

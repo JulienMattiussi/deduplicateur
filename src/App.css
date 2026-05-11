@@ -3026,8 +3026,34 @@
   accent-color: #4f8ef7;
 }
 
+.native-controls-volume-icon {
+  font-size: 1rem;
+  margin-left: 0.5rem;
+  user-select: none;
+}
+
+.native-controls-volume {
+  width: 80px;
+  cursor: pointer;
+  accent-color: #4f8ef7;
+}
+
 .native-controls-error {
   color: #ff6666;
   font-size: 0.8rem;
   margin-right: 0.5rem;
+}
+
+/* Liste des pistes audio dans VideoComparator : une piste par ligne, badge "défaut". */
+.comparator-meta-audio-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.audio-track {
+  font-size: 0.85em;
+}
+.audio-track--default::before {
+  content: "★ ";
+  color: #f7c948;
 }

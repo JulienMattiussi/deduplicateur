@@ -273,7 +273,7 @@ pub fn run() {
         native_player_available, native_player_create, native_player_destroy,
         native_player_get_state, native_player_load, native_player_pause_pair,
         native_player_play_pair, native_player_seek_pair, native_player_set_geometry,
-        native_player_set_visible,
+        native_player_set_visible, native_player_set_volume,
     };
     use commands::scan::{cancel_scan, scan_folder};
     use commands::session::{
@@ -377,6 +377,7 @@ pub fn run() {
             native_player_seek_pair,
             native_player_set_geometry,
             native_player_set_visible,
+            native_player_set_volume,
             native_player_get_state,
         ])
         .run(tauri::generate_context!())
@@ -630,6 +631,7 @@ mod tests {
             codec: "h264".to_string(),
             audio_codec: None,
             audio_channels: None,
+            audio_tracks: Vec::new(),
         });
         let mut sd = make_file("/a/sd.mp4", 500, 200);
         sd.video_metadata = Some(VideoMetadata {
@@ -639,6 +641,7 @@ mod tests {
             codec: "h264".to_string(),
             audio_codec: None,
             audio_channels: None,
+            audio_tracks: Vec::new(),
         });
         let groups = vec![make_group(vec![sd, hd])];
         let result = select_files_to_delete(&groups, "highest_resolution", None);
@@ -656,6 +659,7 @@ mod tests {
             codec: "h264".to_string(),
             audio_codec: None,
             audio_channels: None,
+            audio_tracks: Vec::new(),
         });
         let mut b = make_file("/a/b.mp4", 200, 50);
         b.video_metadata = Some(VideoMetadata {
@@ -665,6 +669,7 @@ mod tests {
             codec: "h264".to_string(),
             audio_codec: None,
             audio_channels: None,
+            audio_tracks: Vec::new(),
         });
         let groups = vec![make_group(vec![a, b])];
         let result = select_files_to_delete(&groups, "highest_resolution", None);
@@ -699,6 +704,7 @@ mod tests {
             codec: "jpeg".to_string(),
             audio_codec: None,
             audio_channels: None,
+            audio_tracks: Vec::new(),
         });
         let other = make_file("/a/doc.pdf", 200, 200);
         let groups = vec![make_group(vec![other, img])];

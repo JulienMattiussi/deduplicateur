@@ -7,12 +7,29 @@ import type { ComparatorProps } from "./comparatorShared";
 import { useComparatorNav, ComparatorShell, MetaBlockBase, KeepButton, toMediaUrl } from "./comparatorShared";
 import { isNativePlayerAvailable } from "./components/NativeVideo";
 import { NativeComparatorBody } from "./components/NativeComparatorBody";
+import type { AudioTrack } from "./types";
 
-function formatAudio(meta: VideoMetadata, noneLabel: string): string {
+function channelsLabel(channels?: number | null, layout?: string | null): string {
+  if (layout) return ` ${layout}`;
+  if (channels === 1) return " mono";
+  if (channels === 2) return " stereo";
+  if (channels && channels > 2) return ` ${channels}ch`;
+  return "";
+}
+
+function formatTrack(track: AudioTrack): string {
+  // Titre humain prioritaire (souvent "French AC3 5.1" deja formatte par le muxer).
+  if (track.title && track.title.trim().length > 0) {
+    return track.title;
+  }
+  const lang = track.language ? ` [${track.language}]` : "";
+  return `${track.codec}${channelsLabel(track.channels, track.channel_layout)}${lang}`;
+}
+
+/** Fallback retrocompat pour les sessions sauvees avant audio_tracks. */
+function formatAudioFallback(meta: VideoMetadata, noneLabel: string): string {
   if (!meta.audio_codec) return noneLabel;
-  const ch = meta.audio_channels;
-  const chLabel = ch === 1 ? " mono" : ch === 2 ? " stereo" : ch && ch > 2 ? ` ${ch}.0` : "";
-  return `${meta.audio_codec}${chLabel}`;
+  return `${meta.audio_codec}${channelsLabel(meta.audio_channels)}`;
 }
 
 function VideoMetaBlock({ file, meta }: { file: DuplicateFile; meta: VideoMetadata | null }) {
@@ -34,13 +51,30 @@ function VideoMetaBlock({ file, meta }: { file: DuplicateFile; meta: VideoMetada
             <span className="comparator-meta-value">{meta.codec}</span>
           </div>
           <div className="comparator-meta-row">
-            <span className="comparator-meta-label">{t.videoMetaAudio}</span>
-            <span
-              className="comparator-meta-value"
-              style={!meta.audio_codec ? { opacity: 0.6, fontStyle: "italic" } : undefined}
-            >
-              {formatAudio(meta, t.videoMetaAudioNone)}
+            <span className="comparator-meta-label">
+              {t.videoMetaAudio}
+              {meta.audio_tracks && meta.audio_tracks.length > 1 ? ` (${meta.audio_tracks.length})` : ""}
             </span>
+            {meta.audio_tracks && meta.audio_tracks.length > 0 ? (
+              <span className="comparator-meta-value comparator-meta-audio-list">
+                {meta.audio_tracks.map((track, i) => (
+                  <span
+                    key={track.index ?? i}
+                    className={`audio-track${track.default ? " audio-track--default" : ""}`}
+                    title={`#${track.index} - ${track.codec}${channelsLabel(track.channels, track.channel_layout)}${track.language ? ` [${track.language}]` : ""}${track.default ? " (défaut)" : ""}`}
+                  >
+                    {formatTrack(track)}
+                  </span>
+                ))}
+              </span>
+            ) : (
+              <span
+                className="comparator-meta-value"
+                style={!meta.audio_codec ? { opacity: 0.6, fontStyle: "italic" } : undefined}
+              >
+                {formatAudioFallback(meta, t.videoMetaAudioNone)}
+              </span>
+            )}
           </div>
         </>
       ) : (

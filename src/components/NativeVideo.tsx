@@ -28,6 +28,7 @@ export type NativeVideoHandle = {
   play: () => Promise<void>;
   pause: () => Promise<void>;
   seek: (t: number) => Promise<void>;
+  setVolume: (volume: number) => Promise<void>;
   getState: () => Promise<NativePlayerState>;
   /** Id du player cote backend, null si pas encore cree ou si la creation a echoue. */
   getId: () => number | null;
@@ -207,6 +208,11 @@ export const NativeVideo = forwardRef<NativeVideoHandle, NativeVideoProps>(
           const id = idRef.current;
           if (id == null) return;
           await invoke("native_player_seek_pair", { left: id, right: id, time: t });
+        },
+        setVolume: async (volume: number) => {
+          const id = idRef.current;
+          if (id == null) return;
+          await invoke("native_player_set_volume", { id, volume });
         },
         getState: async () => {
           const id = idRef.current;
