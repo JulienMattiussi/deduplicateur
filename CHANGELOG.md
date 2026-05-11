@@ -15,7 +15,6 @@ Major release adding an embedded native libmpv video player for formats and code
 - **Multi-track audio detection**: ffprobe extracts every audio stream from the container instead of only the first. The video comparator now lists all tracks with their codec, channel layout, language tag and human title, with a ★ marker on the default track. Useful for MKV / MP4 files with VO + VF + commentaries.
 - **Extended remux support** in the HTML5 video path: `.avi`, `.wmv`, `.asf`, `.f4v` are now remuxed to mp4 in-place when their internal codec is compatible (H.264, HEVC, VP9, AV1). Modern AVI / WMV files now play natively in the comparator.
 - **Filename tooltips** on all truncated filename displays: file lists, group cards, archive lists, folder section headers, comparator meta blocks. Hover shows the full name.
-- **Buy Me a Coffee** support link in the README and `.github/FUNDING.yml` for the native GitHub "Sponsor" button.
 
 ### Changed
 
