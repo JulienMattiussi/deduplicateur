@@ -124,9 +124,10 @@ mod imp {
                 let err = unsafe { windows::Win32::Foundation::GetLastError() };
                 return Err(format!("CreateWindowExW returned null: {:?}", err));
             }
-            // Force la fenetre en haut du z-order des siblings. La WebView2 utilise du
-            // compositing DComposition qui n'honore pas toujours la regle "le dernier
-            // cree est sur le dessus" ; un SetWindowPos explicite garantit la visibilite.
+            // Force la fenetre en haut du z-order des siblings (au-dessus de la
+            // WebView2 qui utilise du compositing DComposition). Safe car cet appel se
+            // fait sur le thread principal (les commandes Tauri dispatchent vers
+            // run_on_main_thread, cf. commands/native_player.rs).
             unsafe {
                 let _ = SetWindowPos(
                     hwnd,

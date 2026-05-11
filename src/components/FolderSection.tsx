@@ -45,7 +45,7 @@ export function FolderSection({
     <div className="folder-section">
       <button className="folder-section-header" onClick={toggle}>
         <span className="folder-section-chevron">{expanded ? "▾" : "▸"}</span>
-        <span className="folder-section-name">
+        <span className="folder-section-name" title={summary.folder_key === "" ? t.rootFolder : summary.folder_key}>
           📁 {summary.folder_key === "" ? <em data-testid="root-folder-label">{t.rootFolder}</em> : summary.folder_key}
         </span>
         <span className="folder-section-stats">

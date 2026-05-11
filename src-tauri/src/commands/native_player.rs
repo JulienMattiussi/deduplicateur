@@ -12,8 +12,24 @@
 //! 6. `native_player_get_state(id)` polle l'etat (current_time, duration, paused, eof).
 //! 7. `native_player_destroy(id)` au unmount du composant React.
 //!
-//! Toutes les commandes sont async + non-bloquantes : libmpv est thread-safe et le
-//! registre est lui-meme protege par Mutex. Pas de `spawn_blocking` necessaire.
+//! ## Thread affinity (Windows)
+//!
+//! Les fenetres Win32 ont une thread affinity : seul le thread qui a fait `CreateWindowExW`
+//! peut appeler `SetWindowPos` / `ShowWindow` / `DestroyWindow` sans risque de deadlock,
+//! parce que ces appels utilisent `SendMessage` synchrone vers les windows en z-order.
+//! Si le thread proprietaire ne pompe pas les messages Win32, deadlock.
+//!
+//! Les commandes Tauri tournent sur des workers tokio, pas le thread principal qui pompe
+//! la file Win32. Donc toutes les ops qui touchent la fenetre native (create, destroy,
+//! set_geometry, set_visible) sont dispatchees vers le thread principal via
+//! `Window::run_on_main_thread`, avec un `tokio::sync::oneshot::channel` pour recuperer
+//! le resultat.
+//!
+//! Les ops mpv pures (load, play, pause, seek, get_state) n'ont pas ce probleme : libmpv
+//! gere sa propre synchronisation interne et accepte les commandes depuis n'importe quel
+//! thread. Elles restent simples.
+
+use std::sync::Arc;
 
 use crate::native_player::{NativePlayerRegistry, PlayerState, Rect};
 #[cfg(feature = "native-player")]
@@ -32,10 +48,29 @@ fn to_physical(rect: Rect, scale: f64) -> Rect {
     }
 }
 
+/// Dispatche un closure sur le thread principal Tauri et attend son resultat via
+/// un `tokio::sync::oneshot::channel`. Le closure doit etre `Send + 'static`, et son
+/// resultat aussi.
+#[cfg(feature = "native-player")]
+async fn run_main<F, T>(window: &tauri::Window, f: F) -> Result<T, String>
+where
+    F: FnOnce() -> Result<T, String> + Send + 'static,
+    T: Send + 'static,
+{
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    window
+        .run_on_main_thread(move || {
+            let _ = tx.send(f());
+        })
+        .map_err(|e| format!("native_player: run_on_main_thread failed: {:?}", e))?;
+    rx.await
+        .map_err(|e| format!("native_player: main thread closure dropped: {:?}", e))?
+}
+
 #[tauri::command]
 pub async fn native_player_create(
     window: tauri::Window,
-    registry: tauri::State<'_, NativePlayerRegistry>,
+    registry: tauri::State<'_, Arc<NativePlayerRegistry>>,
     geometry: Rect,
     audio: bool,
 ) -> Result<u64, String> {
@@ -46,7 +81,11 @@ pub async fn native_player_create(
             return Err("native_player: handle de fenetre non supporte (probablement Wayland sans Xwayland accessible)".into());
         }
         let scale = window.scale_factor().unwrap_or(1.0);
-        registry.create(parent, to_physical(geometry, scale), audio)
+        let physical = to_physical(geometry, scale);
+        let registry = Arc::clone(registry.inner());
+        // CreateWindowExW + libmpv setup : tout doit etre sur le thread principal pour
+        // que la fenetre soit "possedee" par le thread qui pompe les messages Win32.
+        run_main(&window, move || registry.create(parent, physical, audio)).await
     }
     #[cfg(not(feature = "native-player"))]
     {
@@ -57,29 +96,37 @@ pub async fn native_player_create(
 
 #[tauri::command]
 pub async fn native_player_destroy(
-    registry: tauri::State<'_, NativePlayerRegistry>,
+    window: tauri::Window,
+    registry: tauri::State<'_, Arc<NativePlayerRegistry>>,
     id: u64,
 ) -> Result<(), String> {
     #[cfg(feature = "native-player")]
     {
-        registry.destroy(id);
-        Ok(())
+        let registry = Arc::clone(registry.inner());
+        // Drop de NativePlayer = mpv_terminate + DestroyWindow. Doit etre sur le thread
+        // proprietaire de la fenetre (= thread principal).
+        run_main(&window, move || {
+            registry.destroy(id);
+            Ok(())
+        })
+        .await
     }
     #[cfg(not(feature = "native-player"))]
     {
-        let _ = (registry, id);
+        let _ = (window, registry, id);
         Ok(())
     }
 }
 
 #[tauri::command]
 pub async fn native_player_load(
-    registry: tauri::State<'_, NativePlayerRegistry>,
+    registry: tauri::State<'_, Arc<NativePlayerRegistry>>,
     id: u64,
     path: String,
 ) -> Result<(), String> {
     #[cfg(feature = "native-player")]
     {
+        // Pas de Win32 ici, juste mpv.command("loadfile") qui est thread-safe.
         registry.with(id, |p| p.load(&path))
     }
     #[cfg(not(feature = "native-player"))]
@@ -91,7 +138,7 @@ pub async fn native_player_load(
 
 #[tauri::command]
 pub async fn native_player_play_pair(
-    registry: tauri::State<'_, NativePlayerRegistry>,
+    registry: tauri::State<'_, Arc<NativePlayerRegistry>>,
     left: u64,
     right: u64,
 ) -> Result<(), String> {
@@ -112,7 +159,7 @@ pub async fn native_player_play_pair(
 
 #[tauri::command]
 pub async fn native_player_pause_pair(
-    registry: tauri::State<'_, NativePlayerRegistry>,
+    registry: tauri::State<'_, Arc<NativePlayerRegistry>>,
     left: u64,
     right: u64,
 ) -> Result<(), String> {
@@ -133,7 +180,7 @@ pub async fn native_player_pause_pair(
 
 #[tauri::command]
 pub async fn native_player_seek_pair(
-    registry: tauri::State<'_, NativePlayerRegistry>,
+    registry: tauri::State<'_, Arc<NativePlayerRegistry>>,
     left: u64,
     right: u64,
     time: f64,
@@ -156,7 +203,7 @@ pub async fn native_player_seek_pair(
 #[tauri::command]
 pub async fn native_player_set_geometry(
     window: tauri::Window,
-    registry: tauri::State<'_, NativePlayerRegistry>,
+    registry: tauri::State<'_, Arc<NativePlayerRegistry>>,
     id: u64,
     geometry: Rect,
 ) -> Result<(), String> {
@@ -164,7 +211,9 @@ pub async fn native_player_set_geometry(
     {
         let scale = window.scale_factor().unwrap_or(1.0);
         let physical = to_physical(geometry, scale);
-        registry.with(id, |p| p.set_geometry(physical))
+        let registry = Arc::clone(registry.inner());
+        // SetWindowPos doit etre sur le thread proprietaire de la fenetre.
+        run_main(&window, move || registry.with(id, |p| p.set_geometry(physical))).await
     }
     #[cfg(not(feature = "native-player"))]
     {
@@ -175,28 +224,32 @@ pub async fn native_player_set_geometry(
 
 #[tauri::command]
 pub async fn native_player_set_visible(
-    registry: tauri::State<'_, NativePlayerRegistry>,
+    window: tauri::Window,
+    registry: tauri::State<'_, Arc<NativePlayerRegistry>>,
     id: u64,
     visible: bool,
 ) -> Result<(), String> {
     #[cfg(feature = "native-player")]
     {
-        registry.with(id, |p| p.set_visible(visible))
+        let registry = Arc::clone(registry.inner());
+        // ShowWindow doit etre sur le thread proprietaire de la fenetre.
+        run_main(&window, move || registry.with(id, |p| p.set_visible(visible))).await
     }
     #[cfg(not(feature = "native-player"))]
     {
-        let _ = (registry, id, visible);
+        let _ = (window, registry, id, visible);
         Err("native_player: feature_disabled".into())
     }
 }
 
 #[tauri::command]
 pub async fn native_player_get_state(
-    registry: tauri::State<'_, NativePlayerRegistry>,
+    registry: tauri::State<'_, Arc<NativePlayerRegistry>>,
     id: u64,
 ) -> Result<PlayerState, String> {
     #[cfg(feature = "native-player")]
     {
+        // Lecture de properties mpv, thread-safe via libmpv interne.
         registry.state(id)
     }
     #[cfg(not(feature = "native-player"))]
@@ -213,7 +266,6 @@ pub async fn native_player_get_state(
 pub async fn native_player_available() -> bool {
     #[cfg(feature = "native-player")]
     {
-        // Wayland sans X11 reachable : le `create` echouerait, autant le signaler tot.
         !crate::native_player::platform::is_wayland_session()
     }
     #[cfg(not(feature = "native-player"))]

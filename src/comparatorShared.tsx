@@ -245,7 +245,7 @@ export function MetaBlockBase({
     <div className="comparator-meta">
       <div className="comparator-meta-row">
         <span className="comparator-meta-label">{t.colName}</span>
-        <span className="comparator-meta-value comparator-meta-filename">{file.name}</span>
+        <span className="comparator-meta-value comparator-meta-filename" title={file.name}>{file.name}</span>
         <button
           className="btn-ghost btn-sm comparator-reveal-btn"
           title={t.openFileBtn}

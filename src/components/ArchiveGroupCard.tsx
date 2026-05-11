@@ -106,7 +106,7 @@ export function ArchiveGroupCard({ group, selected, onToggle, onCompare }: Props
                 <span className="file-col-thumb">
                   <FileThumbnail file={fakeFile} mode="other" />
                 </span>
-                <span className="file-col-name file-name">{basename(archive.path)}</span>
+                <span className="file-col-name file-name" title={basename(archive.path)}>{basename(archive.path)}</span>
                 <span className="file-col-date file-meta">{formatDate(archive.modified, t.dateLocale)}</span>
                 <span className="file-col-size file-meta">{formatSize(archive.size)}</span>
                 <span className="file-col-video-meta file-col-video-meta--archive file-meta">

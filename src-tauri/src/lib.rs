@@ -315,7 +315,10 @@ pub fn run() {
         })
         .manage(CancelFlag(Arc::new(AtomicBool::new(false))))
         .manage(ScanCache(Mutex::new(None)))
-        .manage(native_player::NativePlayerRegistry::new())
+        // Arc autour du registre : permet de cloner l'Arc dans les commandes pour
+        // dispatcher vers le thread principal Tauri (run_on_main_thread) sans probleme
+        // de lifetime sur tauri::State.
+        .manage(Arc::new(native_player::NativePlayerRegistry::new()))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_shell::init())

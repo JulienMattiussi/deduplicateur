@@ -191,7 +191,7 @@ export function GroupCard({
                 <span className="file-col-thumb">
                   <FileThumbnail file={file} mode={thumbMode} />
                 </span>
-                <span className="file-col-name file-name">{file.name}</span>
+                <span className="file-col-name file-name" title={file.name}>{file.name}</span>
                 <span className="file-col-date file-meta">{formatDate(file.modified, t.dateLocale)}</span>
                 {(isImageGroup || isVideoGroup || isAudioGroup) && <span className="file-col-size file-meta">{formatSize(file.size)}</span>}
                 {isVideoGroup && (

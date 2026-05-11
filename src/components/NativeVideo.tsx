@@ -97,13 +97,9 @@ export const NativeVideo = forwardRef<NativeVideoHandle, NativeVideoProps>(
           createdId = id;
           idRef.current = id;
           onReady?.(id);
-          // Force un set_geometry juste apres la creation : declenche SetWindowPos
-          // cote backend pour garantir le z-order au-dessus de la WebView2 (qui ne
-          // respecte pas toujours la regle "le dernier cree est sur le dessus"
-          // a cause du compositing DComposition).
-          const currentGeom = getGeometry(el);
-          lastGeometryRef.current = currentGeom;
-          invoke("native_player_set_geometry", { id, geometry: currentGeom }).catch(() => {});
+          // NOTE : un forced set_geometry juste apres onReady causait un freeze sur
+          // Windows (cf. platform.rs). Le ResizeObserver fera le travail des qu'un
+          // changement de layout est detecte.
         })
         .catch((e) => {
           const msg = String(e);

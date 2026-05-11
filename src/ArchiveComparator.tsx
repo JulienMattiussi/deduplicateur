@@ -155,7 +155,7 @@ function ArchiveMetaBlock({ archive }: { archive: ArchiveInGroup }) {
     <div className="comparator-meta">
       <div className="comparator-meta-row">
         <span className="comparator-meta-label">{t.colName}</span>
-        <span className="comparator-meta-value comparator-meta-filename">{basename(archive.path)}</span>
+        <span className="comparator-meta-value comparator-meta-filename" title={basename(archive.path)}>{basename(archive.path)}</span>
       </div>
       <div className="comparator-meta-row">
         <span className="comparator-meta-label">{t.colFolder}</span>
