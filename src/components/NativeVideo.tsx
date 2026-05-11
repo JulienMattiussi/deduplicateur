@@ -19,15 +19,13 @@ export type NativePlayerState = {
 };
 
 /**
- * Methodes imperatives exposees au parent via ref. Symetriques a ce qu'un
- * `<video>` HTML5 expose (currentTime, play, pause, addEventListener), mais
- * via le backend Rust qui pilote libmpv.
+ * Methodes imperatives exposees au parent via ref. La sync gauche/droite est piloтee
+ * au niveau du parent (`NativeComparatorBody`) via les commandes `*_pair` ; le handle
+ * lui-meme expose seulement les ops sur une instance unique (load, volume, lecture
+ * d'etat).
  */
 export type NativeVideoHandle = {
   load: (path: string) => Promise<void>;
-  play: () => Promise<void>;
-  pause: () => Promise<void>;
-  seek: (t: number) => Promise<void>;
   setVolume: (volume: number) => Promise<void>;
   getState: () => Promise<NativePlayerState>;
   /** Id du player cote backend, null si pas encore cree ou si la creation a echoue. */
@@ -39,8 +37,6 @@ type Geometry = { x: number; y: number; width: number; height: number };
 type NativeVideoProps = {
   audio: boolean;
   side: "left" | "right";
-  /** Cache la fenetre native quand un modal/dialog DOM s'ouvre par-dessus. */
-  hidden?: boolean;
   /** Notifie le parent quand l'instance backend est creee (utile pour la sync de paire). */
   onReady?: (id: number) => void;
   /** Erreur de creation (ex. "wayland_unsupported", "feature_disabled"). */
@@ -73,7 +69,7 @@ function geometryEquals(a: Geometry, b: Geometry): boolean {
  *   est appele - l'UI doit retomber sur le placeholder.
  */
 export const NativeVideo = forwardRef<NativeVideoHandle, NativeVideoProps>(
-  function NativeVideo({ audio, side, hidden, onReady, onError }, ref) {
+  function NativeVideo({ audio, side, onReady, onError }, ref) {
     const placeholderRef = useRef<HTMLDivElement>(null);
     const idRef = useRef<number | null>(null);
     const lastGeometryRef = useRef<Geometry | null>(null);
@@ -173,19 +169,7 @@ export const NativeVideo = forwardRef<NativeVideoHandle, NativeVideoProps>(
       return () => io.disconnect();
     }, []);
 
-    // Toggle de visibilite externe (modal ouvert par-dessus) : superpose au
-    // IntersectionObserver. Un appel set_visible(false) ici override l'observer.
-    useEffect(() => {
-      const id = idRef.current;
-      if (id == null) return;
-      if (hidden) {
-        invoke("native_player_set_visible", { id, visible: false }).catch(() => {});
-      } else {
-        invoke("native_player_set_visible", { id, visible: true }).catch(() => {});
-      }
-    }, [hidden]);
-
-    // API imperative pour le parent (VideoComparator).
+    // API imperative pour le parent (NativeComparatorBody / VideoComparator).
     useImperativeHandle(
       ref,
       (): NativeVideoHandle => ({
@@ -193,21 +177,6 @@ export const NativeVideo = forwardRef<NativeVideoHandle, NativeVideoProps>(
           const id = idRef.current;
           if (id == null) throw new Error("native_player: pas encore initialise");
           await invoke("native_player_load", { id, path });
-        },
-        play: async () => {
-          const id = idRef.current;
-          if (id == null) return;
-          await invoke("native_player_play_pair", { left: id, right: id });
-        },
-        pause: async () => {
-          const id = idRef.current;
-          if (id == null) return;
-          await invoke("native_player_pause_pair", { left: id, right: id });
-        },
-        seek: async (t: number) => {
-          const id = idRef.current;
-          if (id == null) return;
-          await invoke("native_player_seek_pair", { left: id, right: id, time: t });
         },
         setVolume: async (volume: number) => {
           const id = idRef.current;

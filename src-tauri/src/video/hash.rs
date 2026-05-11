@@ -97,7 +97,12 @@ pub fn get_video_metadata(path: &str) -> Option<VideoMetadata> {
     }
 
     let json: serde_json::Value = serde_json::from_slice(&output.stdout).ok()?;
+    parse_ffprobe_metadata(&json)
+}
 
+/// Parsing pur de la sortie JSON `ffprobe -show_streams -show_format`.
+/// Extrait dans une fonction dediee pour pouvoir tester sans avoir besoin de ffprobe.
+pub(crate) fn parse_ffprobe_metadata(json: &serde_json::Value) -> Option<VideoMetadata> {
     let duration = json["format"]["duration"]
         .as_str()?
         .parse::<f64>()
@@ -627,5 +632,130 @@ mod tests {
         let d_seq = sequence_distance(&a, &b);
         let d_dtw = dtw_distance(&a, &b);
         assert!(d_dtw < d_seq, "dtw={d_dtw} doit etre < sequence={d_seq}");
+    }
+
+    // ── parse_ffprobe_metadata : pistes audio multiples ────────────────────────
+
+    fn ffprobe_json_mkv_multilang() -> serde_json::Value {
+        // JSON ffprobe minimal pour un MKV avec video H.264 + 3 pistes audio :
+        // VF (default), VO anglaise, VO japonaise.
+        serde_json::json!({
+            "format": { "duration": "1234.567" },
+            "streams": [
+                {
+                    "index": 0,
+                    "codec_type": "video",
+                    "codec_name": "h264",
+                    "width": 1920,
+                    "height": 1080
+                },
+                {
+                    "index": 1,
+                    "codec_type": "audio",
+                    "codec_name": "ac3",
+                    "channels": 6,
+                    "channel_layout": "5.1",
+                    "disposition": { "default": 1 },
+                    "tags": { "language": "fre", "title": "French AC3 5.1" }
+                },
+                {
+                    "index": 2,
+                    "codec_type": "audio",
+                    "codec_name": "aac",
+                    "channels": 2,
+                    "channel_layout": "stereo",
+                    "disposition": { "default": 0 },
+                    "tags": { "language": "eng" }
+                },
+                {
+                    "index": 3,
+                    "codec_type": "audio",
+                    "codec_name": "opus",
+                    "channels": 2,
+                    "disposition": { "default": 0 },
+                    "tags": { "language": "jpn", "title": "Japanese (Opus)" }
+                }
+            ]
+        })
+    }
+
+    #[test]
+    fn parse_ffprobe_extrait_video_h264_1080p() {
+        let meta = parse_ffprobe_metadata(&ffprobe_json_mkv_multilang()).expect("parse ok");
+        assert_eq!(meta.codec, "h264");
+        assert_eq!(meta.width, 1920);
+        assert_eq!(meta.height, 1080);
+        assert!((meta.duration_secs - 1234.567).abs() < 0.001);
+    }
+
+    #[test]
+    fn parse_ffprobe_extrait_les_3_pistes_audio() {
+        let meta = parse_ffprobe_metadata(&ffprobe_json_mkv_multilang()).unwrap();
+        assert_eq!(meta.audio_tracks.len(), 3);
+
+        let fr = &meta.audio_tracks[0];
+        assert_eq!(fr.codec, "ac3");
+        assert_eq!(fr.channels, Some(6));
+        assert_eq!(fr.channel_layout.as_deref(), Some("5.1"));
+        assert_eq!(fr.language.as_deref(), Some("fre"));
+        assert_eq!(fr.title.as_deref(), Some("French AC3 5.1"));
+        assert!(fr.default, "premiere piste marquee default");
+
+        let en = &meta.audio_tracks[1];
+        assert_eq!(en.codec, "aac");
+        assert_eq!(en.language.as_deref(), Some("eng"));
+        assert!(!en.default);
+        assert_eq!(en.title, None, "pas de title set sur cette piste");
+
+        let ja = &meta.audio_tracks[2];
+        assert_eq!(ja.codec, "opus");
+        assert_eq!(ja.title.as_deref(), Some("Japanese (Opus)"));
+    }
+
+    #[test]
+    fn parse_ffprobe_retrocompat_audio_codec_pointe_sur_la_piste_default() {
+        let meta = parse_ffprobe_metadata(&ffprobe_json_mkv_multilang()).unwrap();
+        // Les fields legacy doivent refleter la piste "default" (la VF ici).
+        assert_eq!(meta.audio_codec.as_deref(), Some("ac3"));
+        assert_eq!(meta.audio_channels, Some(6));
+    }
+
+    #[test]
+    fn parse_ffprobe_video_sans_audio() {
+        let json = serde_json::json!({
+            "format": { "duration": "60.0" },
+            "streams": [
+                { "index": 0, "codec_type": "video", "codec_name": "vp9", "width": 1280, "height": 720 }
+            ]
+        });
+        let meta = parse_ffprobe_metadata(&json).unwrap();
+        assert!(meta.audio_tracks.is_empty());
+        assert_eq!(meta.audio_codec, None);
+    }
+
+    #[test]
+    fn parse_ffprobe_fallback_sur_premiere_piste_si_aucune_default() {
+        // Cas degrade : aucune piste audio n'est marquee default. On prend la 1re.
+        let json = serde_json::json!({
+            "format": { "duration": "30.0" },
+            "streams": [
+                { "index": 0, "codec_type": "video", "codec_name": "h264", "width": 640, "height": 480 },
+                { "index": 1, "codec_type": "audio", "codec_name": "mp3", "channels": 2 },
+                { "index": 2, "codec_type": "audio", "codec_name": "aac", "channels": 2 }
+            ]
+        });
+        let meta = parse_ffprobe_metadata(&json).unwrap();
+        assert_eq!(meta.audio_codec.as_deref(), Some("mp3"));
+    }
+
+    #[test]
+    fn parse_ffprobe_renvoie_none_si_pas_de_stream_video() {
+        let json = serde_json::json!({
+            "format": { "duration": "10.0" },
+            "streams": [
+                { "index": 0, "codec_type": "audio", "codec_name": "mp3" }
+            ]
+        });
+        assert!(parse_ffprobe_metadata(&json).is_none());
     }
 }

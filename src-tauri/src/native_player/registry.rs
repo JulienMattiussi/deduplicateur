@@ -103,12 +103,6 @@ impl NativePlayerRegistry {
         }
     }
 
-    pub fn destroy_all(&self) {
-        if let Ok(mut map) = self.players.lock() {
-            map.clear();
-        }
-    }
-
     pub fn with<F, R>(&self, id: u64, f: F) -> Result<R, String>
     where
         F: FnOnce(&NativePlayer) -> Result<R, String>,
@@ -184,10 +178,4 @@ mod tests {
         registry.destroy(99999); // ne doit pas paniquer
     }
 
-    #[test]
-    fn registry_destroy_all_vide_les_players() {
-        let registry = NativePlayerRegistry::new();
-        registry.destroy_all();
-        assert_eq!(registry.players.lock().unwrap().len(), 0);
-    }
 }

@@ -76,12 +76,6 @@ impl NativePlayer {
         self.window.set_visible(visible)
     }
 
-    pub fn set_muted(&self, muted: bool) -> Result<(), String> {
-        // "ao-mute" coupe l'audio sans toucher au pipeline. Utilise pour le swap
-        // maitre/esclave sans interruption visible.
-        self.mpv.set_property("mute", muted).map_err(err)
-    }
-
     /// Volume sur l'echelle mpv : 0..100 = normal, jusqu'a 130 pour boost (capped par
     /// libmpv apres). Pas de gestion fine de clipping ici - cote frontend slider 0..100.
     pub fn set_volume(&self, volume: f64) -> Result<(), String> {
@@ -103,13 +97,11 @@ impl NativePlayer {
     }
 }
 
-impl Drop for NativePlayer {
-    fn drop(&mut self) {
-        // L'ordre importe : on termine mpv en premier (qui peut encore essayer d'acceder
-        // a la fenetre native), puis on detruit la fenetre via le Drop de NativeWindow.
-        // libmpv2::Mpv implemente deja Drop pour appeler mpv_terminate_destroy.
-    }
-}
+// Note : pas de `impl Drop for NativePlayer`. Le drop par defaut de la struct invoque
+// les Drop des champs dans l'ordre de declaration : `mpv` (libmpv2::Mpv::drop appelle
+// mpv_terminate_destroy) puis `window` (NativeWindow::drop appelle DestroyWindow).
+// C'est exactement l'ordre voulu, et libmpv lache la fenetre proprement avant qu'on
+// la detruise.
 
 /// Configure les options communes a toutes les instances libmpv : wid, hwdec, pause initiale,
 /// pas d'OSD, keep-open pour eviter la fermeture de la fenetre en fin de fichier, etc.

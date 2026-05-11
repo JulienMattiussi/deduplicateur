@@ -17,6 +17,10 @@
 use super::Rect;
 
 #[derive(Debug, Clone, Copy)]
+// Les variantes Win32 / Xlib / Xcb sont construites sur toutes les plateformes (cf.
+// from_tauri) mais destructurees seulement sur la plateforme correspondante. Cela
+// genere un warning "field never read" sur les autres OS, qu'on assume ici.
+#[allow(dead_code)]
 pub enum ParentHandle {
     Win32(u64),
     Xlib(u64),

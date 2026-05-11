@@ -10,7 +10,8 @@
 //! 4. `native_player_set_geometry(id, geometry)` a chaque ResizeObserver / scroll.
 //! 5. `native_player_set_visible(id, visible)` pour cacher derriere un modal DOM.
 //! 6. `native_player_get_state(id)` polle l'etat (current_time, duration, paused, eof).
-//! 7. `native_player_destroy(id)` au unmount du composant React.
+//! 7. `native_player_set_volume(id, volume)` (0..=130) sur le master.
+//! 8. `native_player_destroy(id)` au unmount du composant React.
 //!
 //! ## Thread affinity (Windows)
 //!
@@ -25,15 +26,33 @@
 //! `Window::run_on_main_thread`, avec un `tokio::sync::oneshot::channel` pour recuperer
 //! le resultat.
 //!
-//! Les ops mpv pures (load, play, pause, seek, get_state) n'ont pas ce probleme : libmpv
-//! gere sa propre synchronisation interne et accepte les commandes depuis n'importe quel
-//! thread. Elles restent simples.
+//! Les ops mpv pures (load, play, pause, seek, set_volume, get_state) n'ont pas ce
+//! probleme : libmpv gere sa propre synchronisation interne et accepte les commandes
+//! depuis n'importe quel thread. Elles restent simples.
 
 use std::sync::Arc;
 
 use crate::native_player::{NativePlayerRegistry, PlayerState, Rect};
 #[cfg(feature = "native-player")]
 use crate::native_player::platform::ParentHandle;
+
+/// Macro pour eliminer le boilerplate `#[cfg(feature = "native-player")]` dans chaque
+/// commande. Quand la feature est ON, execute `$body`. Quand elle est OFF, evite le
+/// warning "unused variable" sur les args nommes et retourne une `Err` standard.
+///
+/// Usage : `gated!([arg1, arg2] => { ...body... })` ou `body` doit retourner
+/// `Result<T, String>`.
+macro_rules! gated {
+    ([$($args:ident),* $(,)?] => $body:block) => {{
+        #[cfg(feature = "native-player")]
+        { $body }
+        #[cfg(not(feature = "native-player"))]
+        {
+            $(let _ = $args;)*
+            Err("native_player: feature_disabled (recompiler avec --features native-player)".into())
+        }
+    }};
+}
 
 /// Convertit un Rect en pixels CSS vers un Rect en pixels physiques via le scale factor
 /// de la fenetre Tauri. Necessaire car Win32/X11 raisonnent en pixels physiques tandis
@@ -74,8 +93,7 @@ pub async fn native_player_create(
     geometry: Rect,
     audio: bool,
 ) -> Result<u64, String> {
-    #[cfg(feature = "native-player")]
-    {
+    gated!([window, registry, geometry, audio] => {
         let parent = ParentHandle::from_tauri(&window);
         if matches!(parent, ParentHandle::Unsupported) {
             return Err("native_player: handle de fenetre non supporte (probablement Wayland sans Xwayland accessible)".into());
@@ -86,12 +104,7 @@ pub async fn native_player_create(
         // CreateWindowExW + libmpv setup : tout doit etre sur le thread principal pour
         // que la fenetre soit "possedee" par le thread qui pompe les messages Win32.
         run_main(&window, move || registry.create(parent, physical, audio)).await
-    }
-    #[cfg(not(feature = "native-player"))]
-    {
-        let _ = (window, registry, geometry, audio);
-        Err("native_player: feature_disabled (recompiler avec --features native-player)".into())
-    }
+    })
 }
 
 #[tauri::command]
@@ -100,8 +113,7 @@ pub async fn native_player_destroy(
     registry: tauri::State<'_, Arc<NativePlayerRegistry>>,
     id: u64,
 ) -> Result<(), String> {
-    #[cfg(feature = "native-player")]
-    {
+    gated!([window, registry, id] => {
         let registry = Arc::clone(registry.inner());
         // Drop de NativePlayer = mpv_terminate + DestroyWindow. Doit etre sur le thread
         // proprietaire de la fenetre (= thread principal).
@@ -110,12 +122,7 @@ pub async fn native_player_destroy(
             Ok(())
         })
         .await
-    }
-    #[cfg(not(feature = "native-player"))]
-    {
-        let _ = (window, registry, id);
-        Ok(())
-    }
+    })
 }
 
 #[tauri::command]
@@ -124,16 +131,9 @@ pub async fn native_player_load(
     id: u64,
     path: String,
 ) -> Result<(), String> {
-    #[cfg(feature = "native-player")]
-    {
-        // Pas de Win32 ici, juste mpv.command("loadfile") qui est thread-safe.
+    gated!([registry, id, path] => {
         registry.with(id, |p| p.load(&path))
-    }
-    #[cfg(not(feature = "native-player"))]
-    {
-        let _ = (registry, id, path);
-        Err("native_player: feature_disabled".into())
-    }
+    })
 }
 
 #[tauri::command]
@@ -142,19 +142,9 @@ pub async fn native_player_play_pair(
     left: u64,
     right: u64,
 ) -> Result<(), String> {
-    #[cfg(feature = "native-player")]
-    {
-        registry.with_pair(left, right, |a, b| {
-            a.play()?;
-            b.play()?;
-            Ok(())
-        })
-    }
-    #[cfg(not(feature = "native-player"))]
-    {
-        let _ = (registry, left, right);
-        Err("native_player: feature_disabled".into())
-    }
+    gated!([registry, left, right] => {
+        registry.with_pair(left, right, |a, b| { a.play()?; b.play()?; Ok(()) })
+    })
 }
 
 #[tauri::command]
@@ -163,19 +153,9 @@ pub async fn native_player_pause_pair(
     left: u64,
     right: u64,
 ) -> Result<(), String> {
-    #[cfg(feature = "native-player")]
-    {
-        registry.with_pair(left, right, |a, b| {
-            a.pause()?;
-            b.pause()?;
-            Ok(())
-        })
-    }
-    #[cfg(not(feature = "native-player"))]
-    {
-        let _ = (registry, left, right);
-        Err("native_player: feature_disabled".into())
-    }
+    gated!([registry, left, right] => {
+        registry.with_pair(left, right, |a, b| { a.pause()?; b.pause()?; Ok(()) })
+    })
 }
 
 #[tauri::command]
@@ -185,19 +165,9 @@ pub async fn native_player_seek_pair(
     right: u64,
     time: f64,
 ) -> Result<(), String> {
-    #[cfg(feature = "native-player")]
-    {
-        registry.with_pair(left, right, |a, b| {
-            a.seek(time)?;
-            b.seek(time)?;
-            Ok(())
-        })
-    }
-    #[cfg(not(feature = "native-player"))]
-    {
-        let _ = (registry, left, right, time);
-        Err("native_player: feature_disabled".into())
-    }
+    gated!([registry, left, right, time] => {
+        registry.with_pair(left, right, |a, b| { a.seek(time)?; b.seek(time)?; Ok(()) })
+    })
 }
 
 #[tauri::command]
@@ -207,19 +177,12 @@ pub async fn native_player_set_geometry(
     id: u64,
     geometry: Rect,
 ) -> Result<(), String> {
-    #[cfg(feature = "native-player")]
-    {
+    gated!([window, registry, id, geometry] => {
         let scale = window.scale_factor().unwrap_or(1.0);
         let physical = to_physical(geometry, scale);
         let registry = Arc::clone(registry.inner());
-        // SetWindowPos doit etre sur le thread proprietaire de la fenetre.
         run_main(&window, move || registry.with(id, |p| p.set_geometry(physical))).await
-    }
-    #[cfg(not(feature = "native-player"))]
-    {
-        let _ = (window, registry, id, geometry);
-        Err("native_player: feature_disabled".into())
-    }
+    })
 }
 
 #[tauri::command]
@@ -229,17 +192,10 @@ pub async fn native_player_set_visible(
     id: u64,
     visible: bool,
 ) -> Result<(), String> {
-    #[cfg(feature = "native-player")]
-    {
+    gated!([window, registry, id, visible] => {
         let registry = Arc::clone(registry.inner());
-        // ShowWindow doit etre sur le thread proprietaire de la fenetre.
         run_main(&window, move || registry.with(id, |p| p.set_visible(visible))).await
-    }
-    #[cfg(not(feature = "native-player"))]
-    {
-        let _ = (window, registry, id, visible);
-        Err("native_player: feature_disabled".into())
-    }
+    })
 }
 
 #[tauri::command]
@@ -248,16 +204,9 @@ pub async fn native_player_set_volume(
     id: u64,
     volume: f64,
 ) -> Result<(), String> {
-    #[cfg(feature = "native-player")]
-    {
-        // mpv set_property("volume") est thread-safe, pas besoin de main-thread.
+    gated!([registry, id, volume] => {
         registry.with(id, |p| p.set_volume(volume))
-    }
-    #[cfg(not(feature = "native-player"))]
-    {
-        let _ = (registry, id, volume);
-        Err("native_player: feature_disabled".into())
-    }
+    })
 }
 
 #[tauri::command]
@@ -265,16 +214,9 @@ pub async fn native_player_get_state(
     registry: tauri::State<'_, Arc<NativePlayerRegistry>>,
     id: u64,
 ) -> Result<PlayerState, String> {
-    #[cfg(feature = "native-player")]
-    {
-        // Lecture de properties mpv, thread-safe via libmpv interne.
+    gated!([registry, id] => {
         registry.state(id)
-    }
-    #[cfg(not(feature = "native-player"))]
-    {
-        let _ = (registry, id);
-        Err("native_player: feature_disabled".into())
-    }
+    })
 }
 
 /// Indique au frontend si le lecteur natif est disponible sur cette machine. Permet a
