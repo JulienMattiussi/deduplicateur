@@ -4,6 +4,47 @@ All notable changes to Déduplicateur are documented here.
 
 This file follows the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.1.0] - 2026-05-11
+
+Major release adding an embedded native libmpv video player for formats and codecs that the WebView's HTML5 `<video>` cannot read.
+
+### Added
+
+- **Embedded native video player (libmpv)** for codecs and containers the WebView's `<video>` element cannot handle: MPEG-4 ASP (Xvid/DivX in `.avi`), WMV3, audio AC3/WMA/Vorbis, etc. Activates automatically in the video comparator when at least one side is `Unsupported`. Sync between left and right via atomic Rust commands (`play_pair` / `pause_pair` / `seek_pair`). Available on Windows and Linux X11; Wayland and macOS fall back to the existing placeholder + "open in system player" button.
+- **Volume control** in the native player: slider 0-100 with a 🔇/🔉/🔊 icon, applied only on the master (the slave is muted by design to avoid audio doubling).
+- **Multi-track audio detection**: ffprobe extracts every audio stream from the container instead of only the first. The video comparator now lists all tracks with their codec, channel layout, language tag and human title, with a ★ marker on the default track. Useful for MKV / MP4 files with VO + VF + commentaries.
+- **Extended remux support** in the HTML5 video path: `.avi`, `.wmv`, `.asf`, `.f4v` are now remuxed to mp4 in-place when their internal codec is compatible (H.264, HEVC, VP9, AV1). Modern AVI / WMV files now play natively in the comparator.
+- **Filename tooltips** on all truncated filename displays: file lists, group cards, archive lists, folder section headers, comparator meta blocks. Hover shows the full name.
+- **Buy Me a Coffee** support link in the README and `.github/FUNDING.yml` for the native GitHub "Sponsor" button.
+
+### Changed
+
+- **HTML5 video path no longer falls back to re-encoding audio**. When `ffmpeg -c copy` fails (incompatible audio codecs like AC3 in MKV), the file is now classified `Unsupported` immediately instead of attempting a slow AAC re-encoding that could block the UI for minutes. These cases are now handled by the native player on supported platforms.
+- **Bundle naming harmonized**: the full installer is now `Deduplicateur-full_*` (capital D) to match the light installer `Deduplicateur_*`.
+- **CI build**: the rolling `latest` release is now purged of orphan assets before each main push, so old version numbers no longer linger after a version bump.
+- **`tauri.conf.json`**: bundle now ships `libmpv-2.dll` as a resource on Windows; on Linux the system package `libmpv2` is required (declared in README install instructions).
+
+### Fixed
+
+- **Ignore list now applies when reloading a saved session**, not only during the original scan. Previously, marking a group as ignored disappeared on reopen because the session file was not filtered at load time. The on-disk session is left untouched; the filter applies only at the display level, so `clear_ignore_entry` properly restores the group on next reload.
+
+### Documentation
+
+- New AGENTS.md section "Lecteur video natif libmpv : fenetre fille + wid + paire master/slave" describing the architecture (HWND child / X11 sub-window / `wid`), the thread-affinity pitfall on Windows (cause of a freeze that bypassed CI), z-order with WebView2's DComposition, DPI scaling, and the feature-flag layout.
+- New AGENTS.md section "Filtres d'affichage : appliquer APRES la persistance, jamais avant" derived from the ignore-list bug fix.
+- Built-in help article "Ouvrir le comparateur de vidéos" updated FR + EN to mention the native player and the extended container support.
+- README: native player listed in features, libmpv-dev added to Linux compile prerequisites, libmpv added to the Stack technique table.
+- Copyright year updated from 2024 to 2026.
+
+### Quality
+
+- 283 Rust tests (+38 since 1.0.0, including 6 tests on `parse_ffprobe_metadata` covering multi-track audio, 3 on `NativePlayerRegistry`, 3 on `apply_ignore_filter` for the session bug fix).
+- 456 TypeScript tests (+16 since 1.0.0, including 8 on `NativeVideo` and 8 on `NativeComparatorBody`).
+- All warnings resolved in the native player module: dead code removed, `ParentHandle` cross-platform variants explicitly allowed.
+- `commands/native_player.rs` refactored with a `gated!` macro to eliminate ~60 lines of repetitive feature-flag boilerplate. Both `--default-features` and `--no-default-features` builds verified.
+
+[1.1.0]: https://github.com/JulienMattiussi/deduplicateur/releases/tag/v1.1.0
+
 ## [1.0.0] - 2026-05-10
 
 First stable release. Recap of every feature shipped during development.
