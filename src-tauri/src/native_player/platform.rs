@@ -33,7 +33,9 @@ impl ParentHandle {
         };
         match handle.as_raw() {
             RawWindowHandle::Win32(h) => ParentHandle::Win32(h.hwnd.get() as u64),
-            RawWindowHandle::Xlib(h) => ParentHandle::Xlib(h.window),
+            // h.window est `c_ulong` : u64 sur Linux 64 bits, u32 sur Windows. On caste
+            // explicitement pour eviter une erreur de compile cross-platform.
+            RawWindowHandle::Xlib(h) => ParentHandle::Xlib(h.window as u64),
             RawWindowHandle::Xcb(h) => ParentHandle::Xcb(h.window.get() as u64),
             _ => ParentHandle::Unsupported,
         }
@@ -48,7 +50,7 @@ mod imp {
     use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, WPARAM};
     use windows::Win32::UI::WindowsAndMessaging::{
         CreateWindowExW, DefWindowProcW, DestroyWindow, RegisterClassExW, SetWindowPos, ShowWindow,
-        HMENU, HWND_TOP, SWP_NOACTIVATE, SWP_NOREDRAW, SWP_NOZORDER, SW_HIDE, SW_SHOWNOACTIVATE,
+        HWND_TOP, SWP_NOACTIVATE, SWP_NOREDRAW, SWP_NOZORDER, SW_HIDE, SW_SHOWNOACTIVATE,
         WNDCLASSEXW, WS_CHILD, WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_EX_NOPARENTNOTIFY,
         WS_VISIBLE,
     };
@@ -99,6 +101,8 @@ mod imp {
                 _ => return Err("native_player: parent non-Win32 sur Windows".into()),
             };
             ensure_class_registered()?;
+            // windows 0.59 : CreateWindowExW retourne Result<HWND, Error> et accepte
+            // Option<HWND>/Option<HMENU>/Option<HINSTANCE> pour parent/menu/instance.
             let hwnd = unsafe {
                 CreateWindowExW(
                     WS_EX_NOPARENTNOTIFY,
@@ -109,15 +113,16 @@ mod imp {
                     rect.y,
                     rect.width as i32,
                     rect.height as i32,
-                    parent_hwnd,
-                    HMENU::default(),
-                    HINSTANCE::default(),
+                    Some(parent_hwnd),
+                    None,
+                    None,
                     None,
                 )
-            };
+            }
+            .map_err(|e| format!("CreateWindowExW failed: {:?}", e))?;
             if hwnd.0.is_null() {
                 let err = unsafe { windows::Win32::Foundation::GetLastError() };
-                return Err(format!("CreateWindowExW failed: {:?}", err));
+                return Err(format!("CreateWindowExW returned null: {:?}", err));
             }
             Ok(Self { hwnd })
         }
@@ -130,9 +135,10 @@ mod imp {
             unsafe {
                 // SWP_NOZORDER : on ne touche pas au z-order ; SWP_NOACTIVATE : pas
                 // de focus arraché ; SWP_NOREDRAW : on laisse mpv invalider sa surface.
+                // windows 0.59 : hwndinsertafter prend Option<HWND>, on passe Some(HWND_TOP).
                 SetWindowPos(
                     self.hwnd,
-                    HWND_TOP,
+                    Some(HWND_TOP),
                     rect.x,
                     rect.y,
                     rect.width as i32,
