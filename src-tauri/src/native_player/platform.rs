@@ -50,9 +50,9 @@ mod imp {
     use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, WPARAM};
     use windows::Win32::UI::WindowsAndMessaging::{
         CreateWindowExW, DefWindowProcW, DestroyWindow, RegisterClassExW, SetWindowPos, ShowWindow,
-        HWND_TOP, SWP_NOACTIVATE, SWP_NOREDRAW, SWP_NOZORDER, SW_HIDE, SW_SHOWNOACTIVATE,
-        WNDCLASSEXW, WS_CHILD, WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_EX_NOPARENTNOTIFY,
-        WS_VISIBLE,
+        HWND_TOP, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOREDRAW, SWP_NOSIZE, SWP_NOZORDER, SW_HIDE,
+        SW_SHOWNOACTIVATE, WNDCLASSEXW, WS_CHILD, WS_CLIPCHILDREN, WS_CLIPSIBLINGS,
+        WS_EX_NOPARENTNOTIFY, WS_VISIBLE,
     };
 
     static CLASS_REGISTERED: OnceLock<()> = OnceLock::new();
@@ -123,6 +123,17 @@ mod imp {
             if hwnd.0.is_null() {
                 let err = unsafe { windows::Win32::Foundation::GetLastError() };
                 return Err(format!("CreateWindowExW returned null: {:?}", err));
+            }
+            // Force la fenetre en haut du z-order des siblings. La WebView2 utilise du
+            // compositing DComposition qui n'honore pas toujours la regle "le dernier
+            // cree est sur le dessus" ; un SetWindowPos explicite garantit la visibilite.
+            unsafe {
+                let _ = SetWindowPos(
+                    hwnd,
+                    Some(HWND_TOP),
+                    0, 0, 0, 0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+                );
             }
             Ok(Self { hwnd })
         }
