@@ -23,5 +23,16 @@ fn main() {
         }
     }
 
+    // libmpv2-sys emet `cargo:rustc-link-lib=mpv` mais pas le link-search. Sur Windows,
+    // on l'ajoute nous-memes pour que le linker MSVC trouve mpv.lib dans binaries/.
+    // Sur Linux/macOS, pkg-config trouve libmpv via le systeme (libmpv-dev / brew install mpv).
+    if target_triple.contains("windows") {
+        let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_default();
+        if !manifest_dir.is_empty() {
+            let binaries = std::path::Path::new(&manifest_dir).join("binaries");
+            println!("cargo:rustc-link-search=native={}", binaries.display());
+        }
+    }
+
     tauri_build::build()
 }

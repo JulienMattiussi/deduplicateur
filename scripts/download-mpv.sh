@@ -70,29 +70,33 @@ sys.exit(1)
       exit 1
     fi
 
-    # Le contenu standard d'une release mpv-dev :
-    #   libmpv-2.dll                (DLL principal)
-    #   libmpv-2.dll.a              (import lib variante GNU)
-    #   include/mpv/client.h ...    (headers)
-    # Note : selon les versions, l'import lib s'appelle aussi mpv.lib (style MSVC) ou
-    # libmpv-2.dll.a (style MinGW). On copie le premier qu'on trouve.
+    # Structure typique d'une release mpv-dev (zhongfly/mpv-winbuild) :
+    #   libmpv-2.dll       (DLL runtime)
+    #   libmpv.dll.a       (import lib format MinGW = COFF archive)
+    #   include/mpv/*.h    (headers)
+    # Le linker MSVC veut "mpv.lib" mais accepte le .dll.a (format COFF compatible).
+    # On le copie sous le nom mpv.lib pour que libmpv2-sys (qui emet -lmpv) le trouve.
     cp -f "${TMPDIR}/extract/libmpv-2.dll" "$BINARIES_DIR/libmpv-2.dll"
 
-    # Cherche l'import lib (mpv.lib pour MSVC, libmpv.dll.a / libmpv-2.dll.a pour MinGW).
     LIB_FOUND=""
-    for candidate in mpv.lib libmpv.dll.a libmpv-2.dll.a; do
-      if [ -f "${TMPDIR}/extract/${candidate}" ]; then
-        cp -f "${TMPDIR}/extract/${candidate}" "$BINARIES_DIR/${candidate}"
-        LIB_FOUND="${candidate}"
-        break
-      fi
-    done
-    if [ -z "$LIB_FOUND" ]; then
-      echo "Avertissement : aucune import lib (mpv.lib, libmpv.dll.a) trouvee. Le link cargo va probablement echouer." >&2
-      ls -la "${TMPDIR}/extract/" >&2
-    else
-      echo "Import lib : ${LIB_FOUND}"
+    # Priorite : mpv.lib (MSVC natif si jamais une release l'inclut), puis fallback
+    # libmpv.dll.a renomme.
+    if [ -f "${TMPDIR}/extract/mpv.lib" ]; then
+      cp -f "${TMPDIR}/extract/mpv.lib" "$BINARIES_DIR/mpv.lib"
+      LIB_FOUND="mpv.lib (natif MSVC)"
+    elif [ -f "${TMPDIR}/extract/libmpv.dll.a" ]; then
+      cp -f "${TMPDIR}/extract/libmpv.dll.a" "$BINARIES_DIR/mpv.lib"
+      LIB_FOUND="libmpv.dll.a renomme en mpv.lib (MinGW COFF, accepte par link.exe recent)"
+    elif [ -f "${TMPDIR}/extract/libmpv-2.dll.a" ]; then
+      cp -f "${TMPDIR}/extract/libmpv-2.dll.a" "$BINARIES_DIR/mpv.lib"
+      LIB_FOUND="libmpv-2.dll.a renomme en mpv.lib"
     fi
+    if [ -z "$LIB_FOUND" ]; then
+      echo "Erreur : aucune import lib (mpv.lib, libmpv.dll.a, libmpv-2.dll.a) trouvee dans l'archive." >&2
+      ls -la "${TMPDIR}/extract/" >&2
+      exit 1
+    fi
+    echo "Import lib : ${LIB_FOUND}"
 
     # Headers : sous include/mpv/. libmpv2-sys cherche via pkg-config ou via LIBMPV_PATH
     # qui doit pointer sur un dossier contenant include/mpv/*.h et l'import lib.
