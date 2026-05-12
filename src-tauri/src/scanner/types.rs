@@ -143,6 +143,25 @@ pub struct ScanParams {
     /// "Continuer sans analyser les sons/images archivees" face a l'alerte d'espace
     /// disque insuffisant. La phase exact (xxh3) reste active dans tous les cas.
     pub skip_archive_extraction: bool,
+    /// Handler appele pendant la phase counting_archives si l'estimation d'extraction
+    /// depasse l'espace disque libre (- 1 Go de marge). Doit retourner la decision
+    /// utilisateur (Skip / Cancel) ; bloque jusqu'a la reponse.
+    /// `None` = on ne fait pas la verification (pas d'alerte, on continue sans tester).
+    /// Utilise par le frontend pour afficher la modale DiskSpaceWarningModal.
+    pub disk_warning_handler: Option<DiskWarningHandler>,
+}
+
+/// Signature du handler de warning disque. Recoit (needed_bytes, available_bytes,
+/// deficit_bytes, mode) et retourne la decision. Bloque pendant l'attente.
+pub type DiskWarningHandler = Box<dyn Fn(u64, u64, u64, DiskWarningMode) -> crate::DiskDecision + Send + Sync>;
+
+/// Mode d'extraction des archives qui declenche l'estimation : pHash sur images ou
+/// fingerprint sur audios. Determine quelles entrees sont comptees pour l'estimation
+/// et quel libelle/bouton afficher dans la modale.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiskWarningMode {
+    Image,
+    Audio,
 }
 
 impl ScanParams {
@@ -179,6 +198,7 @@ impl ScanParams {
             groups_counter: None,
             scan_archives: false,
             skip_archive_extraction: false,
+            disk_warning_handler: None,
         }
     }
 }

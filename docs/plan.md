@@ -1033,3 +1033,36 @@ Items résiduels non bloquants (peuvent être traités à part si besoin) :
 - Sur Linux Wayland : le comparateur retombe sur le placeholder existant, comme en Phase 29.
 - Build "light" / "full" : compile + bundle, libmpv-2.dll présent à côté de l'exe sur Windows.
 - Build sans la feature : `cargo build --no-default-features` réussit, les commandes `native_player_*` retournent `feature_disabled`.
+
+## Phase 31 : pre-check espace disque integre comme phase 0 du scan ✅
+
+**Objectif** : eliminer l'attente "Précheck running…" devant la barre de progression du scan,
+fusionner l'estimation d'extraction avec la phase `counting_archives` qui itere deja les
+en-tetes d'archives, et faire afficher la modale d'alerte disque par-dessus la barre de
+progression au moment ou le scan a besoin de la decision (pas avant).
+
+### Backend ✅
+- [x] `archive::count_and_estimate_archive_image_entries(path) -> (usize, u64)` et `count_and_estimate_archive_audio_entries` : combinent count + estimation taille decompressee en une seule passe sur les en-tetes (ZIP/7z par entry.size, tar.* par heuristique `size * 4`).
+- [x] Suppression des wrappers `count_archive_image_entries` / `count_archive_audio_entries` (dead code apres bascule).
+- [x] `DiskDecision { Skip, Cancel }` + `DiskDecisionState { Mutex<Option<...>> + Condvar }` dans `lib.rs` : rendez-vous bloquant entre thread de scan (spawn_blocking) et commande Tauri. `wait` poll le `cancelled` flag toutes les 200 ms et sort en `Cancel` si l'utilisateur appuie sur Annuler au lieu de repondre via la modale.
+- [x] `ScanParams.disk_warning_handler: Option<DiskWarningHandler>` (type = `Box<dyn Fn(needed, available, deficit, mode) -> DiskDecision + Send + Sync>`) : injecte par la commande Tauri, sans dependance directe du scanner sur Tauri.
+- [x] Scanner : pendant `counting_archives`, accumule `bytes_p2` / `bytes_p3` ; apres la boucle, si extraction prevue + handler fourni, compare `available - 1 Go` < `needed` et appelle le handler qui bloque jusqu'a la decision. `Skip` bascule `effective_skip_extraction = true` (au lieu de muter `params`) ; `Cancel` set le `cancelled` flag.
+- [x] Commande `respond_disk_warning(decision: "skip" | "cancel")` : `state.set(...)` reveille le scan en attente. Reset du state avant chaque scan pour eviter qu'une decision stale d'un scan precedent ne soit consommee.
+- [x] Suppression des commandes `check_archive_disk_space` et `list_archive_paths` (dead code).
+
+### Frontend ✅
+- [x] Suppression du bloc precheck dans `handleScan` : plus de `list_archive_paths` ni `check_archive_disk_space` avant `scan_folder`. Suppression des states `precheckRunning`, `precheckAbortedRef`, fonction `cancelPrecheck`, fonction `continueWithoutArchivePhash`, bouton `cancel-precheck-btn`, bloc UI "precheck-running".
+- [x] Listener global `scan:disk_warning` dans App.tsx : recoit `{ needed_bytes, available_bytes, deficit_bytes, mode }` du backend pendant le scan et affiche la modale `DiskSpaceWarningModal` par-dessus la barre de progression.
+- [x] Boutons de la modale : `onCancel` -> `respond_disk_warning("cancel")` (scan retourne partial), `onContinueSkipping` -> `respond_disk_warning("skip")` (scan continue sans extraction). Le scan ne s'arrete plus a la modale ; il poursuit dans le meme appel `scan_folder`.
+- [x] Cle i18n `precheckMessage` supprimee (FR + EN), plus utilisee.
+
+### Tests ✅
+- [x] Tests Rust : `count_and_estimate_zip_renvoie_taille_decompressee_des_entrees_filtrees` (count + bytes), `disk_decision_state_set_avant_wait_renvoie_immediatement`, `disk_decision_state_set_pendant_wait_reveille_thread`, `disk_decision_state_wait_sort_si_cancel_flag_passe_a_true`, `disk_decision_state_reset_efface_decision_precedente`.
+- [x] 288 tests Rust / 461 tests TypeScript / tsc clean.
+
+### Criteres de validation (manuel)
+- Dans un dossier contenant beaucoup d'archives (50+), cliquer Analyser en mode Images avec "Analyser les archives" coche : la barre demarre immediatement sur "Lecture des fichiers" puis "Comptage des archives" (pas de "Verification de l'espace disque" prealable).
+- Si l'espace dispo est insuffisant : la modale apparait apres la phase counting_archives, par-dessus la barre de progression. Le bouton Annuler du scan reste cliquable derriere la modale ; cliquer ailleurs / le bouton Annuler de la modale annule le scan.
+- Cliquer "Continuer sans extraction" reprend le scan immediatement (sans relancer), Phase 2 (pHash dans archives) est sautee, le compteur de progression rattrape via le sync final.
+- Mode Files (pas d'extraction) : pas de modale meme avec "Analyser les archives" coche.
+- Mode Videos : "Analyser les archives" est ignore (gating frontend), pas d'iteration des archives en backend.

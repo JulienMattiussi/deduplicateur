@@ -209,16 +209,74 @@ fn read_tar_entry_inner<R: Read>(mut archive: tar::Archive<R>, internal_path: &s
     Err("entree introuvable".to_string())
 }
 
-/// Compte les entrees image d'une archive en lisant uniquement ses headers.
-/// Wrapper sur `count_archive_entries_filtered` avec le predicat `is_image_path`.
-pub fn count_archive_image_entries(path: &Path) -> usize {
-    count_archive_entries_filtered(path, |name| crate::scanner::hash::is_image_path(name))
+/// Compte ET estime la taille totale (bytes) d'extraction des entrees image d'une archive,
+/// en une seule passe sur les en-tetes. Retourne (count, bytes_decompresses).
+/// Utilise pour fusionner le precheck d'espace disque dans la phase counting_archives.
+pub fn count_and_estimate_archive_image_entries(path: &Path) -> (usize, u64) {
+    count_and_estimate_archive_entries_filtered(path, |name| crate::scanner::hash::is_image_path(name))
 }
 
-/// Compte les entrees audio d'une archive en lisant uniquement ses headers.
-/// Wrapper sur `count_archive_entries_filtered` avec le predicat `is_audio` (audio::hash).
-pub fn count_archive_audio_entries(path: &Path) -> usize {
-    count_archive_entries_filtered(path, |name| crate::audio::is_audio(name))
+/// Compte ET estime la taille totale (bytes) d'extraction des entrees audio d'une archive.
+/// Cf. `count_and_estimate_archive_image_entries`.
+pub fn count_and_estimate_archive_audio_entries(path: &Path) -> (usize, u64) {
+    count_and_estimate_archive_entries_filtered(path, |name| crate::audio::is_audio(name))
+}
+
+/// Compte les entrees passant le filtre + somme leur taille decompressee.
+/// - ZIP/7z : lecture des headers (taille connue exacte par entry).
+/// - tar.* : iteration du flux pour count, mais estimation par `taille_archive * 4`
+///   (impossible de connaitre la taille decompressee par entree sans iterer le contenu :
+///   trop couteux). Le but est juste de detecter "espace insuffisant", pas precision.
+pub fn count_and_estimate_archive_entries_filtered(
+    path: &Path,
+    filter: impl Fn(&str) -> bool + Copy,
+) -> (usize, u64) {
+    let format = match detect_archive_format(path) {
+        Some(f) => f,
+        None => return (0, 0),
+    };
+    match format {
+        ArchiveFormat::Zip => {
+            let file = match std::fs::File::open(path) { Ok(f) => f, Err(_) => return (0, 0) };
+            let mut archive = match zip::ZipArchive::new(file) { Ok(a) => a, Err(_) => return (0, 0) };
+            let mut n = 0usize;
+            let mut bytes = 0u64;
+            for i in 0..archive.len() {
+                if let Ok(entry) = archive.by_index(i) {
+                    if !entry.is_dir() && !entry.encrypted() && filter(entry.name()) {
+                        n += 1;
+                        bytes = bytes.saturating_add(entry.size());
+                    }
+                }
+            }
+            (n, bytes)
+        }
+        ArchiveFormat::SevenZip => {
+            let mut reader = match sevenz_rust2::ArchiveReader::open(path, sevenz_rust2::Password::empty()) {
+                Ok(r) => r,
+                Err(_) => return (0, 0),
+            };
+            let mut n = 0usize;
+            let mut bytes = 0u64;
+            let _ = reader.for_each_entries(|entry, _| {
+                if !entry.is_directory() && entry.has_stream() && filter(entry.name()) {
+                    n += 1;
+                    bytes = bytes.saturating_add(entry.size());
+                }
+                Ok(true)
+            });
+            (n, bytes)
+        }
+        // Pour les tar.*, on compte mais on utilise l'heuristique `compressed_size * 4`
+        // pour l'estimation (le decoder fournit pas la taille decompressee par entree sans
+        // iterer le contenu, ce qui serait prohibitif). Borne superieure realiste.
+        ArchiveFormat::Tar | ArchiveFormat::TarGz | ArchiveFormat::TarBz2
+        | ArchiveFormat::TarXz | ArchiveFormat::TarZst => {
+            let count = count_archive_entries_filtered(path, filter);
+            let bytes = std::fs::metadata(path).map(|m| m.len().saturating_mul(4)).unwrap_or(0);
+            (count, bytes)
+        }
+    }
 }
 
 /// Compte les entrees d'une archive qui passent le predicat `filter`.
@@ -805,8 +863,24 @@ mod tests {
             ("track.flac", b"fake flac content"),
             ("photo.jpg", b"fake jpg content"),
         ]);
-        assert_eq!(count_archive_audio_entries(zip.path()), 2, "doit compter mp3 + flac uniquement");
-        assert_eq!(count_archive_image_entries(zip.path()), 1, "doit compter jpg uniquement");
+        let (n_audio, _) = count_and_estimate_archive_audio_entries(zip.path());
+        assert_eq!(n_audio, 2, "doit compter mp3 + flac uniquement");
+        let (n_image, _) = count_and_estimate_archive_image_entries(zip.path());
+        assert_eq!(n_image, 1, "doit compter jpg uniquement");
+    }
+
+    #[test]
+    fn count_and_estimate_zip_renvoie_taille_decompressee_des_entrees_filtrees() {
+        // Le ZIP est non compresse (les contenus servent de taille decompressee).
+        // bytes_image doit sommer la taille des seuls .jpg, pas du reste.
+        let zip = make_zip(&[
+            ("readme.txt", b"plain text 12345"),  // 16 bytes, filtre
+            ("photo1.jpg", b"fake jpg one"),       // 12 bytes
+            ("photo2.jpg", b"fake jpg two long content"),  // 25 bytes
+        ]);
+        let (n, bytes) = count_and_estimate_archive_image_entries(zip.path());
+        assert_eq!(n, 2);
+        assert_eq!(bytes, 12 + 25, "doit sommer la taille decompressee des seules images");
     }
 
     #[test]

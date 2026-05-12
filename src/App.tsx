@@ -1,5 +1,6 @@
-import { useState, startTransition, useEffect, useMemo, useRef } from "react";
+import { useState, startTransition, useEffect, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { save as dialogSave } from "@tauri-apps/plugin-dialog";
 import "./App.css";
 import { formatSize, formatDuration, VIDEO_EXTS, AUDIO_EXTS } from "./utils";
@@ -61,8 +62,6 @@ export default function App() {
   const [panelResetKey, setPanelResetKey] = useState(0);
   const [preScanToolMissing, setPreScanToolMissing] = useState<"ffmpeg" | "fpcalc" | null>(null);
   const [diskWarning, setDiskWarning] = useState<ArchiveDiskCheck | null>(null);
-  const [precheckRunning, setPrecheckRunning] = useState(false);
-  const precheckAbortedRef = useRef(false);
   const [purgeConfirm, setPurgeConfirm] = useState(false);
 
   const config = useScanConfig();
@@ -74,6 +73,21 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem("theme", theme);
   }, [theme]);
+
+  // Listener global pour l'event `scan:disk_warning` emis par le backend pendant
+  // counting_archives quand l'estimation d'extraction depasse l'espace disque libre.
+  // Affiche la modale ; les boutons appellent `respond_disk_warning` qui reveille
+  // le scan en attente cote Rust.
+  useEffect(() => {
+    let unlistenFn: (() => void) | undefined;
+    (async () => {
+      unlistenFn = await listen<{ needed_bytes: number; available_bytes: number; deficit_bytes: number; mode: "image" | "audio" }>(
+        "scan:disk_warning",
+        (event) => setDiskWarning({ ...event.payload, needs_warning: true }),
+      );
+    })();
+    return () => { unlistenFn?.(); };
+  }, []);
 
   const dragOver = useDragDrop(scanExec.scanning, config.setFolder);
 
@@ -263,52 +277,20 @@ export default function App() {
       return;
     }
     setPreScanToolMissing(null);
-
-    // Pre-check d'espace disque si on declenche une extraction d'entrees d'archives :
-    // mode Image (pHash sur images) ou mode Audio (fpcalc sur audios).
-    const needsExtraction = effectiveScanArchives && (config.detectionMode === "images" || config.detectionMode === "audio");
-    const extractionMode: "image" | "audio" = config.detectionMode === "audio" ? "audio" : "image";
-    if (needsExtraction) {
-      precheckAbortedRef.current = false;
-      setPrecheckRunning(true);
-      try {
-        const archives = await invoke<string[]>("list_archive_paths", {
-          folder: config.folder,
-          recursive: config.scanMode === "by_folder" || config.scanMode === "compare_folder" ? true : config.recursive,
-        });
-        if (precheckAbortedRef.current) return;
-        if (archives.length > 0) {
-          const check = await invoke<ArchiveDiskCheck>("check_archive_disk_space", { archivePaths: archives, mode: extractionMode });
-          if (precheckAbortedRef.current) return;
-          if (check.needs_warning) {
-            setPrecheckRunning(false);
-            setDiskWarning({ ...check, mode: extractionMode });  // affiche la modale
-            return;
-          }
-        }
-      } catch {
-        // En cas d'echec du pre-check (folder invalide, etc.), on continue le scan normal :
-        // l'erreur sera surfacee par scan_folder lui-meme.
-      }
-      setPrecheckRunning(false);
-      if (precheckAbortedRef.current) return;
-    }
-
+    // Le precheck disque a ete integre comme phase du scan (event `scan:disk_warning`
+    // emis par le backend pendant counting_archives). La modale apparait au-dessus de
+    // la barre de progression, le scan se met en pause cote backend jusqu'a la decision
+    // utilisateur. Plus aucune logique de precheck cote frontend.
     setPanelResetKey(k => k + 1);
     resetResults();
     return scanExec.scan(buildScanArgsFromConfig(config, lang));
   }
 
-  function cancelPrecheck() {
-    precheckAbortedRef.current = true;
-    setPrecheckRunning(false);
-  }
-
-  function continueWithoutArchivePhash() {
+  // Reponses utilisateur a la modale d'alerte disque emise par le backend pendant
+  // counting_archives. Reveillent le scan en attente via `respond_disk_warning`.
+  function respondDiskWarning(decision: "skip" | "cancel") {
     setDiskWarning(null);
-    setPanelResetKey(k => k + 1);
-    resetResults();
-    scanExec.scan({ ...buildScanArgsFromConfig(config, lang), skipArchiveExtraction: true });
+    invoke("respond_disk_warning", { decision }).catch(() => {});
   }
 
   async function handleIgnoreGroup(groupId: string) {
@@ -404,7 +386,7 @@ export default function App() {
     scanExec.scan(buildScanArgsFromProfile(profile, config.audioConfig));
   }
 
-  const showSessionPicker = !summary && !scanExec.scanning && !precheckRunning;
+  const showSessionPicker = !summary && !scanExec.scanning;
 
   useEffect(() => {
     if (showSessionPicker) {
@@ -576,10 +558,6 @@ export default function App() {
           {scanExec.scanning ? (
             <button className="btn-cancel" onClick={scanExec.cancelScan} disabled={scanExec.cancelling}>
               {scanExec.cancelling ? <><span className="btn-spinner" /> {t.cancelling}</> : t.cancel}
-            </button>
-          ) : precheckRunning ? (
-            <button className="btn-cancel" onClick={cancelPrecheck} data-testid="cancel-precheck-btn">
-              {t.cancel}
             </button>
           ) : (
             <button className="btn-primary" onClick={handleScan} disabled={!config.folder}>
@@ -821,17 +799,10 @@ export default function App() {
         </div>
       )}
 
-      {!summary && !scanExec.scanning && !precheckRunning && sessions.length === 0 && (
+      {!summary && !scanExec.scanning && sessions.length === 0 && (
         <div className="empty-state">
           <span className="empty-icon">🔍</span>
           <p>{t.pickFolderHint}</p>
-        </div>
-      )}
-
-      {precheckRunning && !scanExec.scanning && (
-        <div className="empty-state" data-testid="precheck-running">
-          <div className="spinner" />
-          <p>{t.precheckMessage}</p>
         </div>
       )}
 
@@ -906,8 +877,8 @@ export default function App() {
           availableBytes={diskWarning.available_bytes}
           deficitBytes={diskWarning.deficit_bytes}
           mode={diskWarning.mode ?? "image"}
-          onCancel={() => setDiskWarning(null)}
-          onContinueSkipping={continueWithoutArchivePhash}
+          onCancel={() => respondDiskWarning("cancel")}
+          onContinueSkipping={() => respondDiskWarning("skip")}
         />
       )}
 

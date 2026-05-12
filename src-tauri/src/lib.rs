@@ -13,8 +13,9 @@ mod tool_finder;
 mod video;
 
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
-use std::sync::atomic::AtomicBool;
+use std::sync::{Arc, Condvar, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 use tauri::Manager;
 
 use scanner::{DuplicateFile, DuplicateGroup};
@@ -23,6 +24,55 @@ use scanner::{DuplicateFile, DuplicateGroup};
 
 pub struct CancelFlag(pub Arc<AtomicBool>);
 pub struct MediaServerPort(pub u16);
+
+/// Reponse de l'utilisateur a l'alerte d'espace disque insuffisant.
+/// Emise pendant la phase counting_archives quand l'estimation d'extraction
+/// depasse l'espace libre. Le scan se met en pause sur le Condvar de
+/// `DiskDecisionState` jusqu'a ce que le frontend appelle `respond_disk_warning`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiskDecision {
+    /// Continuer sans extraire les archives (phase pHash/audio dans archive_phase saute).
+    Skip,
+    /// Annuler le scan integralement (positionne le cancel flag).
+    Cancel,
+}
+
+/// Etat partage pour le rendez-vous "warning disque -> reponse utilisateur".
+/// Le scan thread (spawn_blocking) bloque sur le Condvar ; la commande
+/// `respond_disk_warning` reveille en posant la decision.
+pub struct DiskDecisionState {
+    pub inner: Mutex<Option<DiskDecision>>,
+    pub cvar: Condvar,
+}
+
+impl Default for DiskDecisionState {
+    fn default() -> Self { Self::new() }
+}
+
+impl DiskDecisionState {
+    pub fn new() -> Self {
+        DiskDecisionState { inner: Mutex::new(None), cvar: Condvar::new() }
+    }
+    pub fn reset(&self) {
+        *self.inner.lock().unwrap() = None;
+    }
+    pub fn set(&self, d: DiskDecision) {
+        *self.inner.lock().unwrap() = Some(d);
+        self.cvar.notify_all();
+    }
+    /// Bloque jusqu'a reception d'une decision. Verifie le cancel flag toutes les 200ms :
+    /// si l'utilisateur appuie sur Annuler (au lieu de repondre via la modale), on sort
+    /// en retournant Cancel.
+    pub fn wait(&self, cancelled: &Arc<AtomicBool>) -> DiskDecision {
+        let mut guard = self.inner.lock().unwrap();
+        loop {
+            if let Some(d) = *guard { return d; }
+            if cancelled.load(Ordering::Relaxed) { return DiskDecision::Cancel; }
+            let (g, _) = self.cvar.wait_timeout(guard, Duration::from_millis(200)).unwrap();
+            guard = g;
+        }
+    }
+}
 
 pub struct LoadedSession {
     pub summary: ScanSummary,
@@ -262,7 +312,7 @@ pub fn select_files_to_delete(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    use commands::archive::{get_archive_comparison, get_archive_groups, check_archive_disk_space, list_archive_paths};
+    use commands::archive::{get_archive_comparison, get_archive_groups};
     use commands::files::{
         check_path_is_dir, delete_files, get_archive_entry_thumbnail, get_archive_entry_url,
         get_image_meta, get_image_thumbnail, get_video_metadata, get_video_thumbnail,
@@ -275,7 +325,7 @@ pub fn run() {
         native_player_play_pair, native_player_seek_pair, native_player_set_geometry,
         native_player_set_visible, native_player_set_volume,
     };
-    use commands::scan::{cancel_scan, scan_folder};
+    use commands::scan::{cancel_scan, respond_disk_warning, scan_folder};
     use commands::session::{
         delete_session, export_results, get_folder_groups_page, get_groups_page,
         list_folder_keys, list_sessions, load_session, select_all_duplicates, smart_select,
@@ -314,6 +364,7 @@ pub fn run() {
             Ok(())
         })
         .manage(CancelFlag(Arc::new(AtomicBool::new(false))))
+        .manage(Arc::new(DiskDecisionState::new()))
         .manage(ScanCache(Mutex::new(None)))
         // Arc autour du registre : permet de cloner l'Arc dans les commandes pour
         // dispatcher vers le thread principal Tauri (run_on_main_thread) sans probleme
@@ -326,6 +377,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             scan_folder,
             cancel_scan,
+            respond_disk_warning,
             delete_files,
             get_groups_page,
             list_sessions,
@@ -366,8 +418,6 @@ pub fn run() {
             purge_cache,
             get_archive_groups,
             get_archive_comparison,
-            check_archive_disk_space,
-            list_archive_paths,
             native_player_available,
             native_player_create,
             native_player_destroy,
@@ -391,6 +441,53 @@ mod tests {
     use super::*;
     use scanner::{ArchiveGroupResult, ArchiveInGroup, DuplicateFile, DuplicateGroup};
     use video::VideoMetadata;
+    use std::thread;
+
+    // ── DiskDecisionState ───────────────────────────────────────────────────────
+
+    #[test]
+    fn disk_decision_state_set_avant_wait_renvoie_immediatement() {
+        let state = Arc::new(DiskDecisionState::new());
+        let cancelled = Arc::new(AtomicBool::new(false));
+        state.set(DiskDecision::Skip);
+        let d = state.wait(&cancelled);
+        assert_eq!(d, DiskDecision::Skip);
+    }
+
+    #[test]
+    fn disk_decision_state_set_pendant_wait_reveille_thread() {
+        let state = Arc::new(DiskDecisionState::new());
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let state_w = Arc::clone(&state);
+        let cancelled_w = Arc::clone(&cancelled);
+        let handle = thread::spawn(move || state_w.wait(&cancelled_w));
+        // laisse le wait s'engager puis pose la decision
+        thread::sleep(Duration::from_millis(50));
+        state.set(DiskDecision::Cancel);
+        let d = handle.join().unwrap();
+        assert_eq!(d, DiskDecision::Cancel);
+    }
+
+    #[test]
+    fn disk_decision_state_wait_sort_si_cancel_flag_passe_a_true() {
+        let state = Arc::new(DiskDecisionState::new());
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let state_w = Arc::clone(&state);
+        let cancelled_w = Arc::clone(&cancelled);
+        let handle = thread::spawn(move || state_w.wait(&cancelled_w));
+        thread::sleep(Duration::from_millis(50));
+        cancelled.store(true, Ordering::Relaxed);
+        let d = handle.join().unwrap();
+        assert_eq!(d, DiskDecision::Cancel, "cancel flag doit reveiller wait et renvoyer Cancel");
+    }
+
+    #[test]
+    fn disk_decision_state_reset_efface_decision_precedente() {
+        let state = DiskDecisionState::new();
+        state.set(DiskDecision::Skip);
+        state.reset();
+        assert!(state.inner.lock().unwrap().is_none());
+    }
 
     // ── Round-trip session serialisation ────────────────────────────────────────
 

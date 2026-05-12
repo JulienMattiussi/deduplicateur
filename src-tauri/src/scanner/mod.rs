@@ -8,8 +8,8 @@ mod audio_phase;
 mod archive_phase;
 
 pub use types::{
-    DuplicateFile, DuplicateGroup, FileSource, ScanParams, ScanResult,
-    ArchiveGroupResult,
+    DuplicateFile, DuplicateGroup, DiskWarningHandler, DiskWarningMode, FileSource, ScanParams,
+    ScanResult, ArchiveGroupResult,
 };
 // `ArchiveInGroup` est utilise par les tests du crate (lib.rs) ; la re-export
 // declenche un warning "unused" en build prod, donc on l'expose seulement
@@ -203,6 +203,13 @@ where
     // les headers (5-30s sur de gros tar.bz2). On emet une phase "counting_archives"
     // visible cote frontend avec le nom de l'archive en cours, sinon l'utilisateur voit
     // l'app figee entre "Lecture des fichiers" et la Phase 1.
+    // L'estimation de taille d'extraction (image ou audio) est calculee dans la meme
+    // passe que le comptage (`count_and_estimate_archive_*`) pour eviter une double
+    // iteration des en-tetes d'archives. Apres la boucle, si le handler est fourni et
+    // que l'estimation depasse l'espace libre - MARGE, on bloque sur le handler qui
+    // affiche la modale frontend. La decision peut basculer `effective_skip_extraction`
+    // a true pour la suite du scan (Phase 2/3 sautent l'extraction).
+    let mut effective_skip_extraction = params.skip_archive_extraction;
     let (archive_phase1_count, archive_phase2_image_count, archive_audio_count) = if params.scan_archives {
         let archive_files: Vec<&DuplicateFile> = all_files_for_archives.iter()
             .filter(|f| archive::detect_archive_format(std::path::Path::new(&f.path)).is_some())
@@ -214,8 +221,10 @@ where
             let mut p1: usize = 0;
             let mut p2: usize = 0;
             let mut p3: usize = 0;
-            let want_p2 = params.find_similar && !params.skip_archive_extraction;
-            let want_p3 = params.find_similar_audio && !params.skip_archive_extraction;
+            let mut bytes_p2: u64 = 0;
+            let mut bytes_p3: u64 = 0;
+            let want_p2 = params.find_similar && !effective_skip_extraction;
+            let want_p3 = params.find_similar_audio && !effective_skip_extraction;
             for (i, f) in archive_files.iter().enumerate() {
                 if cancelled.load(Ordering::Relaxed) { break; }
                 // total=0 signale au frontend qu'on est en phase preliminaire (pas de
@@ -223,8 +232,55 @@ where
                 on_progress(0, 0, scanned_files, &f.name, i + 1, n_arch, "counting_archives");
                 let path = std::path::Path::new(&f.path);
                 p1 += archive::count_entries_fast(path);
-                if want_p2 { p2 += archive::count_archive_image_entries(path); }
-                if want_p3 { p3 += archive::count_archive_audio_entries(path); }
+                if want_p2 {
+                    let (n, b) = archive::count_and_estimate_archive_image_entries(path);
+                    p2 += n;
+                    bytes_p2 = bytes_p2.saturating_add(b);
+                }
+                if want_p3 {
+                    let (n, b) = archive::count_and_estimate_archive_audio_entries(path);
+                    p3 += n;
+                    bytes_p3 = bytes_p3.saturating_add(b);
+                }
+            }
+            // Pre-check espace disque : si une extraction est prevue (mode Image ou Audio
+            // + scan_archives + handler fourni), on verifie l'espace dispo. Si insuffisant,
+            // on bloque sur le handler qui affiche la modale frontend et attend la decision.
+            if !cancelled.load(Ordering::Relaxed) {
+                if let Some(handler) = params.disk_warning_handler.as_ref() {
+                    let (mode, needed) = if want_p2 {
+                        (Some(DiskWarningMode::Image), bytes_p2)
+                    } else if want_p3 {
+                        (Some(DiskWarningMode::Audio), bytes_p3)
+                    } else {
+                        (None, 0u64)
+                    };
+                    if let (Some(mode), Some(data_dir)) = (mode, params.data_dir.as_deref()) {
+                        if needed > 0 {
+                            let available = archive::extractor::available_disk_space(Path::new(data_dir));
+                            // Marge de securite : on exige `available - needed >= 1 Go`.
+                            // Doit rester aligne avec l'ancien `MIN_FREE_AFTER_EXTRACT_BYTES`
+                            // de commands/archive.rs (ce dernier est devenu dead code).
+                            const MIN_FREE_AFTER_EXTRACT_BYTES: u64 = 1 << 30;
+                            let needs_warning = available < needed.saturating_add(MIN_FREE_AFTER_EXTRACT_BYTES);
+                            if needs_warning {
+                                let deficit = needed.saturating_add(MIN_FREE_AFTER_EXTRACT_BYTES).saturating_sub(available);
+                                let decision = handler(needed, available, deficit, mode);
+                                match decision {
+                                    crate::DiskDecision::Skip => {
+                                        effective_skip_extraction = true;
+                                        // Le total_work compte deja les emits Phase 2/3. Ils ne
+                                        // seront pas emis (extraction sautee), mais le sync_to
+                                        // final rattrape jusqu'a total_work. Pas de divergence.
+                                    }
+                                    crate::DiskDecision::Cancel => {
+                                        cancelled.store(true, Ordering::Relaxed);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
             (p1.max(1), p2, p3)
         }
@@ -392,7 +448,7 @@ where
             params.audio_sim_threshold,
             params.audio_duration_tolerance,
             params.data_dir.as_deref(),
-            params.skip_archive_extraction,
+            effective_skip_extraction,
             &wrapped_on_progress,
         );
         (res.groups, res.entries_cache)

@@ -4,10 +4,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{Emitter, Manager};
 use tauri_plugin_notification::NotificationExt;
 
-use crate::{CancelFlag, LoadedSession, ScanCache, ScanSummary};
+use crate::{CancelFlag, DiskDecision, DiskDecisionState, LoadedSession, ScanCache, ScanSummary};
 use crate::{format_notification_body, save_session, should_notify};
 use crate::ignore_list::IgnoreList;
-use crate::scanner::{scan_folder as do_scan, ScanParams};
+use crate::scanner::{scan_folder as do_scan, DiskWarningHandler, DiskWarningMode, ScanParams};
 
 /// Etat de progression partage entre le thread de scan (rayon) et la tache d'emission Tauri.
 /// Tuple : (current, total, scanned_files, file_name, phase_current, phase_total, phase_label).
@@ -50,6 +50,10 @@ pub async fn scan_folder(
         state.0.store(false, Ordering::Relaxed);
         Arc::clone(&state.0)
     };
+    // Reset le state de decision disque avant chaque scan (un scan precedent annule
+    // aurait pu laisser une decision en attente).
+    let disk_state: Arc<DiskDecisionState> = Arc::clone(&*app.state::<Arc<DiskDecisionState>>());
+    disk_state.reset();
 
     let data_dir_str = app.path().app_local_data_dir().ok().map(|p| p.to_string_lossy().to_string());
     let phash_cfg = data_dir_str.as_deref()
@@ -93,6 +97,29 @@ pub async fn scan_folder(
         }
     });
 
+    // Handler de warning disque : pendant counting_archives, le scanner appelle ce
+    // closure si l'estimation d'extraction depasse l'espace libre. On emit l'event
+    // `scan:disk_warning` au frontend (qui affiche la modale) puis on bloque sur
+    // `disk_state.wait` jusqu'a `respond_disk_warning(decision)`. Le scanner respecte
+    // ensuite la decision (skip extraction ou cancel).
+    let disk_state_for_handler = Arc::clone(&disk_state);
+    let cancelled_for_handler = Arc::clone(&cancelled);
+    let window_for_handler = window.clone();
+    let disk_warning_handler: DiskWarningHandler =
+        Box::new(move |needed: u64, available: u64, deficit: u64, mode: DiskWarningMode| {
+            let mode_str = match mode { DiskWarningMode::Image => "image", DiskWarningMode::Audio => "audio" };
+            let _ = window_for_handler.emit(
+                "scan:disk_warning",
+                serde_json::json!({
+                    "needed_bytes": needed,
+                    "available_bytes": available,
+                    "deficit_bytes": deficit,
+                    "mode": mode_str,
+                }),
+            );
+            disk_state_for_handler.wait(&cancelled_for_handler)
+        });
+
     let folder = path.clone();
     let result = tauri::async_runtime::spawn_blocking(move || {
         let params = ScanParams {
@@ -126,6 +153,7 @@ pub async fn scan_folder(
             groups_counter: Some(Arc::clone(&groups_counter)),
             scan_archives,
             skip_archive_extraction: skip_archive_extraction.unwrap_or(false),
+            disk_warning_handler: Some(disk_warning_handler),
         };
         do_scan(params, cancelled, move |current, total, total_files, file: &str, phase_current, phase_total, phase: &str| {
             // Snapshot mutex : on n'ecrase QUE si current >= existing. Sinon un emit
@@ -211,4 +239,18 @@ pub async fn scan_folder(
 #[tauri::command]
 pub fn cancel_scan(app: tauri::AppHandle) {
     app.state::<CancelFlag>().0.store(true, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Reponse de l'utilisateur a l'alerte d'espace disque insuffisant.
+/// Reveille le scan en attente sur `DiskDecisionState::wait` apres l'event
+/// `scan:disk_warning` emis depuis la phase counting_archives du scanner.
+/// `decision` accepte : "skip" (continuer sans extraction) ou "cancel" (annuler le scan).
+#[tauri::command]
+pub fn respond_disk_warning(app: tauri::AppHandle, decision: String) {
+    let state = app.state::<Arc<DiskDecisionState>>();
+    let d = match decision.as_str() {
+        "skip" => DiskDecision::Skip,
+        _ => DiskDecision::Cancel,
+    };
+    state.set(d);
 }

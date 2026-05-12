@@ -128,6 +128,27 @@ Conséquences pratiques :
 - Faire lire `phase_current` au heartbeat à la place de `current`
 - Émettre `file=""` en pleine phase (sauf aux sync de transition, où c'est intentionnel)
 
+## Règle impérative - Interaction modale UI au milieu d'un scan : pattern Mutex+Condvar
+
+Quand une phase du scanner a besoin d'une décision utilisateur (ex. alerte espace disque avant extraction d'archives), **ne PAS faire le check côté frontend avant `scan_folder`**. Le côté pénible pour l'utilisateur : pré-check qui peut prendre des dizaines de secondes (itération des en-têtes d'archives) avant que la barre de progression apparaisse, sans bouton Cancel visible.
+
+Pattern correct (cf. `DiskDecisionState` dans `lib.rs`) :
+1. La commande Tauri `scan_folder` enregistre un **handler** dans `ScanParams` (type `Box<dyn Fn(...) -> Decision + Send + Sync>`).
+2. Le scanner appelle ce handler au moment opportun (ex. après `counting_archives` quand `available - 1 Go < needed`). Le handler bloque jusqu'à réponse.
+3. Le handler côté Tauri : `window.emit("event", payload)` puis `disk_state.wait(&cancelled)` (Mutex + Condvar). Le frontend reçoit l'event, affiche la modale, l'utilisateur clique. Les boutons appellent une commande dédiée (`respond_disk_warning`) qui fait `state.set(decision)` → notifie le Condvar → le scan thread se réveille.
+4. Le `wait` poll le `cancelled` flag toutes les 200 ms pour sortir en `Cancel` si l'utilisateur appuie sur Annuler du scan (bouton derrière la modale) au lieu de répondre.
+5. **Reset le state** avant chaque scan (au début de `scan_folder`) pour éviter qu'une décision stale d'un scan annulé soit consommée par le scan suivant.
+
+Avantages :
+- L'utilisateur clique Analyser, la barre de progression apparaît immédiatement, le cancel est disponible.
+- Pas de redondance : l'itération des en-têtes faite par `counting_archives` produit aussi l'estimation disque (via `count_and_estimate_archive_*`). Une seule passe au lieu de deux.
+- Le scanner reste agnostique de Tauri (handler injecté). Les tests Rust peuvent passer `None` → pas de warning, scan continue normalement.
+
+Ce qu'il ne faut JAMAIS faire :
+- Mettre la logique de check dans le frontend (`invoke("check_archive_disk_space")` avant `invoke("scan_folder")`) → l'utilisateur attend devant un écran sans progression.
+- Modifier `params.skip_archive_extraction` (immutable). À la place, utiliser une variable locale `effective_skip_extraction` qui peut basculer à `true` quand l'utilisateur choisit Skip.
+- Appeler `wait` sans poll du cancel flag : si l'utilisateur ferme la modale par le bouton Annuler du scan principal, le scan resterait bloqué indéfiniment.
+
 ## Règle impérative - Architecture cache pour opérations lazy
 
 Quand le frontend déclenche une opération coûteuse en post-scan (ex. ouverture d'un comparateur), **ne JAMAIS recalculer ce qui a été calculé pendant le scan**.
