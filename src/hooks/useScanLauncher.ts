@@ -59,7 +59,11 @@ export function buildScanArgsFromConfig(config: ScanConfigShape, lang: string): 
     secondaryFolder: config.scanMode === "compare_folder" ? (config.secondaryFolder || null) : null,
     minModifiedTimestamp: minModifiedTimestamp || undefined,
     maxModifiedTimestamp: maxModifiedTimestamp || undefined,
-    scanArchives: config.scanArchives,
+    // Le scan d'archives ne s'applique pas au mode video (Phase 2 pHash et Phase 3 fpcalc
+    // ne tournent pas, seul du xxh3 inutile serait fait). La checkbox est cachee en mode
+    // video, mais l'etat React persiste si l'utilisateur l'avait coche en mode image puis
+    // a switch. On gate ici a la source pour que l'effet soit aligne avec la visibilite UI.
+    scanArchives: config.scanArchives && config.detectionMode !== "videos",
   };
 }
 

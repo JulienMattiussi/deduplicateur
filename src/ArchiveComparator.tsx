@@ -8,8 +8,13 @@ import { ComparatorBasicShell } from "./comparatorShared";
 import type { ArchiveComparison, ArchiveEntryResult, ArchiveInGroup } from "./types";
 
 interface Props {
-  archiveA: ArchiveInGroup;
-  archiveB: ArchiveInGroup;
+  /** Toutes les archives du groupe similaires entre elles. Permet de changer
+   *  la paire comparee a la volee via les onglets gauche / droite. */
+  archives: ArchiveInGroup[];
+  /** Index initial (defaut 0). */
+  startLeftIdx?: number;
+  /** Index initial (defaut 1). */
+  startRightIdx?: number;
   findSimilar: boolean;
   simThreshold: number;
   findSimilarAudio?: boolean;
@@ -189,17 +194,36 @@ function ArchiveMetaBlock({ archive }: { archive: ArchiveInGroup }) {
 }
 
 export function ArchiveComparator({
-  archiveA, archiveB,
+  archives,
+  startLeftIdx = 0,
+  startRightIdx = 1,
   findSimilar, simThreshold,
   findSimilarAudio, audioSimThreshold, audioDurationTolerance,
   onClose,
 }: Props) {
   const { t } = useLang();
+  const [leftIdx, setLeftIdx] = useState(Math.min(Math.max(0, startLeftIdx), archives.length - 1));
+  const [rightIdx, setRightIdx] = useState(Math.min(Math.max(0, startRightIdx), archives.length - 1));
   const [comparison, setComparison] = useState<ArchiveComparison | null>(null);
   const [loading, setLoading] = useState(true);
   const [duplicatesOnly, setDuplicatesOnly] = useState(false);
 
+  // Si l'utilisateur clique sur la meme archive du cote oppose, on force un decalage
+  // (l'autre cote bouge automatiquement) - inutile de comparer une archive avec elle-meme.
+  function pickLeft(i: number) {
+    if (i === rightIdx) setRightIdx(leftIdx);
+    setLeftIdx(i);
+  }
+  function pickRight(i: number) {
+    if (i === leftIdx) setLeftIdx(rightIdx);
+    setRightIdx(i);
+  }
+
+  const archiveA = archives[leftIdx];
+  const archiveB = archives[rightIdx];
+
   useEffect(() => {
+    if (!archiveA || !archiveB) return;
     setLoading(true);
     setComparison(null);
     invoke<ArchiveComparison>("get_archive_comparison", {
@@ -213,7 +237,7 @@ export function ArchiveComparator({
     })
       .then((c) => { setComparison(c); setLoading(false); })
       .catch(() => setLoading(false));
-  }, [archiveA.path, archiveB.path, findSimilar, simThreshold, findSimilarAudio, audioSimThreshold, audioDurationTolerance]);
+  }, [archiveA?.path, archiveB?.path, findSimilar, simThreshold, findSimilarAudio, audioSimThreshold, audioDurationTolerance]);
 
   const rows = useMemo(() => {
     if (!comparison) return [];
@@ -241,8 +265,44 @@ export function ArchiveComparator({
     return "archive-entry-row archive-entry-row--unique";
   }
 
+  // Onglets de selection gauche/droite quand le groupe contient > 2 archives.
+  // Pour 2 archives, on cache les onglets (rien a choisir).
+  const showTabs = archives.length > 2;
+
   return (
     <ComparatorBasicShell title={t.archiveComparator} headerExtra={headerExtra} onClose={onClose}>
+      {showTabs && (
+        <div className="comparator-tabs">
+          <div className="comparator-tabs-group" data-testid="archive-tabs-left">
+            <span className="comparator-tabs-side">{t.panelLeft}</span>
+            {archives.map((a, i) => {
+              const name = basename(a.path);
+              return (
+                <button
+                  key={`l${i}`}
+                  className={`comparator-tab${leftIdx === i ? " comparator-tab--active" : ""}`}
+                  onClick={() => pickLeft(i)}
+                  title={name}
+                >{name}</button>
+              );
+            })}
+          </div>
+          <div className="comparator-tabs-group" data-testid="archive-tabs-right">
+            <span className="comparator-tabs-side">{t.panelRight}</span>
+            {archives.map((a, i) => {
+              const name = basename(a.path);
+              return (
+                <button
+                  key={`r${i}`}
+                  className={`comparator-tab${rightIdx === i ? " comparator-tab--active" : ""}`}
+                  onClick={() => pickRight(i)}
+                  title={name}
+                >{name}</button>
+              );
+            })}
+          </div>
+        </div>
+      )}
       {loading ? (
         <div className="archive-comparator-loading">
           <span className="file-thumb-spinner comparator-spin" />

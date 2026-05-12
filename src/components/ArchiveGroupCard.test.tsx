@@ -3,7 +3,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ArchiveGroupCard } from "./ArchiveGroupCard";
 import { LangProvider } from "../LangContext";
-import type { ArchiveGroupResult, ArchiveInGroup } from "../types";
+import type { ArchiveGroupResult } from "../types";
 
 function makeGroup(overrides: Partial<ArchiveGroupResult> = {}): ArchiveGroupResult {
   return {
@@ -17,7 +17,7 @@ function makeGroup(overrides: Partial<ArchiveGroupResult> = {}): ArchiveGroupRes
   };
 }
 
-function renderCard(group: ArchiveGroupResult, opts: Partial<{ selected: Set<string>; onToggle: (p: string) => void; onCompare: (a: ArchiveInGroup, b: ArchiveInGroup) => void }> = {}) {
+function renderCard(group: ArchiveGroupResult, opts: Partial<{ selected: Set<string>; onToggle: (p: string) => void; onCompare: (group: ArchiveGroupResult, l: number, r: number) => void }> = {}) {
   return render(
     <LangProvider>
       <ArchiveGroupCard
@@ -121,14 +121,16 @@ describe("ArchiveGroupCard - bouton Comparer", () => {
     expect(screen.getByText("Comparer")).toBeInTheDocument();
   });
 
-  it("clic sur Comparer appelle onCompare avec les 2 premiers ArchiveInGroup", async () => {
+  it("clic sur Comparer appelle onCompare avec le groupe entier et les indices 0,1", async () => {
     const user = userEvent.setup();
     const onCompare = vi.fn();
-    renderCard(makeGroup(), { onCompare });
+    const grp = makeGroup();
+    renderCard(grp, { onCompare });
     await user.click(screen.getByText("Comparer"));
     expect(onCompare).toHaveBeenCalledTimes(1);
-    const [a, b] = onCompare.mock.calls[0];
-    expect(a.path).toBe("/data/archive_a.zip");
-    expect(b.path).toBe("/data/archive_b.zip");
+    const [calledGroup, leftIdx, rightIdx] = onCompare.mock.calls[0];
+    expect(calledGroup).toBe(grp);
+    expect(leftIdx).toBe(0);
+    expect(rightIdx).toBe(1);
   });
 });

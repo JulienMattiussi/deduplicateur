@@ -4,7 +4,7 @@ import { save as dialogSave } from "@tauri-apps/plugin-dialog";
 import "./App.css";
 import { formatSize, formatDuration, VIDEO_EXTS, AUDIO_EXTS } from "./utils";
 import { useLang } from "./LangContext";
-import type { DuplicateGroup, FolderSummary, IgnoreEntry, ScanProfile, ScanSummary, ArchiveGroupResult, ArchiveInGroup, ArchiveDiskCheck } from "./types";
+import type { DuplicateGroup, FolderSummary, IgnoreEntry, ScanProfile, ScanSummary, ArchiveGroupResult, ArchiveDiskCheck } from "./types";
 import { interp } from "./i18n";
 import { useScanConfig } from "./hooks/useScanConfig";
 import { useScanExecution } from "./hooks/useScanExecution";
@@ -51,7 +51,7 @@ export default function App() {
   const [videoComparatorIdx, setVideoComparatorIdx] = useState<number | null>(null);
   const [audioComparatorIdx, setAudioComparatorIdx] = useState<number | null>(null);
   const [archiveGroups, setArchiveGroups] = useState<ArchiveGroupResult[]>([]);
-  const [archiveComparatorPair, setArchiveComparatorPair] = useState<{ a: ArchiveInGroup; b: ArchiveInGroup } | null>(null);
+  const [archiveComparatorOpen, setArchiveComparatorOpen] = useState<{ group: ArchiveGroupResult; leftIdx: number; rightIdx: number } | null>(null);
   const [resumingId, setResumingId] = useState<string | null>(null);
   const [smartRule, setSmartRule] = useState<SmartMode>("newest");
   const [priorityFolder, setPriorityFolder] = useState("");
@@ -81,7 +81,7 @@ export default function App() {
   useKeyboardShortcuts({
     onToggleHelp: () => setHelpOpen((v) => !v),
     onEscapeArchive: () => {
-      if (archiveComparatorPair) { setArchiveComparatorPair(null); return true; }
+      if (archiveComparatorOpen) { setArchiveComparatorOpen(null); return true; }
       return false;
     },
     onEscapeConfirm: () => {
@@ -120,7 +120,7 @@ export default function App() {
     selection.setSelected(new Set());
     setFilterText("");
     setArchiveGroups([]);
-    setArchiveComparatorPair(null);
+    setArchiveComparatorOpen(null);
   }
 
   async function handlePurgeCache() {
@@ -251,6 +251,11 @@ export default function App() {
     });
   }
 
+  // scanArchives effectif : la checkbox est cachee en mode video mais son etat persiste
+  // dans React. On gate ici pour que la barre de progression et le precheck ne montrent
+  // / ne declenchent rien en mode video, meme si l'utilisateur avait coche en mode image.
+  const effectiveScanArchives = config.scanArchives && config.detectionMode !== "videos";
+
   async function handleScan() {
     const missingTool = await checkRequiredTools(config.detectionMode);
     if (missingTool) {
@@ -261,7 +266,7 @@ export default function App() {
 
     // Pre-check d'espace disque si on declenche une extraction d'entrees d'archives :
     // mode Image (pHash sur images) ou mode Audio (fpcalc sur audios).
-    const needsExtraction = config.scanArchives && (config.detectionMode === "images" || config.detectionMode === "audio");
+    const needsExtraction = effectiveScanArchives && (config.detectionMode === "images" || config.detectionMode === "audio");
     const extractionMode: "image" | "audio" = config.detectionMode === "audio" ? "audio" : "image";
     if (needsExtraction) {
       precheckAbortedRef.current = false;
@@ -738,7 +743,7 @@ export default function App() {
                       group={ag}
                       selected={selection.selected}
                       onToggle={selection.toggleFile}
-                      onCompare={(a, b) => setArchiveComparatorPair({ a, b })}
+                      onCompare={(group, leftIdx, rightIdx) => setArchiveComparatorOpen({ group, leftIdx, rightIdx })}
                     />
                   ))}
                   {filteredFolderSummaries.map((fs) => (
@@ -773,7 +778,7 @@ export default function App() {
                           group={item.group}
                           selected={selection.selected}
                           onToggle={selection.toggleFile}
-                          onCompare={(a, b) => setArchiveComparatorPair({ a, b })}
+                          onCompare={(group, leftIdx, rightIdx) => setArchiveComparatorOpen({ group, leftIdx, rightIdx })}
                         />
                       );
                     }
@@ -835,7 +840,7 @@ export default function App() {
           <ScanProgressView
             progress={scanExec.progress}
             detectionMode={config.detectionMode}
-            scanArchives={config.scanArchives}
+            scanArchives={effectiveScanArchives}
             historyRef={scanExec.progressHistoryRef}
             scanStartRef={scanExec.scanStartRef}
             t={t}
@@ -873,15 +878,16 @@ export default function App() {
         />
       )}
 
-      {archiveComparatorPair && (
+      {archiveComparatorOpen && (
         <ArchiveComparator
-          archiveA={archiveComparatorPair.a}
-          archiveB={archiveComparatorPair.b}
+          archives={archiveComparatorOpen.group.archives}
+          startLeftIdx={archiveComparatorOpen.leftIdx}
+          startRightIdx={archiveComparatorOpen.rightIdx}
           findSimilar={summary?.find_similar ?? false}
           simThreshold={summary?.sim_threshold ?? 10}
           findSimilarAudio={summary?.find_similar_audio ?? false}
           audioSimThreshold={summary?.audio_sim_threshold ?? 20}
-          onClose={() => setArchiveComparatorPair(null)}
+          onClose={() => setArchiveComparatorOpen(null)}
         />
       )}
 

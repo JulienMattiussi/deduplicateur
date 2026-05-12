@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ArchiveComparator } from "./ArchiveComparator";
 import { LangProvider } from "./LangContext";
@@ -47,10 +47,17 @@ const baseComparison = {
   },
 };
 
-function renderComparator(onClose = vi.fn(), findSimilar = false) {
+function renderComparator(onClose = vi.fn(), findSimilar = false, extras: ArchiveInGroup[] = []) {
   return render(
     <LangProvider>
-      <ArchiveComparator archiveA={archiveA} archiveB={archiveB} findSimilar={findSimilar} simThreshold={10} onClose={onClose} />
+      <ArchiveComparator
+        archives={[archiveA, archiveB, ...extras]}
+        startLeftIdx={0}
+        startRightIdx={1}
+        findSimilar={findSimilar}
+        simThreshold={10}
+        onClose={onClose}
+      />
     </LangProvider>
   );
 }
@@ -260,6 +267,66 @@ describe("ArchiveComparator - paires similaires (B-min)", () => {
       findSimilarAudio: false,
       audioSimThreshold: 20,
       audioDurationTolerance: 0.20,
+    });
+  });
+});
+
+// Solution A : onglets gauche/droite quand le groupe contient 3+ archives.
+describe("ArchiveComparator - onglets gauche/droite", () => {
+  const archiveC: ArchiveInGroup = {
+    path: "/data/archive_c.zip",
+    size: 4096, modified: 1700000003,
+    total_entries: 5, duplicated_entries: 3, can_delete: true, wasted_bytes: 1024,
+  };
+
+  it("ne montre pas les onglets quand seules 2 archives sont passees", async () => {
+    mockInvoke.mockResolvedValue(baseComparison);
+    renderComparator();
+    await waitFor(() => screen.getByTestId("archive-comparator-body"));
+    expect(screen.queryByTestId("archive-tabs-left")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("archive-tabs-right")).not.toBeInTheDocument();
+  });
+
+  it("affiche les onglets quand 3+ archives sont passees", async () => {
+    mockInvoke.mockResolvedValue(baseComparison);
+    renderComparator(vi.fn(), false, [archiveC]);
+    await waitFor(() => screen.getByTestId("archive-comparator-body"));
+    expect(screen.getByTestId("archive-tabs-left")).toBeInTheDocument();
+    expect(screen.getByTestId("archive-tabs-right")).toBeInTheDocument();
+    // Une entree par archive de chaque cote (3 archives).
+    const leftTabs = within(screen.getByTestId("archive-tabs-left")).getAllByRole("button");
+    expect(leftTabs).toHaveLength(3);
+  });
+
+  it("clic sur un onglet droit change la paire comparee", async () => {
+    mockInvoke.mockResolvedValue(baseComparison);
+    renderComparator(vi.fn(), false, [archiveC]);
+    await waitFor(() => screen.getByTestId("archive-comparator-body"));
+    mockInvoke.mockClear();
+    // Cliquer sur archive_c dans les onglets droite -> nouvelle paire A vs C demandee au backend.
+    const rightTabs = within(screen.getByTestId("archive-tabs-right")).getAllByRole("button");
+    await userEvent.setup().click(rightTabs[2]);
+    await waitFor(() => {
+      const calls = mockInvoke.mock.calls.filter((c) => c[0] === "get_archive_comparison");
+      expect(calls).toHaveLength(1);
+      expect(calls[0][1]).toMatchObject({ pathA: archiveA.path, pathB: archiveC.path });
+    });
+  });
+
+  it("cliquer sur le meme archive du cote oppose force un decalage (jamais X vs X)", async () => {
+    mockInvoke.mockResolvedValue(baseComparison);
+    renderComparator(vi.fn(), false, [archiveC]);
+    await waitFor(() => screen.getByTestId("archive-comparator-body"));
+    mockInvoke.mockClear();
+    // Etat initial : gauche=A (idx 0), droite=B (idx 1).
+    // On clique sur B du cote gauche -> echange gauche/droite (gauche=B, droite=A).
+    const leftTabs = within(screen.getByTestId("archive-tabs-left")).getAllByRole("button");
+    await userEvent.setup().click(leftTabs[1]);
+    await waitFor(() => {
+      const calls = mockInvoke.mock.calls.filter((c) => c[0] === "get_archive_comparison");
+      expect(calls.length).toBeGreaterThan(0);
+      const last = calls[calls.length - 1][1];
+      expect(last).toMatchObject({ pathA: archiveB.path, pathB: archiveA.path });
     });
   });
 });

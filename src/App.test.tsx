@@ -1134,6 +1134,36 @@ describe("S - option Analyser les archives", () => {
     expect(screen.queryByTestId("scan-archives-checkbox")).not.toBeInTheDocument();
   });
 
+  it("cocher en mode Images puis switch en Vidéos envoie scanArchives: false (la case cachée ne doit pas fuiter)", async () => {
+    const user = userEvent.setup();
+    mockInvoke.mockImplementation(
+      makeDefaultMock({
+        scan_folder: baseSummary,
+        get_groups_page: { groups: [], offset: 0, total: 0, has_more: false },
+      })
+    );
+    mockDialogOpen.mockResolvedValue("/home/test");
+
+    render(<App />);
+    await user.click(screen.getByText(/Cliquer pour choisir un dossier/));
+    await waitFor(() => screen.getByText("/home/test"));
+
+    // Cocher en mode Images
+    await user.click(screen.getByText("🖼 Images"));
+    await user.click(screen.getByTestId("scan-archives-checkbox"));
+    // Switch en mode Vidéos : la checkbox disparait mais l'etat React persiste
+    await user.click(screen.getByText("🎬 Vidéos"));
+    expect(screen.queryByTestId("scan-archives-checkbox")).not.toBeInTheDocument();
+
+    await user.click(screen.getByText("Analyser"));
+
+    await waitFor(() => {
+      const call = mockInvoke.mock.calls.find((c) => c[0] === "scan_folder");
+      expect(call).toBeDefined();
+      expect(call![1]).toHaveProperty("scanArchives", false);
+    });
+  });
+
   it("cocher la checkbox envoie scanArchives: true dans les args scan", async () => {
     const user = userEvent.setup();
     mockInvoke.mockImplementation(

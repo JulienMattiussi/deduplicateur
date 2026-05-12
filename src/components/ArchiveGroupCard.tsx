@@ -10,7 +10,9 @@ interface Props {
   group: ArchiveGroupResult;
   selected: Set<string>;
   onToggle: (path: string) => void;
-  onCompare: (a: ArchiveInGroup, b: ArchiveInGroup) => void;
+  /** Ouvre le comparateur sur le groupe entier, avec les indices initiaux gauche/droite.
+   *  Les autres archives sont accessibles via les onglets du comparateur. */
+  onCompare: (group: ArchiveGroupResult, startLeftIdx: number, startRightIdx: number) => void;
 }
 
 function archiveAsFile(a: ArchiveInGroup): DuplicateFile {
@@ -32,7 +34,7 @@ export function ArchiveGroupCard({ group, selected, onToggle, onCompare }: Props
 
   function handleCompareClick(e: React.MouseEvent) {
     e.stopPropagation();
-    onCompare(archives[0], archives[1]);
+    onCompare(group, 0, 1);
   }
 
   return (
