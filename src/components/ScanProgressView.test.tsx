@@ -61,6 +61,24 @@ describe("ScanProgressView - bulles d'etape", () => {
     );
     expect(container.querySelectorAll(".progress-step").length).toBe(4);
   });
+
+  it("les bulles suivent l'ordre d'execution : counting_archives apparait juste apres reading, pas a la fin", () => {
+    // En mode Images + scanArchives, l'ordre attendu est :
+    // reading -> counting_archives -> exact -> images -> archives -> archives_phash
+    const { container } = render(
+      <Wrapper progress={{ current: 0, total: 0, phase: "reading" }} detectionMode="images" scanArchives={true} />
+    );
+    const labels = Array.from(container.querySelectorAll(".progress-step-label"))
+      .map(el => el.textContent);
+    expect(labels).toEqual([
+      translations.fr.phaseReading,
+      translations.fr.phaseCountingArchives,
+      translations.fr.phaseExact,
+      translations.fr.phaseImages,
+      translations.fr.phaseArchives,
+      translations.fr.phaseArchivesPhash,
+    ]);
+  });
 });
 
 describe("ScanProgressView - libelles", () => {

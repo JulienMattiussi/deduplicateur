@@ -34,17 +34,24 @@ export function ScanProgressView({ progress, detectionMode, scanArchives, histor
     detectionMode === "images" ? ["reading", "exact", "images"] :
     detectionMode === "videos" ? ["reading", "exact", "videos"] :
     ["reading", "exact", "audio"];
-  // Avec scan_archives, le comptage des archives est visible upfront (peut prendre
-  // qq secondes sur des gros tar.bz2 qui doivent etre decompresses pour lire les headers).
-  let relevantPhases: ScanPhase[] = scanArchives ? [...baseRelevant, "counting_archives", "archives"] : baseRelevant;
+  // Construction de la liste des phases visibles dans le stepper. On collecte d'abord
+  // toutes celles applicables puis on les ordonne selon `PHASE_ORDER` (ordre d'execution
+  // reel cote scanner) pour que les puces apparaissent dans le bon sens : reading ->
+  // counting_archives -> exact -> images/audio/videos -> archives -> archives_phash/audio.
+  const phaseSet = new Set<ScanPhase>(baseRelevant);
+  if (scanArchives) {
+    phaseSet.add("counting_archives");
+    phaseSet.add("archives");
+  }
   // Phase 2 d'archive (extraction + pHash) ne tourne qu'en mode Image avec scan_archives
   if (scanArchives && detectionMode === "images") {
-    relevantPhases = [...relevantPhases, "archives_phash"];
+    phaseSet.add("archives_phash");
   }
   // Phase 3 d'archive (extraction + fpcalc) ne tourne qu'en mode Audio avec scan_archives
   if (scanArchives && detectionMode === "audio") {
-    relevantPhases = [...relevantPhases, "archives_audio"];
+    phaseSet.add("archives_audio");
   }
+  const relevantPhases: ScanPhase[] = PHASE_ORDER.filter(p => phaseSet.has(p));
 
   const currentPhaseIdx = phase ? PHASE_ORDER.indexOf(phase) : -1;
 
