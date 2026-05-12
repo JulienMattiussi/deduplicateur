@@ -265,7 +265,11 @@ jobs:
         run: npm ci
 
       - name: Build macOS (sans native-player)
-        run: npm run tauri build -- --bundles dmg,app --no-default-features
+        # Le double `--` est obligatoire : tauri-cli accepte ses propres options
+        # apres le premier `--` (depuis npm), puis transmet ce qui suit le second
+        # `--` a cargo. Sans ca, `--no-default-features` est lu par tauri-cli qui
+        # ne le connait pas et echoue avec "unexpected argument".
+        run: npm run tauri build -- --bundles dmg,app -- --no-default-features
 
       - name: Publish tagged release macOS
         uses: softprops/action-gh-release@v2
