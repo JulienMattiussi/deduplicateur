@@ -2,6 +2,66 @@
 
 Programme Windows de détection et suppression de fichiers en double.
 
+## Règle impérative - Publication d'une release
+
+**Une release n'est jamais complète sans :**
+1. **Bump de version** synchronisé dans les 4 fichiers : `package.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock` (entrée `name = "deduplicateur"`), `src-tauri/tauri.conf.json`. Oublier l'un des quatre fait diverger le numéro affiché dans l'app et dans les artefacts CI.
+2. **Entrée `CHANGELOG.md`** au format "Keep a Changelog" avec les sections `Added`, `Changed`, `Fixed`, `Documentation`, `Quality` selon les changements, et le lien `[X.Y.Z]: https://github.com/JulienMattiussi/deduplicateur/releases/tag/vX.Y.Z` en bas.
+3. **Tag annoté `vX.Y.Z`** avec message `"Release X.Y.Z - <tagline>"` (cf. tags v1.0.0 et v1.1.0 pour le format). La tagline est courte (3-7 mots), résume le thème principal de la release.
+4. **Body de la release GitHub** rédigé manuellement après le push du tag (la CI n'attache que les fichiers, elle ne définit ni nom ni body). Sans ça, la release s'affiche `v1.1.1` au lieu de `Déduplicateur 1.1.1`, body vide.
+
+**Template du body de release** (modélisé sur v1.1.0 et v1.1.1) :
+```
+## Déduplicateur X.Y.Z - <tagline identique à celle du tag>
+
+<paragraphe FR (1-3 phrases) résumant le thème>
+<paragraphe EN équivalent>
+
+---
+
+### 🇫🇷 Au programme
+- <bullets : un par feature ou groupe de features, gras sur le nom court, description après>
+
+### 🇬🇧 What's new
+- <miroir EN strict des bullets FR>
+
+---
+
+### Downloads
+<intro 2 lignes sur light vs full>
+
+| OS | light | full |
+|----|-------|------|
+| Windows | `Deduplicateur_X.Y.Z_x64-setup.exe` / `.msi` | `Deduplicateur-full_X.Y.Z_x64-setup.exe` / `.msi` |
+| Linux   | `Deduplicateur_X.Y.Z_amd64.AppImage` / `.deb` | `Deduplicateur-full_X.Y.Z_amd64.AppImage` / `.deb` |
+
+### Install notes
+> **Windows** : SmartScreen...
+> **Linux** : ffmpeg / fpcalc dans le PATH + libmpv2 pour le lecteur natif vidéo...
+(macOS uniquement si la release builds macOS - cf. v1.1.0)
+
+### Under the hood
+<Rust + Tauri 2, X tests Rust (+N depuis Y.Y.Y), React 18 + TS, Y tests TypeScript (+M), thèmes techniques pertinents>
+
+### Full changelog
+See [CHANGELOG.md](https://github.com/JulienMattiussi/deduplicateur/blob/main/CHANGELOG.md) for the complete list.
+```
+
+**Process en commandes** (après `chore: release X.Y.Z` commité et poussé sur main) :
+```bash
+git tag -a vX.Y.Z -m "Release X.Y.Z - <tagline>"
+git push origin vX.Y.Z
+# Attendre que la CI ait attaché les fichiers (~6-7 min, vérifier avec `gh run list`)
+gh release edit vX.Y.Z --title "Déduplicateur X.Y.Z"
+# Rédiger le body dans un fichier temp puis :
+gh release edit vX.Y.Z --notes-file /tmp/release-X.Y.Z-notes.md
+```
+
+**À retenir** :
+- La CI (`.github/workflows/build.yml`) n'a délibérément pas de `name:` ni `body:` dans `softprops/action-gh-release` pour les tags : on garde la rédaction manuelle (FR + EN, table downloads, install notes spécifiques à la release).
+- Le test count (`X unit tests`) cité dans le body doit correspondre au count réel après les ajouts de la release : `cargo test ... | grep "^test result"` somme ce qui sort.
+- Si la rolling release `latest` était à jour avec le précédent main, la CI la rebuild aussi sur ce push (pas besoin d'action manuelle). Le tag, lui, crée une release dédiée séparée.
+
 ## Règle impérative - Caractères interdits
 
 Le caractère `—` (tiret cadratin, U+2014) est **interdit dans l'ensemble du projet** : code source, documentation, commentaires, messages de commit. Utiliser `-` (trait d'union ASCII) à la place.
