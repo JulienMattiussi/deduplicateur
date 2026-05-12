@@ -211,8 +211,13 @@ where
     // a true pour la suite du scan (Phase 2/3 sautent l'extraction).
     let mut effective_skip_extraction = params.skip_archive_extraction;
     let (archive_phase1_count, archive_phase2_image_count, archive_audio_count) = if params.scan_archives {
+        // Verification stricte : extension + magic bytes du contenu. Sans ca, un fichier
+        // dont l'extension ment (ex. `.cbz` qui contient en realite du RAR) etait confie
+        // au crate `zip` qui scanne tout le fichier a la recherche d'une signature EOCD
+        // inexistante, pouvant bloquer ou prendre plusieurs minutes par fichier. Cout :
+        // 1 ouverture + lecture de 6 octets par archive, fait une seule fois ici.
         let archive_files: Vec<&DuplicateFile> = all_files_for_archives.iter()
-            .filter(|f| archive::detect_archive_format(std::path::Path::new(&f.path)).is_some())
+            .filter(|f| archive::detect_archive_format_verified(std::path::Path::new(&f.path)).is_some())
             .collect();
         if archive_files.len() < 2 {
             (0usize, 0usize, 0usize)

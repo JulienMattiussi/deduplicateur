@@ -8,7 +8,7 @@ mod sevenz_reader;
 pub mod extractor;
 
 use std::path::Path;
-use std::io::Read;
+use std::io::{Read, Seek, SeekFrom};
 use xxhash_rust::xxh3::Xxh3;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -71,6 +71,83 @@ pub fn detect_archive_format(path: &Path) -> Option<ArchiveFormat> {
     } else {
         None
     }
+}
+
+/// Verifie que les premiers octets du fichier correspondent au magic number du format
+/// annonce par l'extension. Protege contre les fichiers "menteurs" (ex. `.cbz` contenant
+/// du RAR) qui font boucler ou bloquer les decoders quand on les leur soumet.
+///
+/// Magic numbers utilises :
+/// - ZIP : `50 4B 03 04` (entree locale), `50 4B 05 06` (ZIP vide / EOCD), `50 4B 07 08` (spanned).
+/// - 7z : `37 7A BC AF 27 1C`.
+/// - gzip (tar.gz) : `1F 8B`.
+/// - bzip2 (tar.bz2) : `42 5A 68` (`BZh`).
+/// - xz (tar.xz) : `FD 37 7A 58 5A 00`.
+/// - zstd (tar.zst) : `28 B5 2F FD`.
+/// - tar (.tar) : `ustar` a l'offset 257 (header POSIX). Les archives V7 historiques
+///   (sans signature `ustar`) sont rejetees ici - acceptable, elles sont rares et le risque
+///   d'un faux positif est plus eleve que la perte de couverture.
+///
+/// En cas d'erreur d'ouverture ou de lecture, retourne true (on prefere laisser
+/// passer le fichier au decoder qui echouera proprement plutot que de causer une
+/// fausse exclusion sur une I/O transitoire). En revanche, un fichier qui s'ouvre
+/// mais ne contient pas assez d'octets pour le magic du format demande est rejete :
+/// il ne peut structurellement pas etre une archive valide.
+pub fn verify_archive_magic(path: &Path, format: &ArchiveFormat) -> bool {
+    let mut file = match std::fs::File::open(path) {
+        Ok(f) => f,
+        Err(_) => return true,
+    };
+    let mut head = [0u8; 6];
+    let n = match file.read(&mut head) {
+        Ok(n) => n,
+        Err(_) => return true,
+    };
+    match format {
+        ArchiveFormat::Zip => {
+            if n < 4 { return false; }
+            head[0] == 0x50 && head[1] == 0x4B
+                && ((head[2] == 0x03 && head[3] == 0x04)
+                    || (head[2] == 0x05 && head[3] == 0x06)
+                    || (head[2] == 0x07 && head[3] == 0x08))
+        }
+        ArchiveFormat::SevenZip => {
+            n >= 6
+                && head[0] == 0x37 && head[1] == 0x7A && head[2] == 0xBC
+                && head[3] == 0xAF && head[4] == 0x27 && head[5] == 0x1C
+        }
+        ArchiveFormat::TarGz => n >= 2 && head[0] == 0x1F && head[1] == 0x8B,
+        ArchiveFormat::TarBz2 => n >= 3 && head[0] == 0x42 && head[1] == 0x5A && head[2] == 0x68,
+        ArchiveFormat::TarXz => {
+            n >= 6
+                && head[0] == 0xFD && head[1] == 0x37 && head[2] == 0x7A
+                && head[3] == 0x58 && head[4] == 0x5A && head[5] == 0x00
+        }
+        ArchiveFormat::TarZst => {
+            n >= 4 && head[0] == 0x28 && head[1] == 0xB5 && head[2] == 0x2F && head[3] == 0xFD
+        }
+        ArchiveFormat::Tar => {
+            // Header tar : signature "ustar" a l'offset 257 (POSIX). Les fichiers V7
+            // historiques sans signature sont rares et rejetes ici par precaution.
+            if file.seek(SeekFrom::Start(257)).is_err() { return true; }
+            let mut sig = [0u8; 5];
+            match file.read(&mut sig) {
+                Ok(5) => &sig == b"ustar",
+                _ => false,
+            }
+        }
+    }
+}
+
+/// Variante de `detect_archive_format` qui verifie en plus que le contenu du fichier
+/// correspond bien au format annonce par l'extension. Indispensable pour la phase
+/// archives : un `.cbz` contenant du RAR fait scanner le crate `zip` a la recherche
+/// d'une signature EOCD inexistante, et certains decoders (`zip`, `sevenz-rust2`) peuvent
+/// boucler ou mettre tres longtemps a echouer sur des octets non conformes. Cout : 1
+/// ouverture + lecture de quelques octets par fichier.
+pub fn detect_archive_format_verified(path: &Path) -> Option<ArchiveFormat> {
+    let format = detect_archive_format(path)?;
+    if verify_archive_magic(path, &format) { Some(format) } else { None }
 }
 
 /// Hash un reader par blocs de 4 Mo, retourne le hash xxh3.
@@ -730,6 +807,116 @@ mod tests {
     fn detect_inconnu_retourne_none() {
         assert_eq!(detect_archive_format(Path::new("file.txt")), None);
         assert_eq!(detect_archive_format(Path::new("noext")), None);
+    }
+
+    // Helper : ecrit `bytes` dans un fichier temporaire avec le suffixe demande.
+    fn write_temp(suffix: &str, bytes: &[u8]) -> NamedTempFile {
+        let mut f = NamedTempFile::with_suffix(suffix).unwrap();
+        f.write_all(bytes).unwrap();
+        f.flush().unwrap();
+        f
+    }
+
+    #[test]
+    fn verify_magic_zip_valide_accepte() {
+        let zip = make_zip(&[("a.txt", b"x")]);
+        assert!(verify_archive_magic(zip.path(), &ArchiveFormat::Zip));
+    }
+
+    #[test]
+    fn verify_magic_cbz_contenant_rar_rejete() {
+        // RAR 4.x magic : 52 61 72 21 1A 07 00 ("Rar!\x1A\x07\x00").
+        let rar_bytes = b"Rar!\x1A\x07\x00\x00\x00\x00\x00\x00\x00";
+        let f = write_temp(".cbz", rar_bytes);
+        // detect_archive_format dit "ZIP" sur l'extension, mais le contenu n'est pas un ZIP.
+        assert_eq!(detect_archive_format(f.path()), Some(ArchiveFormat::Zip));
+        assert!(!verify_archive_magic(f.path(), &ArchiveFormat::Zip));
+        // detect_archive_format_verified doit donc retourner None.
+        assert_eq!(detect_archive_format_verified(f.path()), None);
+    }
+
+    #[test]
+    fn verify_magic_cbz_zip_valide_accepte_par_verified() {
+        let zip = make_zip(&[("p.png", b"\x89PNG")]);
+        // Renommer en .cbz : ZipArchive::new ne lit que les bytes, pas le nom.
+        let cbz_path = zip.path().with_extension("cbz");
+        std::fs::copy(zip.path(), &cbz_path).unwrap();
+        assert_eq!(
+            detect_archive_format_verified(&cbz_path),
+            Some(ArchiveFormat::Zip)
+        );
+        let _ = std::fs::remove_file(&cbz_path);
+    }
+
+    #[test]
+    fn verify_magic_fichier_tres_court_rejete() {
+        let f = write_temp(".zip", b"PK"); // 2 octets : signature ZIP incomplete
+        assert!(!verify_archive_magic(f.path(), &ArchiveFormat::Zip));
+        assert_eq!(detect_archive_format_verified(f.path()), None);
+    }
+
+    #[test]
+    fn verify_magic_7z_valide_accepte() {
+        let bytes = b"\x37\x7A\xBC\xAF\x27\x1C\x00\x04";
+        let f = write_temp(".7z", bytes);
+        assert!(verify_archive_magic(f.path(), &ArchiveFormat::SevenZip));
+    }
+
+    #[test]
+    fn verify_magic_7z_avec_octets_zip_rejete() {
+        let bytes = b"PK\x03\x04ZIPGARB";
+        let f = write_temp(".7z", bytes);
+        assert!(!verify_archive_magic(f.path(), &ArchiveFormat::SevenZip));
+        assert_eq!(detect_archive_format_verified(f.path()), None);
+    }
+
+    #[test]
+    fn verify_magic_targz_valide_accepte() {
+        // gzip : 1F 8B
+        let f = write_temp(".tar.gz", b"\x1F\x8B\x08\x00xxxx");
+        assert!(verify_archive_magic(f.path(), &ArchiveFormat::TarGz));
+    }
+
+    #[test]
+    fn verify_magic_targz_mauvais_magic_rejete() {
+        let f = write_temp(".tar.gz", b"NOTGZIP");
+        assert!(!verify_archive_magic(f.path(), &ArchiveFormat::TarGz));
+        assert_eq!(detect_archive_format_verified(f.path()), None);
+    }
+
+    #[test]
+    fn verify_magic_tarbz2_valide_accepte() {
+        let f = write_temp(".tar.bz2", b"BZh9blahblah");
+        assert!(verify_archive_magic(f.path(), &ArchiveFormat::TarBz2));
+    }
+
+    #[test]
+    fn verify_magic_tarxz_valide_accepte() {
+        let f = write_temp(".tar.xz", b"\xFD\x37\x7A\x58\x5A\x00\x00\x04");
+        assert!(verify_archive_magic(f.path(), &ArchiveFormat::TarXz));
+    }
+
+    #[test]
+    fn verify_magic_tarzst_valide_accepte() {
+        let f = write_temp(".tar.zst", b"\x28\xB5\x2F\xFD\x04");
+        assert!(verify_archive_magic(f.path(), &ArchiveFormat::TarZst));
+    }
+
+    #[test]
+    fn verify_magic_tar_ustar_accepte() {
+        // 257 octets de zeros puis "ustar".
+        let mut bytes = vec![0u8; 257];
+        bytes.extend_from_slice(b"ustar\x00");
+        bytes.extend(std::iter::repeat(0u8).take(50));
+        let f = write_temp(".tar", &bytes);
+        assert!(verify_archive_magic(f.path(), &ArchiveFormat::Tar));
+    }
+
+    #[test]
+    fn verify_magic_tar_sans_signature_rejete() {
+        // Fichier trop court pour avoir l'offset 257.
+        let f = write_temp(".tar", b"random short bytes");
+        assert!(!verify_archive_magic(f.path(), &ArchiveFormat::Tar));
     }
 
     fn make_zip(entries: &[(&str, &[u8])]) -> NamedTempFile {

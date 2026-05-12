@@ -149,6 +149,22 @@ Ce qu'il ne faut JAMAIS faire :
 - Modifier `params.skip_archive_extraction` (immutable). À la place, utiliser une variable locale `effective_skip_extraction` qui peut basculer à `true` quand l'utilisateur choisit Skip.
 - Appeler `wait` sans poll du cancel flag : si l'utilisateur ferme la modale par le bouton Annuler du scan principal, le scan resterait bloqué indéfiniment.
 
+## Règle impérative - Détection de format : extension + magic bytes, jamais l'extension seule
+
+Tout filtre qui sélectionne des fichiers candidats pour un décodage lourd (archives, vidéos, audio) **doit confronter l'extension aux magic bytes du contenu** avant de confier le fichier au décodeur. Sinon un fichier dont l'extension ment (ex. `.cbz` qui contient en réalité du RAR, parce que renommé manuellement ou produit par un outil bugué) fait scanner / boucler le décodeur sur des octets non conformes pendant plusieurs secondes voire indéfiniment.
+
+Cas vécu : un `.cbz` contenant du RAR. `detect_archive_format` se base uniquement sur l'extension, donc le scanner traitait le fichier comme un ZIP. `zip::ZipArchive::new` cherchait alors la signature EOCD dans le fichier et ne la trouvait jamais : blocage de la phase `counting_archives`.
+
+Pattern (cf. `archive::verify_archive_magic` + `archive::detect_archive_format_verified`) :
+1. Garder une fonction "détection rapide par extension" (utile en interne, pas sur le chemin critique).
+2. Ajouter une fonction "vérification magic" qui ouvre le fichier, lit les premiers octets et confronte au format détecté. Magic numbers : ZIP `50 4B 03 04`, 7z `37 7A BC AF 27 1C`, gzip `1F 8B`, bzip2 `42 5A 68`, xz `FD 37 7A 58 5A 00`, zstd `28 B5 2F FD`, tar `ustar` à l'offset 257.
+3. Ajouter un wrapper combiné (extension + magic) et l'utiliser **aux entry points du scan** (filtres qui produisent la liste des archives à compter / hasher), pas dans les sous-fonctions internes (déjà filtrées).
+4. Sur erreur d'I/O (open / read échoue) : laisser passer (`return true`) - on préfère que le décodeur échoue proprement plutôt qu'exclure à tort sur une I/O transitoire. Sur fichier ouvert mais trop court pour contenir le magic : rejeter (`return false`) - structurellement invalide.
+
+Coût : 1 ouverture + ~6 octets lus par candidat, fait une seule fois en amont du filtre. Imperceptible (<1ms par fichier sur SSD, ~5-10ms sur HDD) comparé aux dizaines de secondes que peut prendre une phase d'archives.
+
+À retenir pour les futurs filtres similaires : `is_image`, `is_video`, `is_audio` se basent aussi sur l'extension. Si un format pose le même problème (décodeur qui boucle sur des octets garbage), ajouter la même vérif magic plutôt que de patcher localement avec un timeout.
+
 ## Règle impérative - Architecture cache pour opérations lazy
 
 Quand le frontend déclenche une opération coûteuse en post-scan (ex. ouverture d'un comparateur), **ne JAMAIS recalculer ce qui a été calculé pendant le scan**.

@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use rayon::prelude::*;
 
-use crate::archive::{detect_archive_format, hash_archive_entries, count_entries_fast, ArchiveEntryHash};
+use crate::archive::{detect_archive_format_verified, hash_archive_entries, count_entries_fast, ArchiveEntryHash};
 use crate::archive::extractor::{extract_image_entries, extract_audio_entries, ExtractedImage};
 use crate::audio::{compute_fingerprint, fingerprint_distance};
 use super::hash::{hamming_distance, compute_two_pass_hashes};
@@ -50,9 +50,10 @@ pub fn run(
     skip_extraction: bool,
     on_progress: &(impl Fn(usize, usize, usize, &str, usize, usize, &str) + Send + Sync),
 ) -> ArchivePhaseResult {
-    // Filtrer les archives
+    // Filtrer les archives : extension + magic bytes (evite les fichiers "menteurs"
+    // comme `.cbz` contenant du RAR, qui font bloquer les decoders).
     let archives: Vec<&DuplicateFile> = files.iter()
-        .filter(|f| detect_archive_format(Path::new(&f.path)).is_some())
+        .filter(|f| detect_archive_format_verified(Path::new(&f.path)).is_some())
         .collect();
 
     if archives.len() < 2 {

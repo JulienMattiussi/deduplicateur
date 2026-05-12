@@ -1066,3 +1066,21 @@ progression au moment ou le scan a besoin de la decision (pas avant).
 - Cliquer "Continuer sans extraction" reprend le scan immediatement (sans relancer), Phase 2 (pHash dans archives) est sautee, le compteur de progression rattrape via le sync final.
 - Mode Files (pas d'extraction) : pas de modale meme avec "Analyser les archives" coche.
 - Mode Videos : "Analyser les archives" est ignore (gating frontend), pas d'iteration des archives en backend.
+
+---
+
+## Phase 32 : verification magic bytes des archives (anti-blocage `.cbz` menteur) ✅
+
+**Objectif** : eviter qu'un fichier dont l'extension annonce un format d'archive supporte (typiquement `.cbz`) mais dont le contenu est en realite d'un autre format (typiquement RAR) ne fasse bloquer ou ralentir massivement la phase `counting_archives`. Le crate `zip` scanne le fichier a la recherche de la signature EOCD inexistante, et certains autres decoders peuvent boucler ou prendre plusieurs minutes par fichier.
+
+### Backend ✅
+- [x] `archive::verify_archive_magic(path, &format) -> bool` : lit les premiers octets et confronte aux magic bytes du format detecte par extension. Magic numbers couverts : ZIP (`50 4B 03 04` / `05 06` / `07 08`), 7z (`37 7A BC AF 27 1C`), gzip (`1F 8B`), bzip2 (`42 5A 68`), xz (`FD 37 7A 58 5A 00`), zstd (`28 B5 2F FD`), tar (signature `ustar` a l'offset 257). Erreur d'I/O -> retourne true (on laisse passer, le decoder echouera proprement). Fichier trop court pour contenir le magic -> retourne false (structurellement invalide).
+- [x] `archive::detect_archive_format_verified(path) -> Option<ArchiveFormat>` : combinaison extension + magic. Wrapper utilise aux deux entry points qui filtrent la liste des archives (`scanner/mod.rs` boucle counting_archives, `scanner/archive_phase.rs` filtre archives). Les fichiers "menteurs" sont silencieusement exclus de la phase archives mais restent dans la dedup classique par hash.
+
+### Tests ✅
+- [x] Tests Rust : 13 nouveaux tests `archive::tests::verify_magic_*` couvrant ZIP valide accepte, `.cbz` contenant des octets RAR rejete, `.cbz` ZIP valide accepte par la version verified, fichier tres court rejete, 7z valide, 7z avec octets ZIP rejete, tar.gz / tar.bz2 / tar.xz / tar.zst valides, tar.gz mauvais magic rejete, tar avec signature ustar accepte, tar sans signature rejete.
+- [x] 301 tests Rust / 462 tests TypeScript / tsc clean.
+
+### Criteres de validation (manuel)
+- Un fichier `.cbz` qui contient en realite du RAR (renomme manuellement, ou produit par un outil bugue) ne fait plus bloquer la phase `counting_archives`. Il est exclu de la phase archives mais reste presence dans le scan general (dedup exacte sur le fichier).
+- Cout ajoute imperceptible : 1 ouverture + 6 octets lus par archive, fait une seule fois dans le filtre amont (avant la double iteration count_entries_fast + count_and_estimate_*).
