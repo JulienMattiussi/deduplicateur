@@ -556,7 +556,7 @@ export default function App() {
             </label>
           )}
           {scanExec.scanning ? (
-            <button className="btn-cancel" onClick={scanExec.cancelScan} disabled={scanExec.cancelling}>
+            <button className="btn-cancel" onClick={scanExec.cancelScan} disabled={scanExec.cancelling} title={t.tipCancelScan}>
               {scanExec.cancelling ? <><span className="btn-spinner" /> {t.cancelling}</> : t.cancel}
             </button>
           ) : (
