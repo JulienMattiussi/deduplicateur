@@ -4,6 +4,38 @@ All notable changes to Déduplicateur are documented here.
 
 This file follows the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.1.1] - 2026-05-13
+
+Patch release focused on the archive scanning flow: a cleaner disk-space check during the scan, a comparator threshold fix, and a robustness fix that prevents the counting phase from blocking on files whose extension lies about their content.
+
+### Added
+
+- **Magic-byte verification for archives**: each `.zip` / `.cbz` / `.7z` / `.tar.*` candidate is now checked against its actual format signature before being handed to the decoder. A `.cbz` that secretly contains a RAR archive (or any other extension/content mismatch) is silently excluded from the archive phase instead of making `zip::ZipArchive::new` scan the entire file looking for an EOCD that does not exist. The file still participates in regular hash-based deduplication. Magic numbers checked: ZIP (`PK\x03\x04` / `PK\x05\x06` / `PK\x07\x08`), 7z (`37 7A BC AF 27 1C`), gzip, bzip2, xz, zstd, and `ustar` at offset 257 for tar.
+- **Tooltip on the scan Cancel button** explaining that cancelling does not erase prior work: computed fingerprints are cached and the next scan resumes where the previous one stopped.
+
+### Changed
+
+- **Archive disk-space check moved into the scan itself** (Phase 31). The frontend used to run a "Précheck" before the scan (open every archive header to estimate extraction size), which made the user wait for tens of seconds in front of a static screen with no Cancel button. The check now happens during the `counting_archives` phase and reuses the same header iteration that already runs there (single pass instead of two). When extraction is at risk of running out of space, the scan blocks via a Mutex+Condvar rendezvous and the frontend modal appears on top of the live progress bar; the underlying scan Cancel button stays responsive throughout.
+- **ArchiveComparator now reads `summary.sim_threshold`** from the loaded session instead of hardcoding `simThreshold={10}`. The number of duplicated entries shown in the GroupCard counter (e.g. `61/90`) now matches the number of pairs displayed in the comparator. Entries below the configured threshold appear as isolated rows in the comparator, which is consistent with their exclusion from the count.
+
+### Fixed
+
+- **`.cbz` files containing RAR data no longer block the `counting_archives` phase**. Previously the file was confused for a ZIP and the decoder spent unbounded time searching for an absent central directory.
+- **Cancel button stays accurately labelled** during archive counting and during the disk-space modal (frontend i18n cleanups around the precheck removal).
+
+### Documentation
+
+- New AGENTS.md sections: "Interaction modale UI au milieu d'un scan : pattern Mutex+Condvar" (covers the disk-space modal flow) and "Détection de format : extension + magic bytes, jamais l'extension seule" (rationale and pattern for the magic-byte check).
+- `docs/plan.md` extended with Phase 31 (precheck refactor) and Phase 32 (magic-byte verification).
+
+### Quality
+
+- 301 Rust tests (+18 since 1.1.0, including 13 `verify_magic_*` tests and 5 covering `DiskDecisionState` rendezvous behaviour).
+- 462 TypeScript tests (+6 since 1.1.0).
+- `npx tsc --noEmit` clean.
+
+[1.1.1]: https://github.com/JulienMattiussi/deduplicateur/releases/tag/v1.1.1
+
 ## [1.1.0] - 2026-05-11
 
 Major release adding an embedded native libmpv video player for formats and codecs that the WebView's HTML5 `<video>` cannot read.
