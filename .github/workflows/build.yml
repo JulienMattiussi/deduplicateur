@@ -90,6 +90,11 @@ jobs:
       - name: Download libmpv (Windows)
         if: runner.os == 'Windows'
         shell: bash
+        # GITHUB_TOKEN authentifie l'appel a api.github.com (sinon rate limit
+        # non-authentifie = 60 req/h par IP partagee du runner, intermittence
+        # 403 sur les builds tags qui suivent un build main de pres).
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bash scripts/download-mpv.sh
 
       - name: Set LIBMPV_PATH (Windows)
