@@ -4,7 +4,9 @@ All notable changes to Déduplicateur are documented here.
 
 This file follows the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format and the project adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.2.0] - 2026-05-13
+
+Minor release introducing animated GIF support in the image comparator, real-time scan progress in the OS taskbar, and an architectural refactor making the in-memory cache and the ignore list fully independent.
 
 ### Added
 
@@ -28,8 +30,11 @@ This file follows the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) f
 
 ### Quality
 
-- 309 Rust tests (+8 since 1.1.1, including 7 on `is_animated_gif` and the `filtered_view_invariant_cache_brut_apres_retrait_ignore` sentinel that pins the new cache contract).
-- 463 TypeScript tests (+1, on `get_image_url` returning a media server URL for `.gif`).
+- **Audit-driven internal refactor** (no behavior change): `archive/mod.rs` (1235 lines) split into `detect.rs` / `count.rs` / `compare.rs` sub-modules; `lib.rs` (996 lines) split into `notifications.rs` + `selection.rs`; `commands/session.rs` extracted `generate_csv` / `generate_html` / `export_results` into `commands/export.rs`; new `with_filtered_cache<R>` helper in `session.rs` eliminates a 5-line pattern repeated across 6 read commands; `IMAGE_EXTS` and `AUDIO_EXTS` deduplicated (3 → 1 source of truth in `utils.ts`). Mock `@tauri-apps/api/window` centralised in `test-setup.ts`.
+- 312 Rust tests (+11 since 1.1.1, including 7 on `is_animated_gif`, `filtered_view_invariant_cache_brut_apres_retrait_ignore` sentinel, 3 new tests on the extracted export module).
+- 465 TypeScript tests (+3, including 2 on the OS window title and 1 on `get_image_url` returning a media server URL for `.gif`).
+
+[1.2.0]: https://github.com/JulienMattiussi/deduplicateur/releases/tag/v1.2.0
 
 ## [1.1.1] - 2026-05-13
 
