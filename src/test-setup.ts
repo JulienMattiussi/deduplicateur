@@ -1,4 +1,19 @@
 import "@testing-library/jest-dom";
+import { vi } from "vitest";
+
+// Mock global du module Tauri window : les tests jsdom n'ont pas d'environnement
+// Tauri runtime, donc `getCurrentWindow().setTitle(...)` planterait. On expose
+// un objet stub avec un `setTitle` mock que les tests peuvent inspecter en
+// re-important `getCurrentWindow` depuis `@tauri-apps/api/window`. Ainsi toute
+// future feature qui utilise une API de la fenetre (setTitle, setMinimumSize...)
+// est testable sans repeter le vi.mock dans chaque fichier.
+vi.mock("@tauri-apps/api/window", () => {
+  const setTitle = vi.fn(() => Promise.resolve());
+  return {
+    getCurrentWindow: () => ({ setTitle }),
+    __mockSetTitle: setTitle,
+  };
+});
 
 // IntersectionObserver n'existe pas dans jsdom.
 // Ce mock declenche immediatement isIntersecting=true pour que les tests

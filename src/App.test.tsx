@@ -1290,3 +1290,72 @@ describe("S - option Analyser les archives", () => {
     });
   });
 });
+
+// ---- Titre OS pendant scan : pourcentage visible dans la barre des taches ----
+describe("Titre OS - pourcentage de scan", () => {
+  it("setTitle reste sur la base au demarrage (pas de scan en cours)", async () => {
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    const setTitle = getCurrentWindow().setTitle as ReturnType<typeof vi.fn>;
+    setTitle.mockClear();
+
+    render(<App />);
+
+    // L'effet useEffect tire setTitle("Déduplicateur") au mount (scanning=false).
+    await waitFor(() => {
+      expect(setTitle).toHaveBeenCalledWith("Déduplicateur");
+    });
+  });
+
+  it("setTitle prefixe le titre avec le pourcentage quand un scan progresse", async () => {
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    const setTitle = getCurrentWindow().setTitle as ReturnType<typeof vi.fn>;
+    setTitle.mockClear();
+
+    // Capture le callback de scan:progress passe a listen() pour pouvoir
+    // injecter un event de progression manuellement.
+    const { listen } = await import("@tauri-apps/api/event");
+    let progressCb: ((event: { payload: unknown }) => void) | null = null;
+    (listen as ReturnType<typeof vi.fn>).mockImplementation((evt: string, cb: (e: { payload: unknown }) => void) => {
+      if (evt === "scan:progress") progressCb = cb;
+      return Promise.resolve(() => {});
+    });
+
+    // scan_folder reste pending pour qu'on puisse interagir mid-scan.
+    let resolveScan: (s: unknown) => void = () => {};
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "scan_folder") return new Promise((r) => { resolveScan = r; });
+      if (cmd === "list_sessions") return Promise.resolve([]);
+      if (cmd === "get_cache_size") return Promise.resolve(0);
+      if (cmd === "check_tools") return Promise.resolve({ ffmpeg_available: true, fpcalc_available: true });
+      if (cmd === "get_phash_config") return Promise.resolve(defaultPhashConfig);
+      if (cmd === "get_video_config") return Promise.resolve(defaultVideoConfig);
+      if (cmd === "get_audio_config") return Promise.resolve(defaultAudioConfig);
+      if (cmd === "list_profiles") return Promise.resolve([]);
+      if (cmd === "get_ignore_list") return Promise.resolve([]);
+      return Promise.resolve(null);
+    });
+    mockDialogOpen.mockResolvedValue("/home/test");
+
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByText(/Cliquer pour choisir un dossier/));
+    await waitFor(() => screen.getByText("/home/test"));
+    await user.click(screen.getByText("Analyser"));
+    await waitFor(() => expect(progressCb).not.toBeNull());
+
+    // Phase quantifiable (total > 0) : on doit voir le pourcentage.
+    progressCb!({ payload: { current: 50, total: 100, phase: "exact", phase_current: 50, phase_total: 100 } });
+    await waitFor(() => {
+      expect(setTitle).toHaveBeenCalledWith("50 % - Déduplicateur");
+    });
+
+    // Phase preliminaire (total = 0) : on revient sur la base sans pourcentage trompeur.
+    progressCb!({ payload: { current: 0, total: 0, phase: "reading" } });
+    await waitFor(() => {
+      expect(setTitle).toHaveBeenCalledWith("Déduplicateur");
+    });
+
+    // Fin du scan : le titre revient sur la base (cleanup de l'useEffect).
+    resolveScan(baseSummary);
+  });
+});

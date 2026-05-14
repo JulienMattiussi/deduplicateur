@@ -4,7 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { save as dialogSave } from "@tauri-apps/plugin-dialog";
 import "./App.css";
-import { formatSize, formatDuration, VIDEO_EXTS, AUDIO_EXTS } from "./utils";
+import { formatSize, formatDuration, VIDEO_EXTS, IMAGE_EXTS, AUDIO_EXTS } from "./utils";
 import { useLang } from "./LangContext";
 import type { DuplicateGroup, FolderSummary, IgnoreEntry, ScanProfile, ScanSummary, ArchiveGroupResult, ArchiveDiskCheck } from "./types";
 import { interp } from "./i18n";
@@ -438,11 +438,10 @@ export default function App() {
   }, [results.groups, filterText]);
 
   const imageGroups = useMemo(() => {
-    const IMAGE_EXTS_LOCAL = new Set(["jpg","jpeg","png","webp","bmp","gif","tiff","tif","avif"]);
     const base = summary?.by_folder ? results.groups : filteredGroups;
     return base.filter((g) => {
       const ext = g.files[0]?.path.split(".").pop()?.toLowerCase() ?? "";
-      return g.similar || (!g.video_similar && IMAGE_EXTS_LOCAL.has(ext));
+      return g.similar || (!g.video_similar && IMAGE_EXTS.has(ext));
     });
   }, [filteredGroups, results.groups, summary?.by_folder]);
 

@@ -4,6 +4,33 @@ All notable changes to Déduplicateur are documented here.
 
 This file follows the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **Animated GIFs in the image comparator**: `.gif` files (detected via extension + magic bytes `GIF87a` / `GIF89a`) are now served by the local media server and animated natively by the embedded `<img>` element, instead of being flattened to a single JPEG frame by the `image` crate. Other formats (PNG, JPEG, WEBP) still go through the downscaled JPEG data URL pipeline for memory efficiency.
+- **Scan progress in the OS window title**: while a scan runs, the window title is updated to `"XX % - Déduplicateur"` so the percentage is visible from the OS taskbar / Alt-Tab switcher without having to focus the window. Uses Tauri's `getCurrentWindow().setTitle()` (the `document.title` web API does not propagate to the OS titlebar in WebView2 / WebKitGTK). Permission `core:window:allow-set-title` added to `capabilities/default.json`.
+
+### Changed
+
+- **Architecture refactor: cache and ignore list now fully independent**. `LoadedSession.groups` and `LoadedSession.summary` always hold the raw (unfiltered) data; the ignore filter is applied dynamically on every read command (`get_groups_page`, `get_folder_groups_page`, `list_folder_keys`, `select_all_duplicates`, `smart_select`) via the helpers `current_ignored_keys` + `filtered_view`. Side effects:
+  - Removing a group from the ignore list (`clear_ignore_entry`) makes it reappear at the next pagination call, with no session reload required.
+  - The fast path of `load_session` (cache hit on the same `id`) now re-reads `ignored_keys` from disk and returns a filtered summary, instead of returning a stale snapshot taken at first load.
+  - `ignore_group` and `clear_ignore_entry` no longer mutate the in-memory cache; they only update `ignore_list.json`.
+- **Compare and Ignore buttons in group headers enlarged**. Vertical padding on `.group-header` reduced from 10px to 3px and the buttons use `align-self: stretch` so they fill nearly the full row height. This eliminates the thin strip above and below the buttons where a misclick used to collapse the group.
+
+### Documentation
+
+- New AGENTS.md rule "Filtres d'affichage : cache brut, filtre dynamique à chaque lecture" replacing the older "appliquer APRÈS la persistance" guidance.
+- New AGENTS.md pitfall "Titre de la fenêtre OS : `document.title` ne se propage pas sous WebView2 / WebKitGTK" with the `getCurrentWindow().setTitle()` solution and required permission.
+- AGENTS.md "Lecture de fichiers media" section now documents the GIF animation case (served by the media server when extension and magic match).
+- `src/help/content.ts` article "Modes côte à côte et superposition" mentions animated GIFs (FR + EN).
+
+### Quality
+
+- 309 Rust tests (+8 since 1.1.1, including 7 on `is_animated_gif` and the `filtered_view_invariant_cache_brut_apres_retrait_ignore` sentinel that pins the new cache contract).
+- 463 TypeScript tests (+1, on `get_image_url` returning a media server URL for `.gif`).
+
 ## [1.1.1] - 2026-05-13
 
 Patch release focused on the archive scanning flow: a cleaner disk-space check during the scan, a comparator threshold fix, and a robustness fix that prevents the counting phase from blocking on files whose extension lies about their content.

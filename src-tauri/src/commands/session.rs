@@ -71,114 +71,32 @@ fn filtered_view(
     (filtered, sum)
 }
 
-fn export_size(bytes: u64) -> String {
-    if bytes >= 1_073_741_824 {
-        format!("{:.2} Go", bytes as f64 / 1_073_741_824.0)
-    } else if bytes >= 1_048_576 {
-        format!("{:.1} Mo", bytes as f64 / 1_048_576.0)
-    } else if bytes >= 1024 {
-        format!("{:.1} Ko", bytes as f64 / 1024.0)
-    } else {
-        format!("{} o", bytes)
-    }
-}
-
-fn csv_escape(s: &str) -> String {
-    if s.contains(',') || s.contains('"') || s.contains('\n') {
-        format!("\"{}\"", s.replace('"', "\"\""))
-    } else {
-        s.to_string()
-    }
-}
-
-fn html_esc(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
-}
-
-fn generate_csv(groups: &[DuplicateGroup]) -> String {
-    let mut out = String::from("Group ID,File Path,File Name,Size (bytes),Modified (Unix),Status\n");
-    for group in groups {
-        for (i, file) in group.files.iter().enumerate() {
-            let status = if i == 0 { "kept" } else { "duplicate" };
-            out.push_str(&format!(
-                "{},{},{},{},{},{}\n",
-                csv_escape(&group.id),
-                csv_escape(&file.path),
-                csv_escape(&file.name),
-                file.size,
-                file.modified,
-                status
-            ));
+/// Helper de lecture du cache avec filtre ignore applique. Charge la liste
+/// d'ignores courante (recharge le fichier a chaque appel - cf. regle "cache
+/// brut, filtre dynamique" d'AGENTS.md), lock le cache, filtre, et appelle
+/// le closure utilisateur avec la vue filtree. Si aucune session n'est en
+/// cache, retourne `Err("Aucune session chargee")`.
+///
+/// Utilise par toutes les commandes de lecture (`get_groups_page`,
+/// `get_folder_groups_page`, `list_folder_keys`, `select_all_duplicates`,
+/// `smart_select`) pour eviter la duplication du pattern lock + filter.
+fn with_filtered_cache<R>(
+    app: &tauri::AppHandle,
+    f: impl FnOnce(&[DuplicateGroup], &ScanSummary) -> R,
+) -> Result<R, String> {
+    let ignored_keys = current_ignored_keys(app);
+    let cache = app.state::<ScanCache>();
+    let guard = cache.0.lock().unwrap();
+    match *guard {
+        Some(ref loaded) => {
+            let (filtered, filtered_summary) = filtered_view(&loaded.groups, &loaded.summary, &ignored_keys);
+            Ok(f(&filtered, &filtered_summary))
         }
+        None => Err("Aucune session chargee".to_string()),
     }
-    out
 }
 
-fn generate_html(summary: &ScanSummary, groups: &[DuplicateGroup]) -> String {
-    let wasted = export_size(summary.total_wasted_bytes);
-    let mut rows = String::new();
-    for group in groups {
-        let kind = if group.similar {
-            "similar images"
-        } else if group.video_similar {
-            "similar videos"
-        } else {
-            "identical"
-        };
-        let wasted_group = group.size * (group.files.len() as u64).saturating_sub(1);
-        rows.push_str(&format!(
-            "<tr class=\"gr\"><td colspan=\"4\">{} &bull; {} files &bull; {} wasted</td></tr>\n",
-            kind,
-            group.files.len(),
-            html_esc(&export_size(wasted_group))
-        ));
-        for (i, file) in group.files.iter().enumerate() {
-            let cls = if i % 2 == 0 { "" } else { " odd" };
-            let status_cls = if i == 0 { "kept" } else { "dup" };
-            let status = if i == 0 { "kept" } else { "duplicate" };
-            let uri = format!("file://{}", file.path);
-            rows.push_str(&format!(
-                "<tr class=\"fr{}\"><td><a href=\"{}\">{}</a></td><td>{}</td><td><span class=\"ts\" data-ts=\"{}\">{}</span></td><td class=\"{}\">{}</td></tr>\n",
-                cls,
-                html_esc(&uri), html_esc(&file.name),
-                html_esc(&export_size(file.size)),
-                file.modified, file.modified,
-                status_cls, status
-            ));
-        }
-    }
-    format!(
-        r#"<!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8"><title>Deduplicator Report</title><style>
-body{{font-family:system-ui,sans-serif;margin:0;padding:32px;background:#f8fafc;color:#1e293b}}
-h1{{margin:0 0 24px;font-size:22px;color:#1e40af}}
-.stats{{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:20px;display:flex;gap:32px;flex-wrap:wrap;margin-bottom:24px}}
-.sv{{font-size:26px;font-weight:700;color:#1e40af}}.sl{{font-size:12px;color:#64748b}}
-table{{width:100%;border-collapse:collapse;background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;font-size:13px}}
-thead tr{{background:#1e3a5f;color:#fff}}th{{padding:10px 14px;text-align:left}}
-.gr{{background:#dbeafe;font-weight:600}}.gr td{{padding:6px 14px;color:#1e40af;font-size:12px}}
-.fr td{{padding:7px 14px;border-bottom:1px solid #f1f5f9}}.fr.odd{{background:#f8fafc}}
-a{{color:#2563eb;text-decoration:none}}a:hover{{text-decoration:underline}}
-.kept{{color:#16a34a;font-weight:600}}.dup{{color:#dc2626}}
-</style></head><body>
-<h1>Deduplicator Report</h1>
-<div class="stats">
-<div><div class="sv">{}</div><div class="sl">files scanned</div></div>
-<div><div class="sv">{}</div><div class="sl">duplicate groups</div></div>
-<div><div class="sv">{}</div><div class="sl">recoverable</div></div>
-<div><div class="sv" style="font-size:13px;padding-top:8px">{}</div><div class="sl">folder</div></div>
-</div>
-<table><thead><tr><th>File</th><th>Size</th><th>Modified</th><th>Status</th></tr></thead>
-<tbody>{}</tbody></table>
-<script>document.querySelectorAll('.ts').forEach(function(e){{var t=+e.dataset.ts;if(t)e.textContent=new Date(t*1000).toLocaleDateString();}});</script>
-</body></html>"#,
-        summary.scanned_files,
-        summary.total_groups,
-        html_esc(&wasted),
-        html_esc(&summary.folder),
-        rows
-    )
-}
+// generate_csv / generate_html / export_results : extraits dans commands/export.rs
 
 #[tauri::command]
 pub fn list_sessions(app: tauri::AppHandle) -> Vec<ScanSummary> {
@@ -322,46 +240,30 @@ pub fn delete_session(app: tauri::AppHandle, id: String) {
 
 #[tauri::command]
 pub fn get_groups_page(app: tauri::AppHandle, offset: usize, limit: usize) -> Result<GroupsPage, String> {
-    let ignored_keys = current_ignored_keys(&app);
-    let cache = app.state::<ScanCache>();
-    let guard = cache.0.lock().unwrap();
-    match *guard {
-        Some(ref loaded) => {
-            let (filtered, _) = filtered_view(&loaded.groups, &loaded.summary, &ignored_keys);
-            Ok(make_page(&filtered, offset, limit))
-        }
-        None => Err("Aucune session chargee".to_string()),
-    }
+    with_filtered_cache(&app, |filtered, _| make_page(filtered, offset, limit))
 }
 
 #[tauri::command]
 pub fn list_folder_keys(app: tauri::AppHandle) -> Result<Vec<FolderSummary>, String> {
-    let ignored_keys = current_ignored_keys(&app);
-    let cache = app.state::<ScanCache>();
-    let guard = cache.0.lock().unwrap();
-    match *guard {
-        None => Err("Aucune session chargee".to_string()),
-        Some(ref loaded) => {
-            let (filtered, _) = filtered_view(&loaded.groups, &loaded.summary, &ignored_keys);
-            let mut summaries: Vec<FolderSummary> = Vec::new();
-            for group in &filtered {
-                let key = group.folder_key.clone().unwrap_or_default();
-                let wasted = group.size * (group.files.len() as u64 - 1);
-                match summaries.last_mut() {
-                    Some(last) if last.folder_key == key => {
-                        last.group_count += 1;
-                        last.total_wasted_bytes += wasted;
-                    }
-                    _ => summaries.push(FolderSummary {
-                        folder_key: key,
-                        group_count: 1,
-                        total_wasted_bytes: wasted,
-                    }),
+    with_filtered_cache(&app, |filtered, _| {
+        let mut summaries: Vec<FolderSummary> = Vec::new();
+        for group in filtered {
+            let key = group.folder_key.clone().unwrap_or_default();
+            let wasted = group.size * (group.files.len() as u64 - 1);
+            match summaries.last_mut() {
+                Some(last) if last.folder_key == key => {
+                    last.group_count += 1;
+                    last.total_wasted_bytes += wasted;
                 }
+                _ => summaries.push(FolderSummary {
+                    folder_key: key,
+                    group_count: 1,
+                    total_wasted_bytes: wasted,
+                }),
             }
-            Ok(summaries)
         }
-    }
+        summaries
+    })
 }
 
 #[tauri::command]
@@ -371,37 +273,23 @@ pub fn get_folder_groups_page(
     offset: usize,
     limit: usize,
 ) -> Result<GroupsPage, String> {
-    let ignored_keys = current_ignored_keys(&app);
-    let cache = app.state::<ScanCache>();
-    let guard = cache.0.lock().unwrap();
-    match *guard {
-        None => Err("Aucune session chargee".to_string()),
-        Some(ref loaded) => {
-            let (filtered, _) = filtered_view(&loaded.groups, &loaded.summary, &ignored_keys);
-            let folder_groups: Vec<DuplicateGroup> = filtered.into_iter()
-                .filter(|g| g.folder_key.as_deref().unwrap_or("") == folder_key.as_str())
-                .collect();
-            Ok(make_page(&folder_groups, offset, limit))
-        }
-    }
+    with_filtered_cache(&app, |filtered, _| {
+        let folder_groups: Vec<DuplicateGroup> = filtered.iter()
+            .filter(|g| g.folder_key.as_deref().unwrap_or("") == folder_key.as_str())
+            .cloned()
+            .collect();
+        make_page(&folder_groups, offset, limit)
+    })
 }
 
 #[tauri::command]
 pub fn select_all_duplicates(app: tauri::AppHandle) -> Result<Vec<String>, String> {
-    let ignored_keys = current_ignored_keys(&app);
-    let cache = app.state::<ScanCache>();
-    let guard = cache.0.lock().unwrap();
-    match *guard {
-        None => Err("Aucune session chargee".to_string()),
-        Some(ref loaded) => {
-            let (filtered, _) = filtered_view(&loaded.groups, &loaded.summary, &ignored_keys);
-            let paths: Vec<String> = filtered
-                .iter()
-                .flat_map(|group| group.files.iter().skip(1).map(|f| f.path.clone()))
-                .collect();
-            Ok(paths)
-        }
-    }
+    with_filtered_cache(&app, |filtered, _| {
+        filtered
+            .iter()
+            .flat_map(|group| group.files.iter().skip(1).map(|f| f.path.clone()))
+            .collect::<Vec<String>>()
+    })
 }
 
 #[tauri::command]
@@ -410,18 +298,7 @@ pub async fn smart_select(
     mode: String,
     folder_prefix: Option<String>,
 ) -> Result<Vec<String>, String> {
-    let ignored_keys = current_ignored_keys(&app);
-    let cache = app.state::<ScanCache>();
-    let groups = {
-        let guard = cache.0.lock().unwrap();
-        match *guard {
-            None => return Err("Aucune session chargee".to_string()),
-            Some(ref loaded) => {
-                let (filtered, _) = filtered_view(&loaded.groups, &loaded.summary, &ignored_keys);
-                filtered
-            }
-        }
-    };
+    let groups = with_filtered_cache(&app, |filtered, _| filtered.to_vec())?;
     tauri::async_runtime::spawn_blocking(move || {
         Ok(select_files_to_delete(&groups, &mode, folder_prefix.as_deref()))
     })
@@ -429,22 +306,7 @@ pub async fn smart_select(
     .map_err(|e| e.to_string())?
 }
 
-#[tauri::command]
-pub async fn export_results(
-    app: tauri::AppHandle,
-    session_id: String,
-    format: String,
-    output_path: String,
-) -> Result<(), String> {
-    let file = read_session_file(&app, &session_id)
-        .ok_or_else(|| "Session introuvable".to_string())?;
-    let content = match format.as_str() {
-        "csv" => generate_csv(&file.groups),
-        "html" => generate_html(&file.summary, &file.groups),
-        _ => return Err(format!("Format inconnu: {}", format)),
-    };
-    std::fs::write(&output_path, content).map_err(|e| e.to_string())
-}
+// export_results : cf. commands/export.rs
 
 #[cfg(test)]
 mod tests {

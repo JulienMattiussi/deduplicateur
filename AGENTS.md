@@ -682,8 +682,10 @@ let phashes: Vec<_> = items.par_iter().map(|item| {
 }).collect();
 ```
 
-### `count_archive_image_entries` pour les estimations upfront
-Pour qu'une nouvelle phase respecte la règle "total_work fixé upfront", il faut pouvoir estimer son travail avant que le scan démarre. Pour les phases archives, `archive::count_archive_image_entries(path)` lit les headers (rapide pour ZIP/7z) ou utilise une heuristique (1/3 du nb d'entrées pour tar.* afin d'éviter la décompression). Voir `scanner/mod.rs` pour le calcul de `archive_phase1_estimate` + `archive_phase2_estimate` ajoutés à `total_work`.
+### `count_and_estimate_archive_*` pour les estimations upfront
+Pour qu'une nouvelle phase respecte la règle "total_work fixé upfront", il faut pouvoir estimer son travail avant que le scan démarre. Pour les phases archives, `archive::count_and_estimate_archive_image_entries(path) -> (usize, u64)` et son pendant `count_and_estimate_archive_audio_entries` retournent en une seule passe sur les headers : (nombre d'entrées filtrées, estimation de la taille décompressée totale). Pour ZIP/7z, la taille décompressée est exacte (`entry.size()`). Pour tar.*, on itère réellement le flux pour compter les entrées (la signature `ustar` à offset 257 et les headers POSIX sont lus en streaming) et l'estimation de taille décompressée utilise `taille_archive * 4` comme borne supérieure réaliste. Voir `scanner/mod.rs::scan_folder` pour le calcul de `archive_phase1_count` + `archive_phase2_image_count` ajoutés à `total_work`, et le check d'espace disque combiné via `DiskDecisionState`.
+
+L'ancienne `count_archive_image_entries` (sans estimation, et avec une heuristique tar `1/3`) a été supprimée Phase 31 : la double passe count + estimate disque était redondante. Ne jamais réintroduire d'heuristique basée sur la taille du fichier - l'expérience a montré qu'elle sous-estime systématiquement les tars denses (cf. la règle "Comptage des entrées d'archive : exact, pas heuristique" dans la section progression).
 
 ### Scan d'archives 7z : utiliser sevenz-rust2, pas sevenz-rust
 `sevenz-rust` (version 0.6) expose `for_each_entries` avec une signature HRTB

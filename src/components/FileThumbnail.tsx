@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { DuplicateFile } from "../types";
 import { openFile } from "../fileActions";
+import { IMAGE_EXTS, AUDIO_EXTS } from "../utils";
 
 // Marge approximant 2 hauteurs de card (~150px chacune)
 const PRELOAD_MARGIN = "300px";
@@ -164,18 +165,17 @@ export function FileThumbnail({ file, mode }: { file: DuplicateFile; mode: "imag
   return <span ref={placeholderRef} className="file-thumb-spinner" />;
 }
 
-const IMAGE_EXTS = new Set([
-  "jpg", "jpeg", "png", "gif", "bmp", "webp", "tiff", "tif",
-  "ico", "jfif", "heic", "heif", "avif",
-]);
-
-const AUDIO_EXTS = new Set([
-  "mp3", "flac", "ogg", "m4a", "aac", "wav", "wma", "opus", "aiff", "aif", "ape",
+// Pour l'affichage de miniatures d'entrees d'archive, on accepte un sur-ensemble
+// d'IMAGE_EXTS (qui sert au moteur a regrouper les images) : ico, jfif, heic et
+// heif peuvent etre affiches en miniature meme s'ils ne participent pas au pHash.
+const DISPLAYABLE_IMAGE_EXTS = new Set<string>([
+  ...IMAGE_EXTS,
+  "ico", "jfif", "heic", "heif",
 ]);
 
 function isImagePath(p: string): boolean {
   const ext = p.split(".").pop()?.toLowerCase() ?? "";
-  return IMAGE_EXTS.has(ext);
+  return DISPLAYABLE_IMAGE_EXTS.has(ext);
 }
 
 export function isAudioPath(p: string): boolean {

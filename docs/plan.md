@@ -1084,3 +1084,43 @@ progression au moment ou le scan a besoin de la decision (pas avant).
 ### Criteres de validation (manuel)
 - Un fichier `.cbz` qui contient en realite du RAR (renomme manuellement, ou produit par un outil bugue) ne fait plus bloquer la phase `counting_archives`. Il est exclu de la phase archives mais reste presence dans le scan general (dedup exacte sur le fichier).
 - Cout ajoute imperceptible : 1 ouverture + 6 octets lus par archive, fait une seule fois dans le filtre amont (avant la double iteration count_entries_fast + count_and_estimate_*).
+
+---
+
+## Phase 33 : refactor cache ignore-list + GIF animes + titre OS ✅
+
+Lot de petites ameliorations post-1.1.1, chacune avec son propre changement focus mais regroupees dans la meme phase de doc parce qu'elles ne sont pas suffisamment grosses pour justifier des sections separees.
+
+### A. Cache et liste d'ignores independants ✅
+
+- [x] `LoadedSession.groups` + `LoadedSession.summary` stockent desormais la liste BRUTE non filtree.
+- [x] Filtre dynamique a chaque lecture via les helpers `commands/session.rs::current_ignored_keys` (recharge `ignore_list.json` du disque a chaque appel) + `commands/session.rs::filtered_view` (filtre + recalcul de `total_groups` / `total_wasted_bytes`).
+- [x] Commandes affectees : `load_session` (fast-path inclus), `get_groups_page`, `get_folder_groups_page`, `list_folder_keys`, `select_all_duplicates`, `smart_select`.
+- [x] `ignore_group` et `clear_ignore_entry` ne touchent plus du tout au cache.
+- [x] Test sentinelle : `filtered_view_invariant_cache_brut_apres_retrait_ignore` simule "ignorer un groupe puis le de-ignorer sans toucher au cache" et verifie que le groupe revient.
+- [x] Effet : retirer un groupe de la liste d'ignores le fait reapparaitre immediatement a la prochaine pagination, plus besoin de recharger la session.
+
+### B. GIF animes dans le comparateur d'images ✅
+
+- [x] Nouvelle commande Rust `commands/files.rs::get_image_url(path, max_size) -> String` : pour les `.gif` (extension + magic bytes `GIF87a` / `GIF89a`), retourne une URL du media server local (`http://127.0.0.1:port/...`) qui sert le fichier original. Pour les autres formats, retourne une data URL JPEG redimensionnee (pipeline `get_image_thumbnail` existant).
+- [x] MIME `image/gif` ajoute a `video/media_server.rs::video_mime`.
+- [x] Frontend `ImageComparator.tsx` appelle `get_image_url` au lieu de `get_image_thumbnail`. Le `<img>` HTML5 anime nativement les GIF servis avec MIME `image/gif`.
+- [x] 7 tests Rust `is_animated_gif_*` couvrant la matrice extension x magic.
+- [x] 1 test TS `ImageComparator` section F qui verifie qu'un `.gif` retourne bien une URL media server vs data URL JPEG sinon.
+- [x] Article d'aide "Modes cote a cote et superposition" mis a jour FR+EN avec la mention des GIF animes.
+
+### C. Pourcentage de scan dans le titre de fenetre OS ✅
+
+- [x] `App.tsx` useEffect sur `scanExec.scanning` + `scanExec.progress` : appelle `getCurrentWindow().setTitle("XX % - Deduplicateur")` pendant les phases avec barre (total > 0) et `setTitle("Deduplicateur")` quand pas de scan ou en phase preliminaire (total = 0, afficher 0 % serait trompeur).
+- [x] Permission `core:window:allow-set-title` ajoutee a `src-tauri/capabilities/default.json`.
+- [x] Piege documente dans AGENTS.md : `document.title` ne se propage PAS au titre OS sous WebView2 (Windows) ni WebKitGTK (Linux). L'API native Tauri est obligatoire.
+- [x] Try/catch silencieux dans le useEffect pour ne pas casser les tests jsdom ou les builds sans Tauri.
+
+### D. Elargissement des boutons compare / ignore ✅
+
+- [x] `App.css::.group-header` : padding vertical reduit a 3px (vs 10px avant).
+- [x] `.btn-compare` et `.btn-ignore` utilisent `align-self: stretch` + `display: inline-flex; align-items: center` (pour le X centre verticalement) : ils remplissent quasi toute la hauteur de la ligne du groupe.
+- [x] Effet : zone "misclick qui collapse le groupe" reduite a une bande de 3px en haut et en bas (vs ~7px avant) et la ligne du groupe est plus compacte d'environ 14px.
+
+### Tests ✅
+- [x] 309 tests Rust / 463 tests TypeScript / tsc clean.

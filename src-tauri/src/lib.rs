@@ -6,11 +6,18 @@ mod exact_cache;
 mod filters;
 mod ignore_list;
 mod native_player;
+mod notifications;
 mod phash;
 mod profiles;
 mod scanner;
+mod selection;
 mod tool_finder;
 mod video;
+
+// Re-exports utilises par les commandes Tauri (`commands::*`) qui dependent
+// de ces helpers historiquement places dans lib.rs.
+pub use notifications::{format_notification_body, should_notify};
+pub use selection::select_files_to_delete;
 
 use std::path::PathBuf;
 use std::sync::{Arc, Condvar, Mutex};
@@ -18,7 +25,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tauri::Manager;
 
-use scanner::{DuplicateFile, DuplicateGroup};
+use scanner::DuplicateGroup;
 
 // ── Types d'etat Tauri ─────────────────────────────────────────────────────
 
@@ -203,110 +210,8 @@ pub fn purge_deleted_from_session(
     groups.retain(|g| g.files.len() >= 2);
 }
 
-// ── Logique de notification ────────────────────────────────────────────────
-
-pub fn should_notify(duration_ms: u128, threshold_secs: u64) -> bool {
-    duration_ms >= (threshold_secs as u128) * 1000
-}
-
-pub fn format_notification_body(groups: usize, wasted_bytes: u64, lang: &str) -> String {
-    let size_str = format_size_for_notif(wasted_bytes);
-    if lang == "fr" {
-        if groups == 0 {
-            "Aucun doublon trouve.".to_string()
-        } else if groups == 1 {
-            format!("1 groupe trouve - {} recuperables", size_str)
-        } else {
-            format!("{} groupes trouves - {} recuperables", groups, size_str)
-        }
-    } else {
-        if groups == 0 {
-            "No duplicates found.".to_string()
-        } else if groups == 1 {
-            format!("1 group found - {} recoverable", size_str)
-        } else {
-            format!("{} groups found - {} recoverable", groups, size_str)
-        }
-    }
-}
-
-fn format_size_for_notif(bytes: u64) -> String {
-    if bytes >= 1_073_741_824 {
-        format!("{:.1} GB", bytes as f64 / 1_073_741_824.0)
-    } else if bytes >= 1_048_576 {
-        format!("{:.1} MB", bytes as f64 / 1_048_576.0)
-    } else if bytes >= 1024 {
-        format!("{:.0} KB", bytes as f64 / 1024.0)
-    } else {
-        format!("{} B", bytes)
-    }
-}
-
-// ── Selection intelligente ─────────────────────────────────────────────────
-
-fn pixel_count_for_file(file: &DuplicateFile) -> Option<u64> {
-    if let Some(ref vm) = file.video_metadata {
-        return Some(vm.width as u64 * vm.height as u64);
-    }
-    image::image_dimensions(&file.path)
-        .ok()
-        .map(|(w, h)| w as u64 * h as u64)
-}
-
-pub fn select_files_to_delete(
-    groups: &[DuplicateGroup],
-    mode: &str,
-    folder_prefix: Option<&str>,
-) -> Vec<String> {
-    groups
-        .iter()
-        .flat_map(|group| {
-            if group.files.is_empty() {
-                return vec![];
-            }
-            let keep: Option<&DuplicateFile> = match mode {
-                "newest" => group.files.iter().max_by_key(|f| f.modified),
-                "oldest" => group.files.iter().min_by_key(|f| f.modified),
-                "largest_size" => group.files.iter().max_by(|a, b| {
-                    a.size.cmp(&b.size).then(a.modified.cmp(&b.modified))
-                }),
-                "highest_resolution" => {
-                    let any_has_resolution =
-                        group.files.iter().any(|f| pixel_count_for_file(f).is_some());
-                    if !any_has_resolution {
-                        return vec![];
-                    }
-                    group.files.iter().max_by(|a, b| {
-                        let pa = pixel_count_for_file(a).unwrap_or(0);
-                        let pb = pixel_count_for_file(b).unwrap_or(0);
-                        pa.cmp(&pb)
-                            .then(a.size.cmp(&b.size))
-                            .then(a.modified.cmp(&b.modified))
-                    })
-                }
-                "priority_folder" => {
-                    let prefix = folder_prefix.unwrap_or("");
-                    let in_priority: Vec<&DuplicateFile> = group
-                        .files
-                        .iter()
-                        .filter(|f| f.path.starts_with(prefix))
-                        .collect();
-                    if in_priority.is_empty() {
-                        return vec![];
-                    }
-                    in_priority.into_iter().max_by_key(|f| f.modified)
-                }
-                _ => group.files.first(),
-            };
-            group
-                .files
-                .iter()
-                .filter(|f| keep.is_none_or(|k| k.path != f.path))
-                .map(|f| f.path.clone())
-                .collect::<Vec<_>>()
-        })
-        .collect()
-}
+// notifications (should_notify, format_notification_body) : cf. notifications.rs
+// selection intelligente (select_files_to_delete) : cf. selection.rs
 
 // ── Point d'entree ─────────────────────────────────────────────────────────
 
@@ -326,8 +231,9 @@ pub fn run() {
         native_player_set_visible, native_player_set_volume,
     };
     use commands::scan::{cancel_scan, respond_disk_warning, scan_folder};
+    use commands::export::export_results;
     use commands::session::{
-        delete_session, export_results, get_folder_groups_page, get_groups_page,
+        delete_session, get_folder_groups_page, get_groups_page,
         list_folder_keys, list_sessions, load_session, select_all_duplicates, smart_select,
     };
     use commands::settings::{
@@ -559,84 +465,12 @@ mod tests {
         assert_eq!(file.archive_groups.len(), 0);
     }
 
-    // ── Tests notifications ────────────────────────────────────────────────────
-
-    #[test]
-    fn test_should_notify_above_threshold() {
-        assert!(should_notify(15_000, 10), "15s > seuil 10s");
-        assert!(should_notify(10_000, 10), "exactement le seuil");
-        assert!(should_notify(60_000, 10), "60s > seuil 10s");
-    }
-
-    #[test]
-    fn test_should_notify_below_threshold() {
-        assert!(!should_notify(9_999, 10), "9.999s < seuil 10s");
-        assert!(!should_notify(0, 10), "0ms < seuil 10s");
-        assert!(!should_notify(5_000, 10), "5s < seuil 10s");
-    }
-
-    #[test]
-    fn test_should_notify_zero_threshold() {
-        assert!(should_notify(0, 0), "seuil 0 = toujours notifier");
-        assert!(should_notify(1, 0), "seuil 0 = toujours notifier");
-    }
-
-    #[test]
-    fn test_format_notification_body_fr_no_groups() {
-        let body = format_notification_body(0, 0, "fr");
-        assert_eq!(body, "Aucun doublon trouve.");
-    }
-
-    #[test]
-    fn test_format_notification_body_fr_one_group() {
-        let body = format_notification_body(1, 2_097_152, "fr");
-        assert!(body.contains("1 groupe"), "corps FR singulier");
-        assert!(body.contains("2.0 MB"), "taille en MB");
-    }
-
-    #[test]
-    fn test_format_notification_body_fr_many_groups() {
-        let body = format_notification_body(42, 1_073_741_824, "fr");
-        assert!(body.contains("42 groupes"), "corps FR pluriel");
-        assert!(body.contains("1.0 GB"), "taille en GB");
-    }
-
-    #[test]
-    fn test_format_notification_body_en_no_groups() {
-        let body = format_notification_body(0, 0, "en");
-        assert_eq!(body, "No duplicates found.");
-    }
-
-    #[test]
-    fn test_format_notification_body_en_one_group() {
-        let body = format_notification_body(1, 512 * 1024, "en");
-        assert!(body.contains("1 group found"), "corps EN singulier");
-        assert!(body.contains("512 KB"), "taille en KB");
-    }
-
-    #[test]
-    fn test_format_notification_body_en_many_groups() {
-        let body = format_notification_body(7, 1024, "en");
-        assert!(body.contains("7 groups found"), "corps EN pluriel");
-        assert!(body.contains("1 KB"), "taille 1 KB");
-    }
-
-    #[test]
-    fn test_format_notification_body_unknown_lang_defaults_to_en() {
-        let body = format_notification_body(3, 3_145_728, "de");
-        assert!(body.contains("groups found"), "langue inconnue -> EN");
-    }
-
-    #[test]
-    fn test_format_size_bytes() {
-        let body = format_notification_body(1, 500, "en");
-        assert!(body.contains("500 B"), "octets bruts");
-    }
+    // ── Tests purge_deleted_from_session / recalc_wasted_bytes ───────────────
 
     fn make_file(path: &str, size: u64, modified: u64) -> DuplicateFile {
         DuplicateFile {
             path: path.to_string(),
-            name: path.split('/').last().unwrap_or(path).to_string(),
+            name: path.split('/').next_back().unwrap_or(path).to_string(),
             size,
             modified,
             video_metadata: None,
@@ -644,174 +478,6 @@ mod tests {
             source: None,
         }
     }
-
-    fn make_group(files: Vec<DuplicateFile>) -> DuplicateGroup {
-        DuplicateGroup {
-            id: "test".to_string(),
-            hash: "abc".to_string(),
-            size: files.first().map_or(0, |f| f.size),
-            files,
-            folder_key: None,
-            similar: false,
-            video_similar: false,
-            audio_similar: false,
-        }
-    }
-
-    #[test]
-    fn test_largest_size_keeps_biggest() {
-        let groups = vec![make_group(vec![
-            make_file("/a/small.jpg", 100, 100),
-            make_file("/a/large.jpg", 300, 50),
-            make_file("/a/medium.jpg", 200, 200),
-        ])];
-        let result = select_files_to_delete(&groups, "largest_size", None);
-        assert_eq!(result.len(), 2);
-        assert!(!result.contains(&"/a/large.jpg".to_string()));
-        assert!(result.contains(&"/a/small.jpg".to_string()));
-        assert!(result.contains(&"/a/medium.jpg".to_string()));
-    }
-
-    #[test]
-    fn test_largest_size_tiebreak_newest() {
-        let groups = vec![make_group(vec![
-            make_file("/a/old.jpg", 100, 50),
-            make_file("/a/new.jpg", 100, 200),
-        ])];
-        let result = select_files_to_delete(&groups, "largest_size", None);
-        assert_eq!(result.len(), 1);
-        assert!(result.contains(&"/a/old.jpg".to_string()));
-    }
-
-    #[test]
-    fn test_priority_folder_keeps_matching() {
-        let groups = vec![make_group(vec![
-            make_file("/other/file.jpg", 100, 50),
-            make_file("/priority/file.jpg", 100, 50),
-        ])];
-        let result = select_files_to_delete(&groups, "priority_folder", Some("/priority"));
-        assert_eq!(result.len(), 1);
-        assert!(result.contains(&"/other/file.jpg".to_string()));
-    }
-
-    #[test]
-    fn test_priority_folder_no_match_skips_group() {
-        let groups = vec![make_group(vec![
-            make_file("/a/old.jpg", 100, 50),
-            make_file("/a/new.jpg", 100, 200),
-        ])];
-        let result =
-            select_files_to_delete(&groups, "priority_folder", Some("/not-matching"));
-        assert!(result.is_empty(), "aucun fichier coche si aucun ne correspond au prefixe");
-    }
-
-    #[test]
-    fn test_priority_folder_multiple_matches_keeps_newest() {
-        let groups = vec![make_group(vec![
-            make_file("/priority/old.jpg", 100, 50),
-            make_file("/priority/new.jpg", 100, 200),
-            make_file("/other/file.jpg", 100, 300),
-        ])];
-        let result = select_files_to_delete(&groups, "priority_folder", Some("/priority"));
-        assert_eq!(result.len(), 2);
-        assert!(!result.contains(&"/priority/new.jpg".to_string()));
-        assert!(result.contains(&"/priority/old.jpg".to_string()));
-        assert!(result.contains(&"/other/file.jpg".to_string()));
-    }
-
-    #[test]
-    fn test_highest_resolution_video_keeps_hd() {
-        let mut hd = make_file("/a/hd.mp4", 1000, 100);
-        hd.video_metadata = Some(VideoMetadata {
-            duration_secs: 60.0,
-            width: 1920,
-            height: 1080,
-            codec: "h264".to_string(),
-            audio_codec: None,
-            audio_channels: None,
-            audio_tracks: Vec::new(),
-        });
-        let mut sd = make_file("/a/sd.mp4", 500, 200);
-        sd.video_metadata = Some(VideoMetadata {
-            duration_secs: 60.0,
-            width: 1280,
-            height: 720,
-            codec: "h264".to_string(),
-            audio_codec: None,
-            audio_channels: None,
-            audio_tracks: Vec::new(),
-        });
-        let groups = vec![make_group(vec![sd, hd])];
-        let result = select_files_to_delete(&groups, "highest_resolution", None);
-        assert_eq!(result.len(), 1);
-        assert!(result.contains(&"/a/sd.mp4".to_string()));
-    }
-
-    #[test]
-    fn test_highest_resolution_tiebreak_largest_then_newest() {
-        let mut a = make_file("/a/a.mp4", 100, 100);
-        a.video_metadata = Some(VideoMetadata {
-            duration_secs: 60.0,
-            width: 1920,
-            height: 1080,
-            codec: "h264".to_string(),
-            audio_codec: None,
-            audio_channels: None,
-            audio_tracks: Vec::new(),
-        });
-        let mut b = make_file("/a/b.mp4", 200, 50);
-        b.video_metadata = Some(VideoMetadata {
-            duration_secs: 60.0,
-            width: 1920,
-            height: 1080,
-            codec: "h264".to_string(),
-            audio_codec: None,
-            audio_channels: None,
-            audio_tracks: Vec::new(),
-        });
-        let groups = vec![make_group(vec![a, b])];
-        let result = select_files_to_delete(&groups, "highest_resolution", None);
-        assert_eq!(result.len(), 1);
-        assert!(result.contains(&"/a/a.mp4".to_string()));
-    }
-
-    #[test]
-    fn test_select_empty_group_returns_empty() {
-        let groups = vec![make_group(vec![])];
-        let result = select_files_to_delete(&groups, "largest_size", None);
-        assert!(result.is_empty());
-    }
-
-    #[test]
-    fn test_highest_resolution_no_metadata_skips_group() {
-        let groups = vec![make_group(vec![
-            make_file("/a/doc1.pdf", 100, 100),
-            make_file("/a/doc2.pdf", 200, 200),
-        ])];
-        let result = select_files_to_delete(&groups, "highest_resolution", None);
-        assert!(result.is_empty(), "aucun fichier coche si aucune resolution detectable");
-    }
-
-    #[test]
-    fn test_highest_resolution_mixed_keeps_image_over_no_metadata() {
-        let mut img = make_file("/a/photo.jpg", 50, 100);
-        img.video_metadata = Some(VideoMetadata {
-            duration_secs: 0.0,
-            width: 1920,
-            height: 1080,
-            codec: "jpeg".to_string(),
-            audio_codec: None,
-            audio_channels: None,
-            audio_tracks: Vec::new(),
-        });
-        let other = make_file("/a/doc.pdf", 200, 200);
-        let groups = vec![make_group(vec![other, img])];
-        let result = select_files_to_delete(&groups, "highest_resolution", None);
-        assert_eq!(result.len(), 1);
-        assert!(result.contains(&"/a/doc.pdf".to_string()));
-    }
-
-    // ── Tests purge_deleted_from_session / recalc_wasted_bytes ───────────────
 
     fn make_group_with_size(id: &str, size: u64, files: Vec<DuplicateFile>) -> DuplicateGroup {
         DuplicateGroup {
