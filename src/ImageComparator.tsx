@@ -95,7 +95,9 @@ export function ImageComparator({
     setLeftMeta(null);
     setSliderPos(50);
     const lf = nav.group.files[nav.effectiveLeftIdx];
-    invoke<string>("get_image_thumbnail", { path: lf.path, maxSize: 800 })
+    // get_image_url anime les GIF (renvoie l'URL du media server) et retombe sur
+    // une data URL JPEG redimensionnee pour les autres formats.
+    invoke<string>("get_image_url", { path: lf.path, maxSize: 800 })
       .then(setLeftThumb).catch(() => setLeftThumb("error"));
     invoke<ImageMeta>("get_image_meta", { path: lf.path })
       .then(setLeftMeta).catch(() => {});
@@ -106,7 +108,7 @@ export function ImageComparator({
     setRightThumb(null);
     setRightMeta(null);
     const rf = nav.group.files[nav.effectiveRightIdx];
-    invoke<string>("get_image_thumbnail", { path: rf.path, maxSize: 800 })
+    invoke<string>("get_image_url", { path: rf.path, maxSize: 800 })
       .then(setRightThumb).catch(() => setRightThumb("error"));
     invoke<ImageMeta>("get_image_meta", { path: rf.path })
       .then(setRightMeta).catch(() => {});

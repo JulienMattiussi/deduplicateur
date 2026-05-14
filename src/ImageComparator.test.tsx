@@ -181,13 +181,34 @@ describe("E - mode overlay", () => {
   });
 });
 
-// ---- F : get_image_thumbnail est appelé ----
-describe("F - chargement des thumbnails", () => {
-  it("appelle get_image_thumbnail pour les deux fichiers", async () => {
+// ---- F : get_image_url est appelé (anime les GIF, fallback data URL JPEG) ----
+describe("F - chargement des images", () => {
+  it("appelle get_image_url pour les deux fichiers", async () => {
     render2();
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith("get_image_thumbnail", { path: "/a/img1.jpg", maxSize: 800 });
-      expect(mockInvoke).toHaveBeenCalledWith("get_image_thumbnail", { path: "/b/img2.jpg", maxSize: 800 });
+      expect(mockInvoke).toHaveBeenCalledWith("get_image_url", { path: "/a/img1.jpg", maxSize: 800 });
+      expect(mockInvoke).toHaveBeenCalledWith("get_image_url", { path: "/b/img2.jpg", maxSize: 800 });
+    });
+  });
+
+  it("affiche l'URL retournee pour un .gif (URL media server, anime nativement)", async () => {
+    mockInvoke.mockImplementation((cmd, args: any) => {
+      if (cmd === "get_image_url" && args?.path?.endsWith(".gif")) {
+        return Promise.resolve(`http://127.0.0.1:1234/${encodeURIComponent(args.path)}`);
+      }
+      if (cmd === "get_image_url") {
+        return Promise.resolve("data:image/jpeg;base64,abc");
+      }
+      return Promise.resolve(null);
+    });
+    const gifGroup = {
+      id: "gif", hash: "ghi", size: 1024, similar: true, video_similar: false,
+      files: [makeFile("/a/anim.gif", "anim.gif"), makeFile("/b/anim2.gif", "anim2.gif")],
+    };
+    render2({ groups: [gifGroup] });
+    await waitFor(() => {
+      const imgs = screen.getAllByRole("img");
+      expect(imgs.some(i => i.getAttribute("src")?.startsWith("http://127.0.0.1:"))).toBe(true);
     });
   });
 });

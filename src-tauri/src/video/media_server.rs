@@ -19,6 +19,9 @@ fn video_mime(path: &std::path::Path) -> &'static str {
         Some("flac") => "audio/flac",
         Some("m4a") | Some("aac") => "audio/mp4",
         Some("aiff") | Some("aif") => "audio/aiff",
+        // Image animee : GIF (le `<img>` HTML5 anime nativement, contrairement au
+        // pipeline data URL JPEG de get_image_thumbnail qui aplatit en une frame).
+        Some("gif") => "image/gif",
         _ => "video/mp4",
     }
 }

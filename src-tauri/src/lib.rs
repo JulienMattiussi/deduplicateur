@@ -315,7 +315,7 @@ pub fn run() {
     use commands::archive::{get_archive_comparison, get_archive_groups};
     use commands::files::{
         check_path_is_dir, delete_files, get_archive_entry_thumbnail, get_archive_entry_url,
-        get_image_meta, get_image_thumbnail, get_video_metadata, get_video_thumbnail,
+        get_image_meta, get_image_thumbnail, get_image_url, get_video_metadata, get_video_thumbnail,
         open_archive_entry, open_file, prepare_video_for_playback, reveal_in_folder,
     };
     use commands::ignore::{clear_all_ignored, clear_ignore_entry, get_ignore_list, ignore_group};
@@ -390,6 +390,7 @@ pub fn run() {
             reveal_in_folder,
             open_file,
             get_image_thumbnail,
+            get_image_url,
             get_video_thumbnail,
             get_archive_entry_thumbnail,
             open_archive_entry,

@@ -257,15 +257,23 @@ Quand un bug ne reproduit pas ou que la cause n'est pas évidente après lecture
 
 Exemple vécu : recompute des compteurs d'archives qui ne marchait pas. 3 itérations de spéculations infructueuses. Un seul jeu de logs (état du cache + seuil + compteurs avant/après) a révélé `sim_threshold=0` dans la session - root cause invisible depuis le code seul. À adopter dès qu'un fix "logique" ne suffit pas.
 
-## Règle impérative - Filtres d'affichage : appliquer APRÈS la persistance, jamais avant
+## Règle impérative - Filtres d'affichage : cache brut, filtre dynamique à chaque lecture
 
-Quand un filtre n'a de sens que pour la vue (liste d'ignorés, filtre texte, etc.) et doit pouvoir être annulé plus tard, l'appliquer **après** `save_session` / `save_*` et **uniquement** sur la copie retournée au frontend. La persistance disque garde l'état complet ; le filtre est recalculé à chaque load.
+Quand un filtre n'a de sens que pour la vue (liste d'ignorés, filtre texte, etc.) et doit pouvoir être annulé plus tard, **le cache mémoire (`LoadedSession`) doit stocker la liste BRUTE non filtrée**. Le filtre est appliqué à chaque commande de lecture (`get_groups_page`, `get_folder_groups_page`, `list_folder_keys`, `select_all_duplicates`, `smart_select`...) en lisant la source du filtre (`ignore_list.json`) au moment de l'appel.
 
-Sinon le filtre devient durable et irréversible : par exemple, retirer un groupe de la liste d'ignorés ne pourrait plus le faire réapparaître dans une session déjà sauvegardée (les données ont été retirées du fichier au moment du `save`).
+Pattern (cf. `commands/session.rs::current_ignored_keys` + `commands/session.rs::filtered_view`) :
+1. `load_session` charge la session du disque, persiste la version cleanée (cleanup de fichiers absents, recompute compteurs), et stocke la liste **brute** dans `LoadedSession`. Le `summary` retourné au frontend, lui, est passé par `filtered_view` pour refléter la liste d'ignorés courante.
+2. Toutes les commandes de lecture commencent par `let ignored_keys = current_ignored_keys(&app);` puis filtrent `loaded.groups` à la volée avant pagination ou agrégation.
+3. `ignore_group` / `clear_ignore_entry` ne touchent **JAMAIS** au cache - ils écrivent juste dans `ignore_list.json`. La prochaine lecture verra automatiquement le changement.
 
-Exemple vécu : `load_session` retournait initialement les groupes ignorés malgré la liste d'ignorés. Le fix applique `apply_ignore_filter` **après** le bloc `if dirty { save_session(...) }`, pas avant. Le `LoadedSession` cache la vue filtrée mais le fichier sur disque reste intact. Tests `commands::session::tests::apply_ignore_filter_*` figent ce contrat.
+Conséquences :
+- Retirer un groupe de la liste d'ignorés le fait réapparaître **immédiatement** à la prochaine pagination, sans rechargement ni invalidation du cache.
+- Le fast-path de `load_session` (cache hit sur le même `id`) reste sûr : il relit `ignored_keys` à chaque appel et retourne un summary filtré, jamais le summary cached tel quel.
+- Le coût d'un `IgnoreList::load(&data_dir)` à chaque commande est sub-milliseconde (fichier JSON petit, lectures rares - une par "load more"). Pas optimiser tant que ça ne devient pas un point chaud.
 
-Pattern : on persiste la **vérité terrain** (groupes existants sur disque, recompute des compteurs liés à des données réellement modifiées) ; on filtre **par-dessus** pour l'affichage. Si la même règle vaut pour un futur filtre (texte, source, taille, etc.) qui doit être ajustable à chaud sans rescan, suivre la même séparation.
+Tests `commands::session::tests::filtered_view_*` figent ce contrat. En particulier `filtered_view_invariant_cache_brut_apres_retrait_ignore` simule "ignorer un groupe puis le dé-ignorer sans toucher au cache" et vérifie que le groupe revient.
+
+**Anti-pattern à éviter** : pré-filtrer le cache au `load_session` puis `loaded.summary.clone()` au fast-path. Symptômes : groupes ignorés qui réapparaissent au prochain load (cache stale), ou groupes dé-ignorés qui ne reviennent que par rechargement complet. La cause profonde : le cache devient une "photo gelée" du filtre au moment du load, désynchronisée du fichier `ignore_list.json` qui peut évoluer entre deux appels.
 
 ## Pièges Tauri 2 rencontrés
 
@@ -569,6 +577,14 @@ pub fn start() -> u16 {
 ```
 Et dans le handler : retourner `206 Partial Content` avec `Content-Range` si la requete contient
 un header `Range`, sinon `200 OK` avec le fichier complet + `Accept-Ranges: bytes`.
+
+Le media server sert aussi les **GIF animes** (MIME `image/gif`) via `get_image_url` pour le
+comparateur d'images : `get_image_thumbnail` (crate `image` -> data URL JPEG) aplatit toute
+animation en une seule frame ; pour preserver l'animation, on sert le fichier d'origine au
+`<img>` HTML5 qui anime nativement. La detection combine extension `.gif` ET magic bytes
+(`GIF87a` / `GIF89a`) pour ne pas servir un fichier menteur avec MIME image/gif (l'image
+casserait dans le navigateur). Les autres formats (PNG, JPEG, WEBP...) restent en data URL
+JPEG redimensionnee (800 px) pour limiter la memoire.
 
 ### Composants React definis dans un autre composant : remontage a chaque rendu
 Definir `MetaBlock` ou `VideoPanel` comme fonctions a l'interieur de `VideoComparator` cree une

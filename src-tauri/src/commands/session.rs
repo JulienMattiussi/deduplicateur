@@ -32,6 +32,45 @@ pub fn make_page(groups: &[DuplicateGroup], offset: usize, limit: usize) -> Grou
     }
 }
 
+/// Charge la liste d'ignores courante depuis le disque (a chaque appel) pour qu'une
+/// modification (ignore_group / clear_ignore_entry) soit immediatement visible par
+/// les commandes de lecture. Le cache `LoadedSession` reste agnostique des ignores :
+/// il stocke la liste BRUTE des groupes, et chaque lecture re-applique le filtre.
+/// Ainsi de-ignorer un groupe le fait reapparaitre naturellement au prochain appel
+/// de get_groups_page / get_folder_groups_page / list_folder_keys / etc.
+fn current_ignored_keys(app: &tauri::AppHandle) -> std::collections::HashSet<String> {
+    crate::app_data_dir(app)
+        .map(|d| crate::ignore_list::IgnoreList::load(&d).keys_set())
+        .unwrap_or_default()
+}
+
+/// Filtre une vue lue depuis le cache contre la liste d'ignores et recalcule
+/// total_groups + total_wasted_bytes du summary si au moins un groupe est retire.
+/// Variante de `apply_ignore_filter` qui clone seulement les groupes filtres
+/// (au lieu de prendre ownership du Vec), adapte aux lectures depuis le cache.
+fn filtered_view(
+    groups: &[DuplicateGroup],
+    summary: &ScanSummary,
+    ignored_keys: &std::collections::HashSet<String>,
+) -> (Vec<DuplicateGroup>, ScanSummary) {
+    if ignored_keys.is_empty() {
+        return (groups.to_vec(), summary.clone());
+    }
+    let filtered: Vec<DuplicateGroup> = groups.iter()
+        .filter(|g| {
+            let paths: Vec<String> = g.files.iter().map(|f| f.path.clone()).collect();
+            !ignored_keys.contains(&crate::ignore_list::group_ignore_key(&paths))
+        })
+        .cloned()
+        .collect();
+    let mut sum = summary.clone();
+    if filtered.len() != groups.len() {
+        sum.total_groups = filtered.len();
+        sum.total_wasted_bytes = crate::recalc_wasted_bytes(&filtered);
+    }
+    (filtered, sum)
+}
+
 fn export_size(bytes: u64) -> String {
     if bytes >= 1_073_741_824 {
         format!("{:.2} Go", bytes as f64 / 1_073_741_824.0)
@@ -164,12 +203,19 @@ pub fn list_sessions(app: tauri::AppHandle) -> Vec<ScanSummary> {
 
 #[tauri::command]
 pub async fn load_session(app: tauri::AppHandle, id: String) -> Result<ScanSummary, String> {
+    // Fast path : la session est deja en cache. On lit la liste d'ignores
+    // courante (fichier sur disque, lu a chaque appel) et on retourne un
+    // summary filtre. Le cache lui-meme contient la liste brute, jamais
+    // pre-filtree : ainsi un clear_ignore_entry intervenu entre temps fait
+    // reapparaitre le groupe au prochain appel sans avoir a recharger.
     {
         let cache = app.state::<ScanCache>();
         let guard = cache.0.lock().unwrap();
         if let Some(ref loaded) = *guard {
             if loaded.summary.id == id {
-                return Ok(loaded.summary.clone());
+                let ignored_keys = current_ignored_keys(&app);
+                let (_filtered_groups, filtered_summary) = filtered_view(&loaded.groups, &loaded.summary, &ignored_keys);
+                return Ok(filtered_summary);
             }
         }
     }
@@ -177,13 +223,7 @@ pub async fn load_session(app: tauri::AppHandle, id: String) -> Result<ScanSumma
     let file = read_session_file(&app, &id)
         .ok_or_else(|| "Session introuvable".to_string())?;
 
-    // Liste d'ignores : appliquee a la vue affichee uniquement, JAMAIS persistee dans
-    // le fichier de session. Permet a clear_ignore_entry de restaurer le groupe au
-    // prochain reload (sinon "retirer de la liste d'ignores" deviendrait sans effet
-    // pour les sessions deja chargees).
-    let ignored_keys = crate::app_data_dir(&app)
-        .map(|d| crate::ignore_list::IgnoreList::load(&d).keys_set())
-        .unwrap_or_default();
+    let ignored_keys = current_ignored_keys(&app);
 
     // Le re-hashing potentiel des archives (ensure_cache_for_groups) peut prendre plusieurs
     // secondes ; on libere le thread Tauri pendant pour ne pas geler l'UI.
@@ -248,43 +288,20 @@ pub async fn load_session(app: tauri::AppHandle, id: String) -> Result<ScanSumma
         save_session(&app, &summary, &groups, &archive_groups, &archive_entries_cache);
     }
 
-    // Filtre d'affichage applique APRES save : la session sur disque garde tous les
-    // groupes originaux, le frontend ne voit que ceux absents de la liste d'ignores.
-    let (displayed_groups, displayed_summary) = apply_ignore_filter(groups, summary, &ignored_keys);
+    // Le cache stocke la liste BRUTE (non filtree). Le filtre d'ignores est applique
+    // a chaque lecture (cf. filtered_view + current_ignored_keys). Garantit qu'une
+    // modification de la liste d'ignores (ajout / suppression) est immediatement
+    // visible par toutes les commandes de pagination, sans recharger la session.
+    let (_displayed_groups, displayed_summary) = filtered_view(&groups, &summary, &ignored_keys);
 
-    let result = displayed_summary.clone();
+    let result = displayed_summary;
     *app.state::<ScanCache>().0.lock().unwrap() = Some(LoadedSession {
-        summary: displayed_summary,
-        groups: displayed_groups,
+        summary,
+        groups,
         archive_groups,
         archive_entries_cache,
     });
     Ok(result)
-}
-
-/// Filtre les groupes contre la liste d'ignores et recalcule total_groups +
-/// total_wasted_bytes du summary si au moins un groupe a ete retire. Pure : sans I/O.
-fn apply_ignore_filter(
-    groups: Vec<DuplicateGroup>,
-    mut summary: ScanSummary,
-    ignored_keys: &std::collections::HashSet<String>,
-) -> (Vec<DuplicateGroup>, ScanSummary) {
-    if ignored_keys.is_empty() {
-        return (groups, summary);
-    }
-    let original_count = groups.len();
-    let displayed: Vec<DuplicateGroup> = groups
-        .into_iter()
-        .filter(|g| {
-            let paths: Vec<String> = g.files.iter().map(|f| f.path.clone()).collect();
-            !ignored_keys.contains(&crate::ignore_list::group_ignore_key(&paths))
-        })
-        .collect();
-    if displayed.len() != original_count {
-        summary.total_groups = displayed.len();
-        summary.total_wasted_bytes = crate::recalc_wasted_bytes(&displayed);
-    }
-    (displayed, summary)
 }
 
 #[tauri::command]
@@ -305,23 +322,29 @@ pub fn delete_session(app: tauri::AppHandle, id: String) {
 
 #[tauri::command]
 pub fn get_groups_page(app: tauri::AppHandle, offset: usize, limit: usize) -> Result<GroupsPage, String> {
+    let ignored_keys = current_ignored_keys(&app);
     let cache = app.state::<ScanCache>();
     let guard = cache.0.lock().unwrap();
     match *guard {
-        Some(ref loaded) => Ok(make_page(&loaded.groups, offset, limit)),
+        Some(ref loaded) => {
+            let (filtered, _) = filtered_view(&loaded.groups, &loaded.summary, &ignored_keys);
+            Ok(make_page(&filtered, offset, limit))
+        }
         None => Err("Aucune session chargee".to_string()),
     }
 }
 
 #[tauri::command]
 pub fn list_folder_keys(app: tauri::AppHandle) -> Result<Vec<FolderSummary>, String> {
+    let ignored_keys = current_ignored_keys(&app);
     let cache = app.state::<ScanCache>();
     let guard = cache.0.lock().unwrap();
     match *guard {
         None => Err("Aucune session chargee".to_string()),
         Some(ref loaded) => {
+            let (filtered, _) = filtered_view(&loaded.groups, &loaded.summary, &ignored_keys);
             let mut summaries: Vec<FolderSummary> = Vec::new();
-            for group in &loaded.groups {
+            for group in &filtered {
                 let key = group.folder_key.clone().unwrap_or_default();
                 let wasted = group.size * (group.files.len() as u64 - 1);
                 match summaries.last_mut() {
@@ -348,14 +371,15 @@ pub fn get_folder_groups_page(
     offset: usize,
     limit: usize,
 ) -> Result<GroupsPage, String> {
+    let ignored_keys = current_ignored_keys(&app);
     let cache = app.state::<ScanCache>();
     let guard = cache.0.lock().unwrap();
     match *guard {
         None => Err("Aucune session chargee".to_string()),
         Some(ref loaded) => {
-            let folder_groups: Vec<DuplicateGroup> = loaded.groups.iter()
+            let (filtered, _) = filtered_view(&loaded.groups, &loaded.summary, &ignored_keys);
+            let folder_groups: Vec<DuplicateGroup> = filtered.into_iter()
                 .filter(|g| g.folder_key.as_deref().unwrap_or("") == folder_key.as_str())
-                .cloned()
                 .collect();
             Ok(make_page(&folder_groups, offset, limit))
         }
@@ -364,13 +388,14 @@ pub fn get_folder_groups_page(
 
 #[tauri::command]
 pub fn select_all_duplicates(app: tauri::AppHandle) -> Result<Vec<String>, String> {
+    let ignored_keys = current_ignored_keys(&app);
     let cache = app.state::<ScanCache>();
     let guard = cache.0.lock().unwrap();
     match *guard {
         None => Err("Aucune session chargee".to_string()),
         Some(ref loaded) => {
-            let paths: Vec<String> = loaded
-                .groups
+            let (filtered, _) = filtered_view(&loaded.groups, &loaded.summary, &ignored_keys);
+            let paths: Vec<String> = filtered
                 .iter()
                 .flat_map(|group| group.files.iter().skip(1).map(|f| f.path.clone()))
                 .collect();
@@ -385,12 +410,16 @@ pub async fn smart_select(
     mode: String,
     folder_prefix: Option<String>,
 ) -> Result<Vec<String>, String> {
+    let ignored_keys = current_ignored_keys(&app);
     let cache = app.state::<ScanCache>();
     let groups = {
         let guard = cache.0.lock().unwrap();
         match *guard {
             None => return Err("Aucune session chargee".to_string()),
-            Some(ref loaded) => loaded.groups.clone(),
+            Some(ref loaded) => {
+                let (filtered, _) = filtered_view(&loaded.groups, &loaded.summary, &ignored_keys);
+                filtered
+            }
         }
     };
     tauri::async_runtime::spawn_blocking(move || {
@@ -476,7 +505,7 @@ mod tests {
     }
 
     #[test]
-    fn apply_ignore_filter_retire_les_groupes_dans_la_liste() {
+    fn filtered_view_retire_les_groupes_dans_la_liste() {
         let g1 = make_group("g1", 1000, &["/a/1.txt", "/a/1bis.txt"]);
         let g2 = make_group("g2", 2000, &["/b/2.txt", "/b/2bis.txt"]);
         let g3 = make_group("g3", 3000, &["/c/3.txt", "/c/3bis.txt"]);
@@ -486,7 +515,7 @@ mod tests {
         ignored.insert(crate::ignore_list::group_ignore_key(&g2_paths));
 
         let summary = make_summary(3, 1000 + 2000 + 3000);
-        let (displayed, displayed_summary) = apply_ignore_filter(vec![g1, g2, g3], summary, &ignored);
+        let (displayed, displayed_summary) = filtered_view(&[g1, g2, g3], &summary, &ignored);
 
         assert_eq!(displayed.len(), 2);
         assert!(displayed.iter().all(|g| g.id != "g2"));
@@ -495,7 +524,7 @@ mod tests {
     }
 
     #[test]
-    fn apply_ignore_filter_passthrough_si_aucun_match() {
+    fn filtered_view_passthrough_si_aucun_match() {
         let g1 = make_group("g1", 1000, &["/a/1.txt", "/a/1bis.txt"]);
         let g2 = make_group("g2", 2000, &["/b/2.txt", "/b/2bis.txt"]);
         let summary = make_summary(2, 3000);
@@ -504,7 +533,7 @@ mod tests {
         ignored.insert("clef-qui-ne-matche-aucun-groupe".to_string());
 
         let (displayed, displayed_summary) =
-            apply_ignore_filter(vec![g1, g2], summary, &ignored);
+            filtered_view(&[g1, g2], &summary, &ignored);
 
         assert_eq!(displayed.len(), 2);
         assert_eq!(displayed_summary.total_groups, 2);
@@ -512,15 +541,44 @@ mod tests {
     }
 
     #[test]
-    fn apply_ignore_filter_no_op_si_liste_vide() {
+    fn filtered_view_no_op_si_liste_vide() {
         let g1 = make_group("g1", 1000, &["/a/1.txt", "/a/1bis.txt"]);
         let summary = make_summary(1, 1000);
         let ignored = HashSet::new();
 
-        let (displayed, displayed_summary) = apply_ignore_filter(vec![g1], summary, &ignored);
+        let (displayed, displayed_summary) = filtered_view(&[g1], &summary, &ignored);
 
         assert_eq!(displayed.len(), 1);
         assert_eq!(displayed_summary.total_groups, 1);
         assert_eq!(displayed_summary.total_wasted_bytes, 1000);
+    }
+
+    #[test]
+    fn filtered_view_invariant_cache_brut_apres_retrait_ignore() {
+        // Simule le scenario clef : un cache "brut" (3 groupes) est filtre une fois
+        // avec g2 ignore, puis le filtre est retire et la meme vue brute redonne 3
+        // groupes. Le cache n'a pas ete touche entre les deux appels - c'est le
+        // contrat 'cache et liste d'ignores independants'.
+        let g1 = make_group("g1", 1000, &["/a/1.txt", "/a/1bis.txt"]);
+        let g2 = make_group("g2", 2000, &["/b/2.txt", "/b/2bis.txt"]);
+        let g3 = make_group("g3", 3000, &["/c/3.txt", "/c/3bis.txt"]);
+        let cache_groups = vec![g1, g2.clone(), g3];
+        let cache_summary = make_summary(3, 6000);
+
+        // Etape 1 : g2 ignore -> vue filtree a 2 groupes
+        let g2_paths: Vec<String> = g2.files.iter().map(|f| f.path.clone()).collect();
+        let mut ignored = HashSet::new();
+        ignored.insert(crate::ignore_list::group_ignore_key(&g2_paths));
+        let (view1, sum1) = filtered_view(&cache_groups, &cache_summary, &ignored);
+        assert_eq!(view1.len(), 2);
+        assert_eq!(sum1.total_groups, 2);
+
+        // Etape 2 : l'utilisateur supprime g2 de la liste d'ignores. Le cache n'a
+        // PAS change. La nouvelle vue doit re-inclure g2.
+        ignored.clear();
+        let (view2, sum2) = filtered_view(&cache_groups, &cache_summary, &ignored);
+        assert_eq!(view2.len(), 3);
+        assert_eq!(sum2.total_groups, 3);
+        assert!(view2.iter().any(|g| g.id == "g2"));
     }
 }

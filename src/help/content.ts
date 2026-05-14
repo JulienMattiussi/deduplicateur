@@ -519,6 +519,8 @@ This mode is ideal for photo or music libraries organized by folder.`,
 
 **Garder celui-ci** : bouton sous chaque image. Il sélectionne les autres fichiers du groupe (les "doublons" à supprimer) et désélectionne celui-ci - indiquant que c'est le fichier à conserver.
 
+**GIF animés** : les fichiers \`.gif\` sont lus directement par le navigateur intégré et **s'animent** dans le comparateur (contrairement à la liste des résultats où une miniature statique est affichée). Les autres formats (PNG, JPEG, WEBP...) sont redimensionnés à 800 px max pour limiter la mémoire.
+
 Le bouton **📂** à côté du nom de dossier ouvre le dossier du fichier dans le gestionnaire de fichiers. Le bouton **⏵** à côté du nom du fichier ouvre directement le fichier dans le lecteur système (utile pour comparer dans un lecteur externe sans fermer le comparateur).`,
       en: `**Side-by-side mode** (default): the two selected images are displayed side by side with full metadata (dimensions, format, EXIF date, size, filename).
 
@@ -527,6 +529,8 @@ Le bouton **📂** à côté du nom de dossier ouvre le dossier du fichier dans 
 **Choose displayed images**: tabs at the top of each column (Left / Right) let you select which file from the group appears on each side. You can compare any pair.
 
 **Keep this one**: button below each image. It checks the other files in the group (the "duplicates" to delete) and unchecks this one - indicating this is the file to keep.
+
+**Animated GIFs**: \`.gif\` files are loaded directly by the embedded browser and **animate** inside the comparator (unlike the results list which only shows a static thumbnail). Other formats (PNG, JPEG, WEBP...) are downscaled to 800 px max to keep memory usage in check.
 
 The **📂** button next to the folder name opens the file's folder in the file manager. The **⏵** button next to the file name opens the file directly in the system player (useful to compare in an external player without closing the comparator).`,
     },

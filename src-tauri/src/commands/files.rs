@@ -205,6 +205,64 @@ pub async fn get_image_thumbnail(path: String, max_size: u32) -> Result<String, 
     .map_err(|e| e.to_string())?
 }
 
+/// Variante de `get_image_thumbnail` adaptee au comparateur d'images : pour les GIF
+/// (animes ou non), retourne une URL du media server local qui sert le fichier
+/// d'origine - le `<img>` HTML5 anime alors le GIF nativement. Pour les autres
+/// formats, retombe sur le pipeline JPEG data URL classique (resize via le crate
+/// `image`, encode base64). La detection GIF combine extension + magic bytes
+/// (`GIF87a` / `GIF89a`) pour eviter qu'un fichier renomme menteur ne soit servi
+/// brut au lieu d'etre redimensionne.
+#[tauri::command]
+pub async fn get_image_url(
+    app: tauri::AppHandle,
+    path: String,
+    max_size: u32,
+) -> Result<String, String> {
+    use tauri::Manager;
+    let port = app.state::<crate::MediaServerPort>().0;
+    tauri::async_runtime::spawn_blocking(move || {
+        if is_animated_gif(std::path::Path::new(&path)) {
+            // Le `<img>` HTML5 anime le GIF lui-meme : pas de resize cote serveur,
+            // on sert le fichier d'origine via le media server local.
+            let encoded = percent_encoding::utf8_percent_encode(&path, percent_encoding::NON_ALPHANUMERIC).to_string();
+            return Ok(format!("http://127.0.0.1:{}/{}", port, encoded));
+        }
+        // Pipeline thumbnail JPEG existant pour tout le reste (PNG, WEBP, JPEG, etc.)
+        let img = image::open(&path).map_err(|e| e.to_string())?;
+        let thumb = img.thumbnail(max_size, max_size);
+        let mut buf = Vec::new();
+        thumb
+            .write_to(&mut std::io::Cursor::new(&mut buf), image::ImageOutputFormat::Jpeg(75))
+            .map_err(|e| e.to_string())?;
+        use base64::Engine;
+        let encoded = base64::engine::general_purpose::STANDARD.encode(&buf);
+        Ok(format!("data:image/jpeg;base64,{}", encoded))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Detecte un fichier GIF par extension + magic bytes `GIF87a` ou `GIF89a` (6 octets).
+/// La verification magic protege contre les `.gif` menteurs (par ex. PNG renomme) qui
+/// seraient sinon servis bruts au navigateur avec un MIME image/gif -> image cassee.
+fn is_animated_gif(path: &std::path::Path) -> bool {
+    let ext_ok = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|s| s.eq_ignore_ascii_case("gif"))
+        .unwrap_or(false);
+    if !ext_ok {
+        return false;
+    }
+    let Ok(mut file) = std::fs::File::open(path) else { return false; };
+    use std::io::Read;
+    let mut head = [0u8; 6];
+    match file.read(&mut head) {
+        Ok(6) => &head == b"GIF87a" || &head == b"GIF89a",
+        _ => false,
+    }
+}
+
 /// Genere a la volee une miniature pour une entree image situee dans une archive.
 /// On extrait les bytes de l'entree en memoire, on decode via le crate `image`,
 /// puis on encode en JPEG base64 (data URL). Pas de cache disque ; le frontend
@@ -301,4 +359,64 @@ pub async fn get_image_meta(path: String) -> Result<ImageMeta, String> {
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_animated_gif;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
+
+    fn write_temp(suffix: &str, bytes: &[u8]) -> NamedTempFile {
+        let mut f = NamedTempFile::with_suffix(suffix).unwrap();
+        f.write_all(bytes).unwrap();
+        f.flush().unwrap();
+        f
+    }
+
+    #[test]
+    fn is_animated_gif_accepte_gif89a() {
+        let f = write_temp(".gif", b"GIF89a\x01\x00\x01\x00");
+        assert!(is_animated_gif(f.path()));
+    }
+
+    #[test]
+    fn is_animated_gif_accepte_gif87a() {
+        let f = write_temp(".gif", b"GIF87a\x01\x00\x01\x00");
+        assert!(is_animated_gif(f.path()));
+    }
+
+    #[test]
+    fn is_animated_gif_rejette_extension_gif_avec_contenu_png() {
+        // PNG magic : 89 50 4E 47 0D 0A 1A 0A
+        let f = write_temp(".gif", b"\x89PNG\r\n\x1A\n");
+        assert!(!is_animated_gif(f.path()));
+    }
+
+    #[test]
+    fn is_animated_gif_rejette_png_avec_extension_png() {
+        let f = write_temp(".png", b"\x89PNG\r\n\x1A\n");
+        assert!(!is_animated_gif(f.path()));
+    }
+
+    #[test]
+    fn is_animated_gif_rejette_jpeg() {
+        // JPEG magic SOI : FF D8 FF
+        let f = write_temp(".jpg", b"\xFF\xD8\xFF\xE0\x00\x10");
+        assert!(!is_animated_gif(f.path()));
+    }
+
+    #[test]
+    fn is_animated_gif_rejette_fichier_trop_court() {
+        let f = write_temp(".gif", b"GIF"); // 3 octets seulement
+        assert!(!is_animated_gif(f.path()));
+    }
+
+    #[test]
+    fn is_animated_gif_rejette_extension_inconnue_meme_avec_magic_gif() {
+        // Refus strict : l'extension doit etre .gif pour eviter de servir des fichiers
+        // dont le magic ressemble fortuitement a un GIF mais qui sont autre chose.
+        let f = write_temp(".jpg", b"GIF89a\x01\x00\x01\x00");
+        assert!(!is_animated_gif(f.path()));
+    }
 }
