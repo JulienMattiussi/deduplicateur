@@ -74,6 +74,27 @@ export default function App() {
     localStorage.setItem("theme", theme);
   }, [theme]);
 
+  // Pendant un scan, on prefixe le titre de la fenetre par le pourcentage de
+  // progression - visible directement dans la barre des taches de l'OS sans
+  // avoir a basculer sur la fenetre. Tant que la phase preliminaire (reading /
+  // counting_archives) n'a pas calcule total_work, on garde le titre de base
+  // (afficher "0 %" serait trompeur, le scan n'a pas encore commence ses phases
+  // quantifiables).
+  useEffect(() => {
+    const base = "Déduplicateur";
+    if (!scanExec.scanning) {
+      document.title = base;
+      return;
+    }
+    const p = scanExec.progress;
+    if (p && p.total > 0) {
+      const pct = Math.min(100, Math.round((p.current / p.total) * 100));
+      document.title = `${pct} % - ${base}`;
+    } else {
+      document.title = base;
+    }
+  }, [scanExec.scanning, scanExec.progress]);
+
   // Listener global pour l'event `scan:disk_warning` emis par le backend pendant
   // counting_archives quand l'estimation d'extraction depasse l'espace disque libre.
   // Affiche la modale ; les boutons appellent `respond_disk_warning` qui reveille
