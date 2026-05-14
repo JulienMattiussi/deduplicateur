@@ -762,7 +762,11 @@
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 10px 16px;
+  /* padding vertical reduit a 3px : combine a align-self: stretch sur les
+     boutons .btn-compare / .btn-ignore, ils occupent quasi toute la hauteur
+     de la ligne et il ne reste qu'une fine bande de 3px (non clickable comme
+     bouton) en haut et en bas pour le toggle expand/collapse. */
+  padding: 3px 16px;
   background: var(--bg-card-header);
   border: none;
   border-bottom: 1px solid var(--border);
@@ -2240,14 +2244,19 @@
   text-align: right;
 }
 
-/* Compare button in group header */
+/* Compare button in group header.
+   Padding vertical genereux (10px) + align-self: stretch pour combler la
+   hauteur du header. Sans ca, le bouton ne fait que ~22px alors que le header
+   en fait ~46px, laissant deux bandes "clic accidentel" qui collapsent le
+   groupe quand l'utilisateur vise un peu trop haut ou bas. */
 .btn-compare {
   background: transparent;
   border: 1px solid var(--border-2);
   border-radius: 5px;
   color: var(--text-5);
-  font-size: 11px;
-  padding: 3px 8px;
+  font-size: 12px;
+  padding: 10px 14px;
+  align-self: stretch;
   cursor: pointer;
   transition: all 0.15s;
   white-space: nowrap;
@@ -2363,18 +2372,24 @@
   flex: 1;
 }
 
-/* Ignore group button in group header */
+/* Ignore group button in group header.
+   Meme strategie que .btn-compare : align-self: stretch pour combler le header
+   et eviter les misclicks qui collapsent le groupe. */
 .btn-ignore {
   background: transparent;
   border: 1px solid var(--border-2);
   border-radius: 5px;
   color: var(--text-4);
-  font-size: 11px;
-  padding: 2px 7px;
+  font-size: 12px;
+  padding: 6px 12px;
+  align-self: stretch;
   cursor: pointer;
   transition: all 0.15s;
   flex-shrink: 0;
-  line-height: 1.4;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .btn-ignore:hover {
