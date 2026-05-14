@@ -1,6 +1,7 @@
 import { useState, startTransition, useEffect, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { save as dialogSave } from "@tauri-apps/plugin-dialog";
 import "./App.css";
 import { formatSize, formatDuration, VIDEO_EXTS, AUDIO_EXTS } from "./utils";
@@ -80,18 +81,30 @@ export default function App() {
   // counting_archives) n'a pas calcule total_work, on garde le titre de base
   // (afficher "0 %" serait trompeur, le scan n'a pas encore commence ses phases
   // quantifiables).
+  //
+  // On utilise `getCurrentWindow().setTitle()` (API native Tauri) et PAS
+  // `document.title` : WebView2 sur Windows et la WebView sur Linux ne
+  // synchronisent pas systematiquement le titre du document vers le titre OS,
+  // donc la barre des taches reste figee sur le titre initial. Le titre OS
+  // (et donc la barre des taches) ne change que via l'API native. Permission
+  // requise dans capabilities/default.json : `core:window:allow-set-title`.
   useEffect(() => {
     const base = "Déduplicateur";
-    if (!scanExec.scanning) {
-      document.title = base;
-      return;
-    }
-    const p = scanExec.progress;
-    if (p && p.total > 0) {
-      const pct = Math.min(100, Math.round((p.current / p.total) * 100));
-      document.title = `${pct} % - ${base}`;
-    } else {
-      document.title = base;
+    const title = (() => {
+      if (!scanExec.scanning) return base;
+      const p = scanExec.progress;
+      if (p && p.total > 0) {
+        const pct = Math.min(100, Math.round((p.current / p.total) * 100));
+        return `${pct} % - ${base}`;
+      }
+      return base;
+    })();
+    // setTitle est async cote Tauri mais on s'en moque ici (fire-and-forget).
+    // Try/catch pour ne pas casser les tests jsdom ou les builds sans Tauri.
+    try {
+      getCurrentWindow().setTitle(title).catch(() => {});
+    } catch {
+      // pas en environnement Tauri (tests, SSR...) : on tombe en silence.
     }
   }, [scanExec.scanning, scanExec.progress]);
 

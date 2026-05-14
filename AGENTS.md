@@ -295,6 +295,18 @@ silencieusement côté JS.
 }
 ```
 
+### Titre de la fenetre OS : `document.title` ne se propage pas sous WebView2 / WebKitGTK
+Sur le web, modifier `document.title` met a jour le titre de l'onglet/fenetre du navigateur. Dans Tauri, **ce n'est pas le cas** pour le titre OS (celui affiche dans la barre des taches, le switcheur Alt+Tab, le titlebar) : ni WebView2 (Windows) ni WebKitGTK (Linux) ne synchronisent automatiquement le titre du document HTML vers le titre de la fenetre native. La page peut afficher un autre titre dans son `<title>` que le titlebar OS, et les deux sont independants.
+
+Solution : utiliser l'API native Tauri.
+```ts
+import { getCurrentWindow } from "@tauri-apps/api/window";
+getCurrentWindow().setTitle("nouveau titre").catch(() => {});
+```
+Permission requise dans `capabilities/default.json` : `"core:window:allow-set-title"`. Sans cette permission, `setTitle` rejette silencieusement (typique Tauri 2 : le call frontend ne plante pas, mais le titre ne change pas).
+
+Cas d'usage dans le projet : afficher la progression du scan (`"XX % - Deduplicateur"`) dans le titre OS pendant une analyse, pour que l'utilisateur la voie dans la barre des taches sans avoir a basculer sur la fenetre. Cf. App.tsx, useEffect sur `scanExec.scanning` + `scanExec.progress`.
+
 ### Plugin dialog → ne pas mettre `{}` dans tauri.conf.json
 `"plugins": { "dialog": {} }` provoque une panique au démarrage :
 > PluginInitialization("dialog", "invalid type: map, expected unit")
