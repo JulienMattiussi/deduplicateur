@@ -1124,3 +1124,48 @@ Lot de petites ameliorations post-1.1.1, chacune avec son propre changement focu
 
 ### Tests ✅
 - [x] 309 tests Rust / 463 tests TypeScript / tsc clean.
+
+---
+
+## Correctifs post-1.2.0
+
+### Compteur de dossiers fige pendant le traitement (mode by_folder) ✅
+
+**Bug** : en mode "par sous-dossiers", supprimer ou ignorer le dernier groupe d'un dossier le retirait bien de la liste affichee mais `summary.total_folders` n'etait jamais decremente. Le compteur "X dossiers" reste fige sur sa valeur d'origine pendant tout le traitement. Symetriquement, dans `commands/session.rs::filtered_view` cote backend, `total_groups` et `total_wasted_bytes` etaient recalcules apres filtrage par les ignores, mais pas `total_folders` : un `load_session` ne refletait pas la verite filtree.
+
+- [x] Backend [src-tauri/src/commands/session.rs::filtered_view](../src-tauri/src/commands/session.rs) recalcule aussi `total_folders` quand `by_folder=true`, par HashSet des `folder_key` distincts dans les groupes filtres.
+- [x] Frontend [src/App.tsx::handleIgnoreGroup](../src/App.tsx) et `handleDeleteComplete` calculent un `foldersLost` (nombre de dossiers passant a 0 groupes) et le soustraient de `total_folders` dans le `setSummary`. Parite optimiste avec `total_groups`.
+- [x] Frontend nouvelle fonction `refreshAfterIgnoreChange` appelee apres `clear_ignore_entry` / `clear_all_ignored` : re-invoque `load_session` (qui retourne un summary frais grace au fix backend) + `list_folder_keys` + reset des groupes locaux et `folderState` pour que les groupes precedemment ignores reapparaissent au prochain depliage.
+- [x] 2 nouveaux tests Rust : `filtered_view_recalcule_total_folders_en_mode_by_folder` (3 groupes / 3 dossiers, ignorer 1 -> 2 dossiers) et `filtered_view_ne_touche_pas_total_folders_hors_mode_by_folder` (preserve `total_folders=0` quand `by_folder=false`).
+- [x] 1 nouveau test TS `Bug 4 - by_folder : ignorer le seul groupe d'un dossier decremente total_folders` + assertion ajoutee au Bug 1 existant.
+- [x] 314 tests Rust / 466 tests TypeScript / tsc clean.
+
+### Filtre texte applique aux selections automatiques ✅
+
+**Bug** : un filtre texte saisi dans la barre de recherche restreignait l'affichage mais pas la portee des commandes backend `select_all_duplicates` / `smart_select`. Cliquer "Tout cocher" ou "Appliquer (garder la plus haute resolution)" apres avoir filtre "vacances" cochait des fichiers dans TOUS les groupes du scan, pas seulement les visibles - comportement contre-intuitif.
+
+- [x] Backend [src-tauri/src/commands/session.rs](../src-tauri/src/commands/session.rs) : helper `apply_text_filter(groups, by_folder, filter_text)` qui filtre les groupes selon le meme critere que le frontend - par `folder_key` en mode `by_folder`, par `file.name` / `file.path` sinon. Trim et casse insensible. Vide / `None` -> passthrough.
+- [x] Commandes `select_all_duplicates` et `smart_select` acceptent un nouveau parametre `filter_text: Option<String>` et appliquent le filtre apres `filtered_view`.
+- [x] Frontend [src/hooks/useSelectionState.ts](../src/hooks/useSelectionState.ts) : `selectAllDuplicates(filterText?)` et `selectSmart(mode, folderPrefix?, filterText?)` passent le `filterText` a l'invoke (null si vide ou absent).
+- [x] [src/App.tsx](../src/App.tsx) : les deux call sites (bouton "Tout cocher" + Ctrl+A + bouton "Appliquer") transmettent le state `filterText` courant.
+- [x] [src/App.tsx](../src/App.tsx) : champ "Filtrer" deplace AU-DESSUS de la `ScanResultsToolbar` (au lieu d'en dessous), pour que le flow utilisateur reflete l'ordre logique des operations : filtrer -> choisir une regle de selection -> appliquer.
+- [x] 3 nouveaux tests Rust : `apply_text_filter_vide_renvoie_tous_les_groupes`, `apply_text_filter_mode_normal_filtre_par_nom_et_path`, `apply_text_filter_mode_by_folder_filtre_par_folder_key`.
+- [x] 2 nouveaux tests TS dans `App.test.tsx` section M : `Appliquer avec un filtre actif transmet filterText au backend (smart_select)` et `Tout cocher avec un filtre actif transmet filterText au backend (select_all_duplicates)`. Mise a jour des 3 tests existants qui asseraient l'absence de `filterText` dans le payload.
+- [x] Articles d'aide `filter-sort`, `manual-select` et `smart-rules` mis a jour FR+EN pour mentionner cette synergie.
+- [x] 317 tests Rust / 468 tests TypeScript / tsc clean.
+
+### Badge "Original" deconnecte du tri local ✅
+
+**Bug** : le badge "Original" etait attache a `idx === 0` de `sortedFiles` (la ligne du haut affichee), donc il se deplacait quand l'utilisateur changeait le tri local des colonnes. Conceptuellement, "Original" doit toujours designer le fichier le plus ancien du groupe (la convention documentee dans l'aide), quel que soit l'ordre d'affichage.
+
+- [x] [src/components/GroupCard.tsx](../src/components/GroupCard.tsx) : `originalPath` calcule via `useMemo` comme le path du fichier au `modified` minimum dans `group.files`. Le rendu du badge teste maintenant `file.path === originalPath` (au lieu de `idx === 0`). Calcul cote frontend pour ne pas dependre de l'invariant cache "files[0] est le plus ancien" maintenu par `sort_files_by_origin` cote backend - meme si l'invariant tient, le code est plus robuste a un changement d'ordre futur.
+- [x] 3 nouveaux tests TS dans `GroupCard.test.tsx` section "Badge original - independant du tri local" : badge sur le bon fichier sans tri (meme si files[0] dans le fixture n'est pas le plus ancien), badge stable apres tri par Nom asc, badge stable apres tri par Modifie desc.
+- [x] 317 tests Rust / 471 tests TypeScript / tsc clean.
+
+### Synchronisation des GIF animes dans le comparateur d'images ✅
+
+**Bug** : dans un groupe a 3+ fichiers contenant des GIF animes, changer le fichier compare d'un cote via les onglets faisait redemarrer ce cote a la frame 0 mais l'autre cote continuait son animation en cours. Resultat : les deux GIF jouaient a des positions differentes, desynchronises. Specifique aux GIF parce que `<img>` HTML5 n'expose aucune API JS pour controler la position d'animation - la seule facon de re-synchroniser est de demonter / remonter les deux <img> ensemble.
+
+- [x] [src/ImageComparator.tsx](../src/ImageComparator.tsx) : calcul d'un `remountKey` derivé de `groupIdx + effectiveLeftIdx + effectiveRightIdx`. Cette cle est passee aux deux `<img>` (mode normal via le nouveau prop `imgKey` d'`ImagePanel`, mode overlay directement). Quand l'utilisateur change un onglet, la cle change pour les DEUX `<img>` -> React demonte et remonte les deux simultanement -> les GIF redemarrent ensemble. Pour les images statiques le remount est invisible (data URL en cache memoire).
+- [x] 1 nouveau test TS `ImageComparator.test.tsx::F::changer l'onglet droit remonte aussi l'img gauche` : recupere les noeuds DOM des deux `<img>` avant + apres clic sur un onglet, verifie que les DEUX references DOM ont change (et pas seulement celle qui a vu son fichier changer).
+- [x] 317 tests Rust / 472 tests TypeScript / tsc clean.

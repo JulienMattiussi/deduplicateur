@@ -261,10 +261,18 @@ For images, videos, and audio, the row also shows individual **size** and **dura
     body: {
       fr: `**Filtrer par nom ou chemin** : saisissez du texte dans le champ "Filtrer par nom ou chemin…" pour n'afficher que les groupes dont au moins un fichier correspond. Le filtre est appliqué en temps réel.
 
+En mode **par sous-dossier**, le filtre s'applique aux noms de dossiers (pas aux noms de fichiers). Tapez "vacances" pour ne voir que les dossiers contenant ce mot.
+
+**Le filtre restreint aussi la portée des sélections automatiques** : quand un filtre est actif, **Tout cocher** et **Appliquer** (règles de sélection) ne touchent qu'aux groupes visibles. Les groupes masqués par le filtre ne sont pas modifiés. Permet par exemple de filtrer "vacances", puis garder la plus haute résolution uniquement dans ces groupes-là.
+
 **Trier les colonnes** : dans chaque groupe déplié, cliquez sur **Nom**, **Modifié** ou **Taille** pour trier les fichiers. Premier clic = croissant (↑), deuxième = décroissant (↓), troisième = ordre initial.
 
 **Trier les dossiers** (mode par sous-dossier) : la barre "Trier par" classe les dossiers par espace récupérable (défaut) ou par nom alphabétique.`,
       en: `**Filter by name or path**: type in the "Filter by name or path…" field to show only groups where at least one file matches. The filter applies in real time.
+
+In **by-subfolder** mode, the filter applies to folder names (not file names). Type "holidays" to only see folders containing that word.
+
+**The filter also restricts the scope of automatic selections**: when a filter is active, **Select all** and **Apply** (selection rules) only affect visible groups. Groups hidden by the filter are not modified. For example, filter "holidays" then keep the highest resolution only in those groups.
 
 **Sort columns**: inside each expanded group, click **Name**, **Modified**, or **Size** to sort files. First click = ascending (↑), second = descending (↓), third = original order.
 
@@ -311,7 +319,7 @@ Clicking the **thumbnail** of an image, video, or audio file opens it directly i
     body: {
       fr: `Cliquez sur n'importe quelle ligne de fichier pour la cocher ou la décocher. La ligne entière est cliquable, pas seulement la case à cocher.
 
-**Tout cocher** : sélectionne automatiquement tous les doublons. Le fichier le plus ancien de chaque groupe (l'"original") n'est jamais coché automatiquement.
+**Tout cocher** : sélectionne automatiquement tous les doublons. Le fichier le plus ancien de chaque groupe (l'"original") n'est jamais coché automatiquement. Si un filtre est actif, seuls les groupes visibles sont impactés.
 
 **Désélectionner** : efface toute la sélection courante.
 
@@ -322,7 +330,7 @@ Clicking the **thumbnail** of an image, video, or audio file opens it directly i
 - **Échap** : ferme la boîte de confirmation`,
       en: `Click any file row to check or uncheck it. The entire row is clickable, not just the checkbox.
 
-**Select all**: automatically checks all duplicates. The oldest file in each group (the "original") is never auto-checked.
+**Select all**: automatically checks all duplicates. The oldest file in each group (the "original") is never auto-checked. If a filter is active, only visible groups are affected.
 
 **Deselect**: clears the entire current selection.
 
@@ -351,6 +359,8 @@ Clicking the **thumbnail** of an image, video, or audio file opens it directly i
 - **Garder le plus grand fichier** : utile pour l'audio et la vidéo où le fichier le plus lourd est généralement de meilleure qualité.
 - **Garder dans le dossier prioritaire** : voir l'article dédié.
 
+**Combiner avec le filtre** : si un texte est saisi dans le champ de filtre, la règle ne s'applique qu'aux groupes visibles. Permet de cibler une sélection automatique sur un sous-ensemble des résultats sans toucher au reste.
+
 La règle ne remplace pas une sélection manuelle - vous pouvez affiner manuellement après avoir appliqué une règle.`,
       en: `The **"Rule:"** dropdown lets you choose a strategy, then click **Apply** to apply it to all groups at once.
 
@@ -359,6 +369,8 @@ La règle ne remplace pas une sélection manuelle - vous pouvez affiner manuelle
 - **Keep highest resolution**: keeps the image or video with the most pixels. If no file in the group has detectable resolution, the group is left unselected.
 - **Keep largest file**: useful for audio and video where the heavier file is usually better quality.
 - **Keep in priority folder**: see the dedicated article.
+
+**Combine with the filter**: if text is entered in the filter field, the rule only applies to visible groups. Useful to target an automatic selection on a subset of results without touching the rest.
 
 The rule does not replace manual selection - you can fine-tune manually after applying a rule.`,
     },

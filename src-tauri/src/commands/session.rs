@@ -45,9 +45,10 @@ fn current_ignored_keys(app: &tauri::AppHandle) -> std::collections::HashSet<Str
 }
 
 /// Filtre une vue lue depuis le cache contre la liste d'ignores et recalcule
-/// total_groups + total_wasted_bytes du summary si au moins un groupe est retire.
-/// Variante de `apply_ignore_filter` qui clone seulement les groupes filtres
-/// (au lieu de prendre ownership du Vec), adapte aux lectures depuis le cache.
+/// total_groups + total_wasted_bytes + total_folders du summary si au moins
+/// un groupe est retire. Variante de `apply_ignore_filter` qui clone seulement
+/// les groupes filtres (au lieu de prendre ownership du Vec), adapte aux
+/// lectures depuis le cache.
 fn filtered_view(
     groups: &[DuplicateGroup],
     summary: &ScanSummary,
@@ -67,6 +68,12 @@ fn filtered_view(
     if filtered.len() != groups.len() {
         sum.total_groups = filtered.len();
         sum.total_wasted_bytes = crate::recalc_wasted_bytes(&filtered);
+        if sum.by_folder {
+            sum.total_folders = filtered.iter()
+                .filter_map(|g| g.folder_key.as_ref())
+                .collect::<std::collections::HashSet<_>>()
+                .len();
+        }
     }
     (filtered, sum)
 }
@@ -282,11 +289,45 @@ pub fn get_folder_groups_page(
     })
 }
 
+/// Filtre les groupes selon le texte de recherche affiche cote frontend. Aligne
+/// la portee des commandes de selection (`select_all_duplicates`, `smart_select`)
+/// sur ce que l'utilisateur voit a l'ecran : en mode `by_folder` on filtre par
+/// `folder_key`, sinon par nom ou chemin de fichier. Retourne tous les groupes
+/// quand `filter_text` est `None` ou vide apres trim.
+fn apply_text_filter<'a>(
+    groups: &'a [DuplicateGroup],
+    by_folder: bool,
+    filter_text: Option<&str>,
+) -> Vec<&'a DuplicateGroup> {
+    let q = filter_text.map(|s| s.trim().to_lowercase()).unwrap_or_default();
+    if q.is_empty() {
+        return groups.iter().collect();
+    }
+    groups
+        .iter()
+        .filter(|g| {
+            if by_folder {
+                g.folder_key
+                    .as_deref()
+                    .map(|k| k.to_lowercase().contains(&q))
+                    .unwrap_or(false)
+            } else {
+                g.files.iter().any(|f| {
+                    f.name.to_lowercase().contains(&q) || f.path.to_lowercase().contains(&q)
+                })
+            }
+        })
+        .collect()
+}
+
 #[tauri::command]
-pub fn select_all_duplicates(app: tauri::AppHandle) -> Result<Vec<String>, String> {
-    with_filtered_cache(&app, |filtered, _| {
-        filtered
-            .iter()
+pub fn select_all_duplicates(
+    app: tauri::AppHandle,
+    filter_text: Option<String>,
+) -> Result<Vec<String>, String> {
+    with_filtered_cache(&app, |filtered, summary| {
+        apply_text_filter(filtered, summary.by_folder, filter_text.as_deref())
+            .into_iter()
             .flat_map(|group| group.files.iter().skip(1).map(|f| f.path.clone()))
             .collect::<Vec<String>>()
     })
@@ -297,8 +338,14 @@ pub async fn smart_select(
     app: tauri::AppHandle,
     mode: String,
     folder_prefix: Option<String>,
+    filter_text: Option<String>,
 ) -> Result<Vec<String>, String> {
-    let groups = with_filtered_cache(&app, |filtered, _| filtered.to_vec())?;
+    let groups = with_filtered_cache(&app, |filtered, summary| {
+        apply_text_filter(filtered, summary.by_folder, filter_text.as_deref())
+            .into_iter()
+            .cloned()
+            .collect::<Vec<DuplicateGroup>>()
+    })?;
     tauri::async_runtime::spawn_blocking(move || {
         Ok(select_files_to_delete(&groups, &mode, folder_prefix.as_deref()))
     })
@@ -413,6 +460,107 @@ mod tests {
         assert_eq!(displayed.len(), 1);
         assert_eq!(displayed_summary.total_groups, 1);
         assert_eq!(displayed_summary.total_wasted_bytes, 1000);
+    }
+
+    #[test]
+    fn filtered_view_recalcule_total_folders_en_mode_by_folder() {
+        // Trois groupes repartis dans trois dossiers distincts. Ignorer le seul
+        // groupe du dossier "b" doit faire passer total_folders de 3 a 2.
+        let mut g1 = make_group("g1", 1000, &["/a/1.txt", "/a/1bis.txt"]);
+        g1.folder_key = Some("a".into());
+        let mut g2 = make_group("g2", 2000, &["/b/2.txt", "/b/2bis.txt"]);
+        g2.folder_key = Some("b".into());
+        let mut g3 = make_group("g3", 3000, &["/c/3.txt", "/c/3bis.txt"]);
+        g3.folder_key = Some("c".into());
+
+        let mut summary = make_summary(3, 1000 + 2000 + 3000);
+        summary.by_folder = true;
+        summary.total_folders = 3;
+
+        let g2_paths: Vec<String> = g2.files.iter().map(|f| f.path.clone()).collect();
+        let mut ignored = HashSet::new();
+        ignored.insert(crate::ignore_list::group_ignore_key(&g2_paths));
+
+        let (_displayed, displayed_summary) =
+            filtered_view(&[g1, g2, g3], &summary, &ignored);
+
+        assert_eq!(displayed_summary.total_groups, 2);
+        assert_eq!(displayed_summary.total_folders, 2);
+    }
+
+    #[test]
+    fn filtered_view_ne_touche_pas_total_folders_hors_mode_by_folder() {
+        // Hors mode by_folder, total_folders reste a sa valeur initiale (typiquement 0).
+        let mut g1 = make_group("g1", 1000, &["/a/1.txt", "/a/1bis.txt"]);
+        g1.folder_key = Some("a".into());
+        let mut g2 = make_group("g2", 2000, &["/b/2.txt", "/b/2bis.txt"]);
+        g2.folder_key = Some("b".into());
+
+        let summary = make_summary(2, 3000); // by_folder = false, total_folders = 0
+
+        let g2_paths: Vec<String> = g2.files.iter().map(|f| f.path.clone()).collect();
+        let mut ignored = HashSet::new();
+        ignored.insert(crate::ignore_list::group_ignore_key(&g2_paths));
+
+        let (_displayed, displayed_summary) =
+            filtered_view(&[g1, g2], &summary, &ignored);
+
+        assert_eq!(displayed_summary.total_groups, 1);
+        assert_eq!(displayed_summary.total_folders, 0);
+    }
+
+    #[test]
+    fn apply_text_filter_vide_renvoie_tous_les_groupes() {
+        let g1 = make_group("g1", 1000, &["/a/vacances.jpg", "/a/vacances_copy.jpg"]);
+        let g2 = make_group("g2", 2000, &["/b/travail.txt", "/b/travail_copy.txt"]);
+        let groups = vec![g1, g2];
+
+        let res = apply_text_filter(&groups, false, None);
+        assert_eq!(res.len(), 2);
+
+        let res = apply_text_filter(&groups, false, Some(""));
+        assert_eq!(res.len(), 2);
+
+        let res = apply_text_filter(&groups, false, Some("   "));
+        assert_eq!(res.len(), 2);
+    }
+
+    #[test]
+    fn apply_text_filter_mode_normal_filtre_par_nom_et_path() {
+        let g1 = make_group("g1", 1000, &["/a/vacances.jpg", "/a/vacances_copy.jpg"]);
+        let g2 = make_group("g2", 2000, &["/b/travail.txt", "/b/travail_copy.txt"]);
+        let g3 = make_group("g3", 3000, &["/photos/VACANCES_2024/img.jpg", "/photos/dup/img.jpg"]);
+        let groups = vec![g1, g2, g3];
+
+        // Match par nom (insensible a la casse)
+        let res = apply_text_filter(&groups, false, Some("vacances"));
+        assert_eq!(res.len(), 2);
+        assert!(res.iter().any(|g| g.id == "g1"));
+        assert!(res.iter().any(|g| g.id == "g3")); // match via path "/VACANCES_2024/"
+        assert!(!res.iter().any(|g| g.id == "g2"));
+    }
+
+    #[test]
+    fn apply_text_filter_mode_by_folder_filtre_par_folder_key() {
+        let mut g1 = make_group("g1", 1000, &["/root/Vacances/1.jpg", "/root/Vacances/2.jpg"]);
+        g1.folder_key = Some("Vacances".into());
+        let mut g2 = make_group("g2", 2000, &["/root/Travail/1.txt", "/root/Travail/2.txt"]);
+        g2.folder_key = Some("Travail".into());
+        let mut g3 = make_group("g3", 3000, &["/root/Vacances2024/1.jpg", "/root/Vacances2024/2.jpg"]);
+        g3.folder_key = Some("Vacances2024".into());
+        let groups = vec![g1, g2, g3];
+
+        let res = apply_text_filter(&groups, true, Some("vacances"));
+        assert_eq!(res.len(), 2);
+        assert!(res.iter().any(|g| g.id == "g1"));
+        assert!(res.iter().any(|g| g.id == "g3"));
+
+        // En mode by_folder le nom de fichier ne doit PAS matcher : seul folder_key compte
+        let mut g_path_only = make_group("g4", 4000, &["/root/Autre/vacances.jpg", "/root/Autre/copy.jpg"]);
+        g_path_only.folder_key = Some("Autre".into());
+        let only_path = vec![g_path_only];
+        let res = apply_text_filter(&only_path, true, Some("vacances"));
+        assert_eq!(res.len(), 0);
     }
 
     #[test]

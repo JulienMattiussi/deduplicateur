@@ -650,6 +650,7 @@ describe("M - règles de sélection", () => {
       expect(mockInvoke).toHaveBeenCalledWith("smart_select", {
         mode: "newest",
         folderPrefix: null,
+        filterText: null,
       });
     });
   });
@@ -663,6 +664,7 @@ describe("M - règles de sélection", () => {
       expect(mockInvoke).toHaveBeenCalledWith("smart_select", {
         mode: "largest_size",
         folderPrefix: null,
+        filterText: null,
       });
     });
   });
@@ -678,6 +680,47 @@ describe("M - règles de sélection", () => {
       expect(mockInvoke).toHaveBeenCalledWith("smart_select", {
         mode: "priority_folder",
         folderPrefix: "/home/important",
+        filterText: null,
+      });
+    });
+  });
+
+  it("Appliquer avec un filtre actif transmet filterText au backend (smart_select)", async () => {
+    const user = await renderWithResults();
+    const input = screen.getByPlaceholderText(/Filtrer par nom/i);
+    await user.type(input, "vacances");
+    await user.click(screen.getByRole("button", { name: "Appliquer" }));
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("smart_select", {
+        mode: "newest",
+        folderPrefix: null,
+        filterText: "vacances",
+      });
+    });
+  });
+
+  it("Tout cocher avec un filtre actif transmet filterText au backend (select_all_duplicates)", async () => {
+    const user = userEvent.setup();
+    mockInvoke.mockImplementation(
+      makeDefaultMock({
+        scan_folder: baseSummary,
+        get_groups_page: { groups: [baseGroup], offset: 0, total: 1, has_more: false },
+        select_all_duplicates: [],
+      })
+    );
+    mockDialogOpen.mockResolvedValue("/home/test");
+    render(<App />);
+    await user.click(screen.getByText(/Cliquer pour choisir un dossier/));
+    await waitFor(() => expect(screen.getByText("/home/test")).toBeInTheDocument());
+    await user.click(screen.getByText("Analyser"));
+    await waitFor(() => expect(screen.getByText(/fichiers identiques/)).toBeInTheDocument());
+
+    const input = screen.getByPlaceholderText(/Filtrer par nom/i);
+    await user.type(input, "vacances");
+    await user.click(screen.getByRole("button", { name: "Tout cocher" }));
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("select_all_duplicates", {
+        filterText: "vacances",
       });
     });
   });

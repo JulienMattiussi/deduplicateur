@@ -46,12 +46,17 @@ export function useSelectionState(
     }
   }
 
-  function selectAllDuplicates() { return runSelection("select_all_duplicates"); }
+  function selectAllDuplicates(filterText?: string) {
+    return runSelection("select_all_duplicates", {
+      filterText: filterText && filterText.trim() ? filterText : null,
+    });
+  }
 
-  function selectSmart(mode: SmartMode, folderPrefix?: string) {
+  function selectSmart(mode: SmartMode, folderPrefix?: string, filterText?: string) {
     return runSelection("smart_select", {
       mode,
       folderPrefix: folderPrefix ?? null,
+      filterText: filterText && filterText.trim() ? filterText : null,
     });
   }
 

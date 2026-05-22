@@ -245,6 +245,18 @@ Exemple vécu : `ArchiveComparator` hardcodait `simThreshold={10}` alors que le 
 
 Pattern : la source de vérité d'un seuil est `summary` (ou `params` pendant le scan). Toute commande qui prend ce seuil en paramètre **lit toujours la même source**, jamais une constante hardcodée différente.
 
+## Règle impérative - Filtre d'affichage frontend = portée des actions backend
+
+Tout filtre purement frontend qui restreint l'affichage (filtre texte par nom/chemin, filtre par dossier, autres) **doit être propagé en paramètre aux commandes backend qui agissent sur l'ensemble** (sélection automatique, smart select, export, suppression en masse, comptage...). Sinon : l'utilisateur voit X groupes dans la liste, clique "Tout cocher" ou "Appliquer une règle", et le backend coche / agit sur N groupes (N > X) parce qu'il ignore le filtre. Comportement contre-intuitif, source de mauvaises suppressions.
+
+Pattern (cf. `apply_text_filter` dans `commands/session.rs`) :
+1. Backend expose un paramètre optionnel pour chaque filtre frontend (`filter_text: Option<String>`).
+2. Helper interne (ex. `apply_text_filter`) qui reproduit **exactement** la logique de filtrage frontend (même critère, même mode `by_folder` vs normal, même casse insensible, même trim). Toute divergence crée un écart entre ce que l'utilisateur voit et ce que l'action fait.
+3. Frontend passe systématiquement l'état courant du filtre à l'invoke (ou `null` si vide après trim, pour distinguer "pas de filtre" de "filtre vide").
+4. Filtre `None` / `""` / `"   "` → passthrough total (comportement d'origine inchangé), pour préserver les call sites qui n'ont pas besoin du filtrage.
+
+Tests d'invariance à garder verts : un test "filtre vide ↔ pas de filtre" pour chaque commande, et un test "filtre actif → résultat restreint" qui vérifie que l'invoke reçoit bien le filterText (côté frontend) et qu'il filtre correctement (côté backend).
+
 ## Règle impérative - Diagnostic par logs avant code
 
 Quand un bug ne reproduit pas ou que la cause n'est pas évidente après lecture du code, **ajouter des logs ciblés et faire reproduire l'utilisateur** est plus rapide et plus fiable que de spéculer en boucle. Pattern :
@@ -265,6 +277,7 @@ Pattern (cf. `commands/session.rs::current_ignored_keys` + `commands/session.rs:
 1. `load_session` charge la session du disque, persiste la version cleanée (cleanup de fichiers absents, recompute compteurs), et stocke la liste **brute** dans `LoadedSession`. Le `summary` retourné au frontend, lui, est passé par `filtered_view` pour refléter la liste d'ignorés courante.
 2. Toutes les commandes de lecture commencent par `let ignored_keys = current_ignored_keys(&app);` puis filtrent `loaded.groups` à la volée avant pagination ou agrégation.
 3. `ignore_group` / `clear_ignore_entry` ne touchent **JAMAIS** au cache - ils écrivent juste dans `ignore_list.json`. La prochaine lecture verra automatiquement le changement.
+4. `filtered_view` doit recalculer **tous** les compteurs du summary qui dependent des groupes : `total_groups`, `total_wasted_bytes`, et `total_folders` (uniquement en mode `by_folder`, via un HashSet des `folder_key` distincts). Oublier l'un d'eux fige le compteur correspondant cote frontend - typiquement le compteur "X dossiers" qui ne bouge plus quand on ignore le dernier groupe d'un dossier (regression vue puis fixee post-1.2.0).
 
 Conséquences :
 - Retirer un groupe de la liste d'ignorés le fait réapparaître **immédiatement** à la prochaine pagination, sans rechargement ni invalidation du cache.

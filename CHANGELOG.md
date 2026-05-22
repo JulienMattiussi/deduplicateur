@@ -4,6 +4,35 @@ All notable changes to Déduplicateur are documented here.
 
 This file follows the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.2.1] - 2026-05-22
+
+Patch release focused on UX coherence in the results view: the text filter now also scopes the automatic selection actions, the "Original" badge correctly stays on the oldest file regardless of local sort, animated GIFs in the image comparator stay synchronised when switching tabs, and the folder counter in by-folder mode updates as folders are emptied.
+
+### Fixed
+
+- **Folder counter frozen in by-folder mode**. Removing or ignoring the last group of a folder correctly removes the folder from the displayed list, but `summary.total_folders` was never decremented, so the "X folders" stat at the top stayed frozen on the original value. The backend `filtered_view` also forgot to recompute `total_folders` when groups were filtered out by the ignore list, so `load_session` returned a stale count too. Both sides now stay in sync.
+- **"Original" badge moved with local column sort**. The badge was bound to `idx === 0` of the displayed order, so clicking "Modified ↓" on a column header moved the badge to the most recent file. The badge is now anchored to the file with the smallest `mtime` (the actual "original" per the documented convention), regardless of local sort order.
+- **Animated GIFs desynchronised in the image comparator**. When comparing a group of 3+ files containing animated GIFs, switching one side via the tab bar made that side restart from frame 0 while the other side kept playing - the two animations drifted out of sync. Both `<img>` elements now share a remount key so they restart together when either side changes.
+
+### Changed
+
+- **Text filter now also restricts automatic selections**. When a filter is active, "Select all duplicates" and the selection rules ("keep newest", "keep highest resolution", etc.) only operate on the groups visible in the filtered view. Previously these actions ignored the filter and acted on the entire scan, which could check files the user could not see. The filter logic matches the frontend display in both modes: by file name/path in normal mode, by folder key in by-subfolder mode.
+- **"Filter" input moved above the selection toolbar** (instead of below). Reflects the natural user flow: filter results first, then choose a selection rule, then apply.
+- **`filtered_view` recomputes `total_folders` alongside `total_groups` and `total_wasted_bytes`** when groups are removed by the ignore filter, so `load_session` always returns a consistent summary in by-folder mode.
+
+### Documentation
+
+- New AGENTS.md rule "Filtre d'affichage frontend = portée des actions backend" formalising the pattern of propagating frontend display filters to backend actions that operate on the full set.
+- Existing AGENTS.md rule "Filtres d'affichage : cache brut, filtre dynamique à chaque lecture" extended to require `filtered_view` to recalculate **all** summary counters (including `total_folders`), with a pointer to the post-1.2.0 regression that prompted the rule.
+- Help articles updated (FR + EN): `filter-sort` documents the by-folder vs normal filter behaviour and the new "filter → selection" synergy; `manual-select` and `smart-rules` mention that the filter narrows their scope when active.
+
+### Quality
+
+- 317 Rust tests (+5 since 1.2.0): 3 on `apply_text_filter` (passthrough, normal mode, by-folder mode), 2 on `filtered_view` recomputing `total_folders` (only in by-folder mode, no-op otherwise).
+- 472 TypeScript tests (+7): 2 in `App.test.tsx` on `filterText` being passed to `smart_select` and `select_all_duplicates`, 3 in `GroupCard.test.tsx` on the "Original" badge staying anchored to the oldest file across local sorts, 1 in `scan-scenarios.test.tsx` on `total_folders` decrementing when ignoring the last group of a folder, 1 in `ImageComparator.test.tsx` on both `<img>` DOM nodes being remounted when one side's tab changes.
+
+[1.2.1]: https://github.com/JulienMattiussi/deduplicateur/releases/tag/v1.2.1
+
 ## [1.2.0] - 2026-05-13
 
 Minor release introducing animated GIF support in the image comparator, real-time scan progress in the OS taskbar, and an architectural refactor making the in-memory cache and the ignore list fully independent.

@@ -80,6 +80,19 @@ export function GroupCard({
     });
   }, [group.files, sortKey, sortDir]);
 
+  // Le fichier "original" est par definition le plus ancien du groupe. On calcule
+  // le min de modified plutot que de se reposer sur l'ordre backend (group.files[0]),
+  // pour que le badge reste sur le bon fichier peu importe le tri local applique
+  // a l'affichage, et pour ne pas dependre d'un invariant cache cote backend.
+  const originalPath = useMemo(() => {
+    if (group.files.length === 0) return null;
+    let oldest = group.files[0];
+    for (const f of group.files) {
+      if (f.modified < oldest.modified) oldest = f;
+    }
+    return oldest.path;
+  }, [group.files]);
+
   function SortableHeader({ col, label, className }: { col: SortKey; label: string; className: string }) {
     const active = sortKey === col;
     return (
@@ -171,7 +184,7 @@ export function GroupCard({
             <span className="file-col-dir">{t.colFolder}</span>
             <span className="file-col-badge" />
           </div>
-          {sortedFiles.map((file: DuplicateFile, idx: number) => {
+          {sortedFiles.map((file: DuplicateFile) => {
             const fileDir = dirname(file.path);
             const isSharedDir = sharedDirs.has(fileDir);
             return (
@@ -221,7 +234,7 @@ export function GroupCard({
                   </button>
                 </span>
                 <span className="file-col-badge">
-                  {idx === 0 && !file.source && <span className="badge-original">{t.original}</span>}
+                  {file.path === originalPath && !file.source && <span className="badge-original">{t.original}</span>}
                   {file.source === "secondary" && <span className="badge-reference" data-testid="badge-reference">{t.badgeReference}</span>}
                 </span>
               </div>

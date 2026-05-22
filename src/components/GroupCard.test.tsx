@@ -107,6 +107,37 @@ describe("K - tri des colonnes GroupCard", () => {
   });
 });
 
+// ---- Badge "Original" reste sur le fichier le plus ancien malgre le tri local ----
+describe("Badge original - independant du tri local", () => {
+  function rowOf(name: string) {
+    return screen.getByText(name).closest(".file-row") as HTMLElement;
+  }
+
+  it("le badge 'Original' est sur le fichier au mtime le plus bas, peu importe l'ordre des files dans le tableau", () => {
+    // Dans sortGroup, bravo.txt est le plus ancien (mtime 1700000000) mais il est en
+    // 3e position dans group.files. Le badge doit etre sur bravo.txt, pas sur charlie.txt.
+    render(<GroupCard group={sortGroup} selected={new Set()} onToggle={() => {}} />);
+    expect(within(rowOf("bravo.txt")).getByText(/Original/i)).toBeInTheDocument();
+    expect(within(rowOf("charlie.txt")).queryByText(/Original/i)).not.toBeInTheDocument();
+    expect(within(rowOf("alpha.txt")).queryByText(/Original/i)).not.toBeInTheDocument();
+  });
+
+  it("le badge 'Original' reste sur bravo.txt apres tri par Nom (alpha en premier visuellement)", () => {
+    render(<GroupCard group={sortGroup} selected={new Set()} onToggle={() => {}} />);
+    fireEvent.click(screen.getByTestId("sort-name")); // tri par nom asc -> alpha, bravo, charlie
+    expect(within(rowOf("bravo.txt")).getByText(/Original/i)).toBeInTheDocument();
+    expect(within(rowOf("alpha.txt")).queryByText(/Original/i)).not.toBeInTheDocument();
+  });
+
+  it("le badge 'Original' reste sur bravo.txt apres tri par Modifie descendant (charlie en premier visuellement)", () => {
+    render(<GroupCard group={sortGroup} selected={new Set()} onToggle={() => {}} />);
+    fireEvent.click(screen.getByTestId("sort-modified"));
+    fireEvent.click(screen.getByTestId("sort-modified")); // desc -> charlie (recent), alpha, bravo
+    expect(within(rowOf("bravo.txt")).getByText(/Original/i)).toBeInTheDocument();
+    expect(within(rowOf("charlie.txt")).queryByText(/Original/i)).not.toBeInTheDocument();
+  });
+});
+
 // ---- Q2 : badge "Ref." dans GroupCard ----
 describe("Q2 - badge source dans GroupCard", () => {
   it("badge 'Ref.' visible sur le fichier secondaire", () => {

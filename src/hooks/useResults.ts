@@ -88,7 +88,7 @@ export function useResults(setError: (e: string | null) => void) {
     hasMore,
     loadingMore,
     folderSummaries, setFolderSummaries,
-    folderState,
+    folderState, setFolderState,
     folderSort, setFolderSort,
     sortedFolderSummaries,
     groupsByFolder,

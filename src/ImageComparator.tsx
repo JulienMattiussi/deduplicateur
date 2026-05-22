@@ -42,12 +42,14 @@ function ImagePanel({
   meta,
   kept,
   onKeep,
+  imgKey,
 }: {
   file: DuplicateFile;
   thumb: string | null;
   meta: ImageMeta | null;
   kept: boolean;
   onKeep: () => void;
+  imgKey?: string;
 }) {
   return (
     <div className="comparator-panel">
@@ -56,6 +58,7 @@ function ImagePanel({
         {thumb === "error" && <span className="comparator-thumb-error">🖼</span>}
         {thumb && thumb !== "error" && (
           <img
+            key={imgKey}
             src={thumb}
             alt={file.name}
             className="comparator-img"
@@ -118,6 +121,13 @@ export function ImageComparator({
 
   const { leftFile, rightFile, keepFile, isKept } = nav;
 
+  // Cle de remount partagee : change a chaque fois que l'utilisateur change l'un
+  // OU l'autre des fichiers compares. Force React a demonter et remonter les deux
+  // <img> simultanement, ce qui resynchronise les GIF animes (qui n'ont pas d'API
+  // JS de controle de position). Pour les images statiques le remount est
+  // invisible (data URL en cache memoire).
+  const remountKey = `${nav.groupIdx}-${nav.effectiveLeftIdx}-${nav.effectiveRightIdx}`;
+
   function onSliderMouseDown(e: React.MouseEvent) {
     e.preventDefault();
     const wrap = sliderWrapRef.current;
@@ -155,11 +165,13 @@ export function ImageComparator({
           <ImagePanel
             file={leftFile} thumb={leftThumb} meta={leftMeta}
             kept={isKept(leftFile)} onKeep={() => keepFile(leftFile.path)}
+            imgKey={`L-${remountKey}`}
           />
           <div className="comparator-divider" />
           <ImagePanel
             file={rightFile} thumb={rightThumb} meta={rightMeta}
             kept={isKept(rightFile)} onKeep={() => keepFile(rightFile.path)}
+            imgKey={`R-${remountKey}`}
           />
         </div>
       ) : (
@@ -167,6 +179,7 @@ export function ImageComparator({
           <div className="comparator-slider-wrap" ref={sliderWrapRef}>
             {leftThumb && leftThumb !== "error" && (
               <img
+                key={`L-${remountKey}`}
                 src={leftThumb}
                 className="comparator-overlay-img"
                 alt={leftFile.name}
@@ -176,6 +189,7 @@ export function ImageComparator({
             )}
             {rightThumb && rightThumb !== "error" && (
               <img
+                key={`R-${remountKey}`}
                 src={rightThumb}
                 className="comparator-overlay-img"
                 alt={rightFile.name}

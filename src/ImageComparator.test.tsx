@@ -191,6 +191,36 @@ describe("F - chargement des images", () => {
     });
   });
 
+  it("changer l'onglet droit remonte aussi l'img gauche (sync GIF animes)", async () => {
+    // Quand l'utilisateur change le fichier compare d'un cote, les deux <img>
+    // doivent etre demontees-remontees ensemble pour que les GIF animes
+    // redemarrent simultanement (pas d'API JS pour controler une position dans
+    // un <img>). Vu sans le fix : le <img> non touche garde sa reference DOM
+    // et son GIF continue de jouer pendant que l'autre repart a 0.
+    const user = userEvent.setup();
+    render2({ groups: [group3] });
+    await waitFor(() => {
+      expect(screen.getByAltText("img3.jpg")).toBeInTheDocument();
+      expect(screen.getByAltText("img4.jpg")).toBeInTheDocument();
+    });
+    const leftBefore = screen.getByAltText("img3.jpg");
+    const rightBefore = screen.getByAltText("img4.jpg");
+
+    // Clic sur l'onglet du 3e fichier dans la barre droite
+    const tabsRight = screen.getByTestId("tabs-right");
+    await user.click(within(tabsRight).getByText("img5.jpg"));
+
+    await waitFor(() => {
+      expect(screen.getByAltText("img5.jpg")).toBeInTheDocument();
+    });
+    const leftAfter = screen.getByAltText("img3.jpg");
+    const rightAfter = screen.getByAltText("img5.jpg");
+
+    // Les deux noeuds DOM doivent etre nouveaux (la key partagee a force le remount)
+    expect(leftAfter).not.toBe(leftBefore);
+    expect(rightAfter).not.toBe(rightBefore);
+  });
+
   it("affiche l'URL retournee pour un .gif (URL media server, anime nativement)", async () => {
     mockInvoke.mockImplementation((cmd, args: any) => {
       if (cmd === "get_image_url" && args?.path?.endsWith(".gif")) {

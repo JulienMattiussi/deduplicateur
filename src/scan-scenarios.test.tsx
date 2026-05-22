@@ -319,6 +319,63 @@ describe("T - Régressions", () => {
     });
     // La section "Backup" doit toujours être visible
     expect(screen.getByText(/Backup/)).toBeInTheDocument();
+    // total_folders doit avoir decremente : "Photos" perd son dernier groupe -> 1 dossier restant
+    await waitFor(() => {
+      const statsRow = screen.getByTestId("stats-row");
+      expect(within(statsRow).getByText(/^1$/)).toBeInTheDocument();
+      expect(within(statsRow).getByText(/^dossier$/)).toBeInTheDocument();
+    });
+  });
+
+  /**
+   * Bug 4 : en mode by_folder, ignorer le seul groupe d'un dossier le retirait
+   * de la liste mais summary.total_folders n'etait pas decremente. Le compteur
+   * "X dossiers" affiche en haut restait fige sur la valeur d'origine.
+   */
+  it("Bug 4 - by_folder : ignorer le seul groupe d'un dossier decremente total_folders", async () => {
+    const user = userEvent.setup();
+    const imageGroupWithFolder = { ...imageGroup, folder_key: "Photos" };
+    const summary = {
+      id: "s-bug4", folder: "/home/test",
+      total_wasted_bytes: 50 * imageGroup.size,
+      total_groups: 50, scanned_files: 100,
+      duration_ms: 200, by_folder: true, total_folders: 2, partial: false,
+    };
+    const folderSummaries = [
+      { folder_key: "Photos", group_count: 1, total_wasted_bytes: imageGroup.size },
+      { folder_key: "Backup", group_count: 49, total_wasted_bytes: 49 * imageGroup.size },
+    ];
+
+    mockInvoke.mockImplementation(makeDefaultMock({
+      scan_folder: summary,
+      list_folder_keys: folderSummaries,
+      get_folder_groups_page: { groups: [imageGroupWithFolder], has_more: false },
+      ignore_group: null,
+    }));
+    mockDialogOpen.mockResolvedValue("/home/test");
+
+    render(<App />);
+    await user.click(screen.getByText(/Cliquer pour choisir un dossier/));
+    await waitFor(() => screen.getByText("/home/test"));
+    await user.selectOptions(screen.getAllByRole("combobox")[0], "by_folder");
+    await user.click(screen.getByText("Analyser"));
+    await waitFor(() => screen.getByTestId("stats-row"), { timeout: 5000 });
+
+    // Avant : 2 dossiers
+    expect(within(screen.getByTestId("stats-row")).getByText(/^2$/)).toBeInTheDocument();
+
+    // Deplier "Photos" et ignorer son unique groupe (clic sur la croix puis confirmation)
+    await user.click(screen.getByText(/Photos/));
+    await waitFor(() => screen.getByText("photo.jpg"));
+    await user.click(screen.getByTestId("ignore-group-btn"));
+    await user.click(await screen.findByTestId("ignore-confirm-btn"));
+
+    // Apres : 1 dossier
+    await waitFor(() => {
+      const statsRow = screen.getByTestId("stats-row");
+      expect(within(statsRow).getByText(/^1$/)).toBeInTheDocument();
+      expect(within(statsRow).getByText(/^dossier$/)).toBeInTheDocument();
+    });
   });
 
   /**

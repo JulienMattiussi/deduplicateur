@@ -137,7 +137,7 @@ export default function App() {
       return false;
     },
     onDelete: () => selection.setConfirmPending(true),
-    onSelectAll: () => selection.selectAllDuplicates(),
+    onSelectAll: () => selection.selectAllDuplicates(filterText),
     anyComparatorOpen: comparatorIdx !== null || videoComparatorIdx !== null || audioComparatorIdx !== null,
     showResults: showResultsForKb,
     selecting: selection.selecting,
@@ -152,6 +152,31 @@ export default function App() {
       setIgnoredEntries(entries);
     } catch {
       // non-fatal
+    }
+  }
+
+  // Apres clear_ignore_entry / clear_all_ignored : des groupes precedemment
+  // ignores peuvent reapparaitre, et avec eux d'eventuels dossiers retires de
+  // la liste quand leur dernier groupe avait ete ignore. On re-fetch summary
+  // (qui passe par filtered_view et reflete donc total_groups et total_folders
+  // corrects) puis les folder_summaries ou la premiere page selon le mode.
+  async function refreshAfterIgnoreChange() {
+    if (!summary) return;
+    try {
+      const s = await invoke<ScanSummary>("load_session", { id: summary.id });
+      startTransition(() => setSummary(s));
+      if (s.by_folder) {
+        const fs = await invoke<FolderSummary[]>("list_folder_keys");
+        startTransition(() => {
+          results.setGroups([]);
+          results.setFolderState({});
+          results.setFolderSummaries(fs);
+        });
+      } else {
+        await results.loadPage(0, false);
+      }
+    } catch (e) {
+      setError(String(e));
     }
   }
 
@@ -210,6 +235,7 @@ export default function App() {
 
     startTransition(() => {
       results.setGroups(updatedGroups);
+      let foldersLost = 0;
       if (summary?.by_folder && removedCount > 0) {
         const updatedById = new Map(updatedGroups.map((g) => [g.id, g]));
         const folderDelta = new Map<string, { groups: number; wasted: number }>();
@@ -228,6 +254,10 @@ export default function App() {
         for (const [key, d] of folderDelta) {
           if (d.groups > 0) folderRemoved.set(key, d.groups);
         }
+        for (const fs of results.folderSummaries) {
+          const d = folderDelta.get(fs.folder_key);
+          if (d && fs.group_count - d.groups <= 0) foldersLost += 1;
+        }
         results.setFolderSummaries((prev) =>
           prev
             .map((fs) => {
@@ -241,6 +271,7 @@ export default function App() {
       setSummary((s) => s ? {
         ...s,
         total_groups: s.total_groups - removedCount,
+        total_folders: s.total_folders - foldersLost,
         total_wasted_bytes: s.total_wasted_bytes - (oldLoadedWasted - newLoadedWasted),
       } : null);
       setArchiveGroups((prev) =>
@@ -333,9 +364,17 @@ export default function App() {
     const wasted = group.size * (group.files.length - 1);
     const remainingGroups = results.groups.filter((g) => g.id !== groupId);
     const folderKey = group.folder_key ?? "";
+    const folderLost = summary?.by_folder
+      && results.folderSummaries.find((fs) => fs.folder_key === folderKey)?.group_count === 1
+      ? 1 : 0;
     startTransition(() => {
       results.setGroups(remainingGroups);
-      setSummary((s) => s ? { ...s, total_groups: s.total_groups - 1, total_wasted_bytes: s.total_wasted_bytes - wasted } : null);
+      setSummary((s) => s ? {
+        ...s,
+        total_groups: s.total_groups - 1,
+        total_folders: s.total_folders - folderLost,
+        total_wasted_bytes: s.total_wasted_bytes - wasted,
+      } : null);
       if (summary?.by_folder) {
         results.setFolderSummaries((prev) =>
           prev
@@ -528,8 +567,16 @@ export default function App() {
             </div>
             <IgnoredPanel
               entries={ignoredEntries}
-              onRemove={async (key) => { await invoke("clear_ignore_entry", { key }); await loadIgnoredEntries(); }}
-              onClearAll={async () => { await invoke("clear_all_ignored"); await loadIgnoredEntries(); }}
+              onRemove={async (key) => {
+                await invoke("clear_ignore_entry", { key });
+                await loadIgnoredEntries();
+                await refreshAfterIgnoreChange();
+              }}
+              onClearAll={async () => {
+                await invoke("clear_all_ignored");
+                await loadIgnoredEntries();
+                await refreshAfterIgnoreChange();
+              }}
             />
             <ProfilesPanel
               key={panelResetKey}
@@ -708,6 +755,15 @@ export default function App() {
 
       {showResults && (
         <>
+          <div className="filter-bar">
+            <input
+              className="filter-input"
+              placeholder={t.filterPlaceholder}
+              value={filterText}
+              onChange={(e) => setFilterText(e.target.value)}
+            />
+          </div>
+
           <ScanResultsToolbar
             selecting={selection.selecting}
             deleting={selection.deleting}
@@ -717,20 +773,11 @@ export default function App() {
             priorityFolder={priorityFolder}
             onSetSmartRule={setSmartRule}
             onSetPriorityFolder={setPriorityFolder}
-            onSelectAll={selection.selectAllDuplicates}
-            onApplyRule={() => selection.selectSmart(smartRule, smartRule === "priority_folder" ? priorityFolder : undefined)}
+            onSelectAll={() => selection.selectAllDuplicates(filterText)}
+            onApplyRule={() => selection.selectSmart(smartRule, smartRule === "priority_folder" ? priorityFolder : undefined, filterText)}
             onClearSelection={selection.clearSelection}
             onAskDelete={() => selection.setConfirmPending(true)}
           />
-
-          <div className="filter-bar">
-            <input
-              className="filter-input"
-              placeholder={t.filterPlaceholder}
-              value={filterText}
-              onChange={(e) => setFilterText(e.target.value)}
-            />
-          </div>
 
           {summary?.by_folder && (
             <div className="folder-sort-bar">
