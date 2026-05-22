@@ -533,6 +533,8 @@ This mode is ideal for photo or music libraries organized by folder.`,
 
 **GIF animés** : les fichiers \`.gif\` sont lus directement par le navigateur intégré et **s'animent** dans le comparateur (contrairement à la liste des résultats où une miniature statique est affichée). Les autres formats (PNG, JPEG, WEBP...) sont redimensionnés à 800 px max pour limiter la mémoire.
 
+**Zoom et déplacement** : utilisez la **molette de la souris** sur n'importe quelle image pour zoomer (jusqu'à 10x). Le zoom est centré sur la position du curseur et **synchronisé entre les deux images** : faites pivoter la molette sur l'une, les deux zooment ensemble. Quand vous êtes zoomé, cliquez-glissez pour **déplacer la vue** - les deux images suivent. Le zoom est réinitialisé en fermant et rouvrant le comparateur ; il est conservé en changeant d'onglet ou en naviguant entre groupes.
+
 Le bouton **📂** à côté du nom de dossier ouvre le dossier du fichier dans le gestionnaire de fichiers. Le bouton **⏵** à côté du nom du fichier ouvre directement le fichier dans le lecteur système (utile pour comparer dans un lecteur externe sans fermer le comparateur).`,
       en: `**Side-by-side mode** (default): the two selected images are displayed side by side with full metadata (dimensions, format, EXIF date, size, filename).
 
@@ -543,6 +545,8 @@ Le bouton **📂** à côté du nom de dossier ouvre le dossier du fichier dans 
 **Keep this one**: button below each image. It checks the other files in the group (the "duplicates" to delete) and unchecks this one - indicating this is the file to keep.
 
 **Animated GIFs**: \`.gif\` files are loaded directly by the embedded browser and **animate** inside the comparator (unlike the results list which only shows a static thumbnail). Other formats (PNG, JPEG, WEBP...) are downscaled to 800 px max to keep memory usage in check.
+
+**Zoom and pan**: use the **mouse wheel** on any image to zoom (up to 10x). Zoom is centered on the cursor position and **synchronised between both images**: spin the wheel on one, both zoom together. While zoomed, click-and-drag to **pan the view** - both images follow. Zoom is reset when closing and reopening the comparator; it is preserved when switching tabs or navigating between groups.
 
 The **📂** button next to the folder name opens the file's folder in the file manager. The **⏵** button next to the file name opens the file directly in the system player (useful to compare in an external player without closing the comparator).`,
     },

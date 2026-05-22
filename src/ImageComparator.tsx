@@ -42,16 +42,31 @@ function ImagePanel({
   meta,
   kept,
   onKeep,
+  transform,
+  cursor,
+  onWheel,
+  onMouseDown,
+  onImageClick,
 }: {
   file: DuplicateFile;
   thumb: string | null;
   meta: ImageMeta | null;
   kept: boolean;
   onKeep: () => void;
+  transform: string;
+  cursor: string;
+  onWheel: (e: React.WheelEvent<HTMLDivElement>) => void;
+  onMouseDown: (e: React.MouseEvent<HTMLDivElement>) => void;
+  onImageClick: (path: string) => void;
 }) {
   return (
     <div className="comparator-panel">
-      <div className="comparator-image-area">
+      <div
+        className="comparator-image-area"
+        style={{ cursor }}
+        onWheel={onWheel}
+        onMouseDown={onMouseDown}
+      >
         {!thumb && <span className="file-thumb-spinner comparator-spin" />}
         {thumb === "error" && <span className="comparator-thumb-error">🖼</span>}
         {thumb && thumb !== "error" && (
@@ -59,7 +74,8 @@ function ImagePanel({
             src={thumb}
             alt={file.name}
             className="comparator-img"
-            onClick={() => openFile(file.path)}
+            style={{ transform, transformOrigin: "0 0" }}
+            onClick={() => onImageClick(file.path)}
             draggable={false}
           />
         )}
@@ -71,6 +87,11 @@ function ImagePanel({
     </div>
   );
 }
+
+const ZOOM_MIN = 1;
+const ZOOM_MAX = 10;
+const ZOOM_FACTOR = 1.2;
+const DRAG_THRESHOLD_PX = 3;
 
 export function ImageComparator({
   groups,
@@ -88,6 +109,80 @@ export function ImageComparator({
   const [leftMeta, setLeftMeta] = useState<ImageMeta | null>(null);
   const [rightMeta, setRightMeta] = useState<ImageMeta | null>(null);
   const sliderWrapRef = useRef<HTMLDivElement>(null);
+
+  // Zoom + pan partages entre les deux <img>. Le state vit dans ce composant
+  // et est reset au close+reopen du comparateur (useState(...) ré-initialise au mount).
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [dragging, setDragging] = useState(false);
+  const dragStart = useRef({ mouseX: 0, mouseY: 0, panX: 0, panY: 0 });
+  // True si la souris a bouge de plus de DRAG_THRESHOLD_PX depuis le mousedown.
+  // Utilise pour distinguer un clic (ouvrir le fichier) d'un drag (deplacer l'image).
+  const draggedRef = useRef(false);
+
+  function handleWheel(e: React.WheelEvent<HTMLDivElement>) {
+    e.preventDefault();
+    const rect = e.currentTarget.getBoundingClientRect();
+    const cursorX = e.clientX - rect.left;
+    const cursorY = e.clientY - rect.top;
+    const factor = e.deltaY < 0 ? ZOOM_FACTOR : 1 / ZOOM_FACTOR;
+    setZoom(prevZoom => {
+      const newZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, prevZoom * factor));
+      setPan(prevPan => {
+        if (newZoom <= ZOOM_MIN) return { x: 0, y: 0 };
+        // Pour que le point image sous le curseur reste sous le curseur apres zoom :
+        // newPan = cursor - (cursor - prevPan) * (newZoom / prevZoom)
+        const ratio = newZoom / prevZoom;
+        return {
+          x: cursorX - (cursorX - prevPan.x) * ratio,
+          y: cursorY - (cursorY - prevPan.y) * ratio,
+        };
+      });
+      return newZoom;
+    });
+  }
+
+  function handleMouseDown(e: React.MouseEvent<HTMLDivElement>) {
+    if (zoom <= ZOOM_MIN) return;
+    e.preventDefault();
+    draggedRef.current = false;
+    setDragging(true);
+    dragStart.current = { mouseX: e.clientX, mouseY: e.clientY, panX: pan.x, panY: pan.y };
+  }
+
+  function handleImageClick(filePath: string) {
+    // Si l'utilisateur a draggue, le mouseup -> click qui suit ne doit PAS
+    // ouvrir le fichier. On consomme le flag puis on sort.
+    if (draggedRef.current) {
+      draggedRef.current = false;
+      return;
+    }
+    openFile(filePath);
+  }
+
+  useEffect(() => {
+    if (!dragging) return;
+    function onMove(e: MouseEvent) {
+      const dx = e.clientX - dragStart.current.mouseX;
+      const dy = e.clientY - dragStart.current.mouseY;
+      if (Math.abs(dx) + Math.abs(dy) > DRAG_THRESHOLD_PX) {
+        draggedRef.current = true;
+      }
+      setPan({ x: dragStart.current.panX + dx, y: dragStart.current.panY + dy });
+    }
+    function onUp() {
+      setDragging(false);
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, [dragging]);
+
+  const transform = `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`;
+  const cursor = zoom > ZOOM_MIN ? (dragging ? "grabbing" : "grab") : "default";
 
   // Memorise les paths affiches au precedent render pour savoir lequel a change.
   // Necessaire car le useEffect ci-dessous depend des deux indices : sans ca on
@@ -164,6 +259,7 @@ export function ImageComparator({
 
   function onSliderMouseDown(e: React.MouseEvent) {
     e.preventDefault();
+    e.stopPropagation(); // empeche que le mousedown declenche le drag-pan du parent
     const wrap = sliderWrapRef.current;
     if (!wrap) return;
     function onMove(ev: MouseEvent) {
@@ -199,22 +295,34 @@ export function ImageComparator({
           <ImagePanel
             file={leftFile} thumb={leftThumb} meta={leftMeta}
             kept={isKept(leftFile)} onKeep={() => keepFile(leftFile.path)}
+            transform={transform} cursor={cursor}
+            onWheel={handleWheel} onMouseDown={handleMouseDown}
+            onImageClick={handleImageClick}
           />
           <div className="comparator-divider" />
           <ImagePanel
             file={rightFile} thumb={rightThumb} meta={rightMeta}
             kept={isKept(rightFile)} onKeep={() => keepFile(rightFile.path)}
+            transform={transform} cursor={cursor}
+            onWheel={handleWheel} onMouseDown={handleMouseDown}
+            onImageClick={handleImageClick}
           />
         </div>
       ) : (
         <div className="comparator-body comparator-body--overlay" data-testid="comparator-body-overlay">
-          <div className="comparator-slider-wrap" ref={sliderWrapRef}>
+          <div
+            className="comparator-slider-wrap"
+            ref={sliderWrapRef}
+            style={{ cursor }}
+            onWheel={handleWheel}
+            onMouseDown={handleMouseDown}
+          >
             {leftThumb && leftThumb !== "error" && (
               <img
                 src={leftThumb}
                 className="comparator-overlay-img"
                 alt={leftFile.name}
-                style={{ clipPath: `inset(0 ${100 - sliderPos}% 0 0)` }}
+                style={{ clipPath: `inset(0 ${100 - sliderPos}% 0 0)`, transform, transformOrigin: "0 0" }}
                 draggable={false}
               />
             )}
@@ -223,7 +331,7 @@ export function ImageComparator({
                 src={rightThumb}
                 className="comparator-overlay-img"
                 alt={rightFile.name}
-                style={{ clipPath: `inset(0 0 0 ${sliderPos}%)` }}
+                style={{ clipPath: `inset(0 0 0 ${sliderPos}%)`, transform, transformOrigin: "0 0" }}
                 draggable={false}
               />
             )}

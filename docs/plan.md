@@ -1162,6 +1162,19 @@ Lot de petites ameliorations post-1.1.1, chacune avec son propre changement focu
 - [x] 3 nouveaux tests TS dans `GroupCard.test.tsx` section "Badge original - independant du tri local" : badge sur le bon fichier sans tri (meme si files[0] dans le fixture n'est pas le plus ancien), badge stable apres tri par Nom asc, badge stable apres tri par Modifie desc.
 - [x] 317 tests Rust / 471 tests TypeScript / tsc clean.
 
+### Zoom + pan synchronises dans le comparateur d'images ✅ (1.2.2)
+
+**Feature** : permettre a l'utilisateur de zoomer dans les images du comparateur via la molette de la souris, avec le zoom synchronise entre les deux images affichees. Drag a la souris pour deplacer la vue quand zoom > 1. Reset automatique au close+reopen du comparateur.
+
+- [x] [src/ImageComparator.tsx](../src/ImageComparator.tsx) : state `zoom` (1..10, factor x1.2 par tic), `pan` (en pixels), `dragging` ; `handleWheel` calcule `newPan = cursor - (cursor - prevPan) * (newZoom / prevZoom)` pour que le point image sous le curseur reste sous le curseur apres zoom ; `handleMouseDown` + `useEffect` global pour mousemove/mouseup -> drag synchronise.
+- [x] Style CSS `transform: translate(panX, panY) scale(zoom)` + `transformOrigin: 0 0` applique aux deux `<img>` (mode cote-a-cote ET mode overlay -> meme state, sync visuelle gratuite car les conteneurs ont la meme taille). Cursor `grab` / `grabbing` quand `zoom > 1`.
+- [x] Detection drag vs clic via `draggedRef.current` (passe a `true` si la souris a bouge de plus de 3 px depuis le mousedown) : le clic ouvre le fichier dans le viewer externe uniquement si pas de drag detecte.
+- [x] `e.stopPropagation()` ajoute sur le mousedown du slider du mode overlay pour ne pas declencher le drag-pan en meme temps que le drag du slider.
+- [x] Pan reset a (0, 0) quand zoom revient a `ZOOM_MIN`, sinon position cumulee preservee. State entier reset au unmount du composant (close+reopen).
+- [x] 5 nouveaux tests TS dans `ImageComparator.test.tsx` section G : zoom monte (scroll up), zoom clamp a 1 (scroll down repete), sync entre les deux `<img>` (scroll cote droit zoome aussi le gauche), clic a zoom=1 ouvre le fichier.
+- [x] Article d'aide `comparator-modes` mis a jour FR+EN avec la section "Zoom et deplacement".
+- [x] 317 tests Rust / 478 tests TypeScript / tsc clean.
+
 ### Synchronisation des GIF animes dans le comparateur (Windows / WebView2) ✅ (1.2.2)
 
 **Bug residuel apres 1.2.1** : la cle React partagee sur les deux `<img>` resynchronisait bien les GIF sous WebKitGTK (Linux) mais PAS sous WebView2 (Windows). WebView2 conserve l'element DOM et l'animation en cours quand seule la `key` change et que la `src` est inchangee - le remount React n'est pas honore. Seul le cote dont la `src` change reellement redemarre, l'autre continue son animation.

@@ -279,3 +279,87 @@ describe("F - chargement des images", () => {
     });
   });
 });
+
+// ---- G : zoom + pan ----
+describe("G - zoom et pan synchronises", () => {
+  function getTransform(img: HTMLElement): string {
+    return img.style.transform ?? "";
+  }
+
+  it("scroll vers le haut (deltaY < 0) augmente le zoom des deux <img>", async () => {
+    render2();
+    await waitFor(() => expect(screen.getByAltText("img1.jpg")).toBeInTheDocument());
+    const leftImg = screen.getByAltText("img1.jpg");
+    const rightImg = screen.getByAltText("img2.jpg");
+    expect(getTransform(leftImg)).toMatch(/scale\(1\)/);
+    expect(getTransform(rightImg)).toMatch(/scale\(1\)/);
+
+    const area = leftImg.parentElement!;
+    fireEvent.wheel(area, { deltaY: -100, clientX: 50, clientY: 50 });
+
+    // ZOOM_FACTOR = 1.2 -> apres un tic up, zoom = 1.2
+    expect(getTransform(leftImg)).toMatch(/scale\(1\.2\)/);
+    expect(getTransform(rightImg)).toMatch(/scale\(1\.2\)/);
+  });
+
+  it("scroll vers le bas (deltaY > 0) diminue le zoom mais clamp a 1", async () => {
+    render2();
+    await waitFor(() => expect(screen.getByAltText("img1.jpg")).toBeInTheDocument());
+    const leftImg = screen.getByAltText("img1.jpg");
+    const area = leftImg.parentElement!;
+
+    // Trois scroll up puis quatre scroll down -> on doit etre clamp a 1
+    fireEvent.wheel(area, { deltaY: -100, clientX: 50, clientY: 50 });
+    fireEvent.wheel(area, { deltaY: -100, clientX: 50, clientY: 50 });
+    fireEvent.wheel(area, { deltaY: -100, clientX: 50, clientY: 50 });
+    fireEvent.wheel(area, { deltaY: 100, clientX: 50, clientY: 50 });
+    fireEvent.wheel(area, { deltaY: 100, clientX: 50, clientY: 50 });
+    fireEvent.wheel(area, { deltaY: 100, clientX: 50, clientY: 50 });
+    fireEvent.wheel(area, { deltaY: 100, clientX: 50, clientY: 50 });
+
+    expect(getTransform(leftImg)).toMatch(/scale\(1\)/);
+    // Au retour a zoom=1, le pan est reset a (0, 0)
+    expect(getTransform(leftImg)).toMatch(/translate\(0px, 0px\)/);
+  });
+
+  it("ne descend jamais en dessous de zoom = 1", async () => {
+    render2();
+    await waitFor(() => expect(screen.getByAltText("img1.jpg")).toBeInTheDocument());
+    const leftImg = screen.getByAltText("img1.jpg");
+    const area = leftImg.parentElement!;
+
+    fireEvent.wheel(area, { deltaY: 100, clientX: 50, clientY: 50 });
+    fireEvent.wheel(area, { deltaY: 100, clientX: 50, clientY: 50 });
+
+    expect(getTransform(leftImg)).toMatch(/scale\(1\)/);
+  });
+
+  it("le scroll cote droit zoome aussi le cote gauche (sync)", async () => {
+    render2();
+    await waitFor(() => expect(screen.getByAltText("img2.jpg")).toBeInTheDocument());
+    const leftImg = screen.getByAltText("img1.jpg");
+    const rightImg = screen.getByAltText("img2.jpg");
+    const rightArea = rightImg.parentElement!;
+
+    fireEvent.wheel(rightArea, { deltaY: -100, clientX: 100, clientY: 50 });
+
+    expect(getTransform(leftImg)).toMatch(/scale\(1\.2\)/);
+    expect(getTransform(rightImg)).toMatch(/scale\(1\.2\)/);
+  });
+
+  it("clic sur l'image a zoom = 1 ouvre le fichier (pas de drag detecte)", async () => {
+    const user = userEvent.setup();
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "open_file") return Promise.resolve(null);
+      return Promise.resolve("data:image/jpeg;base64,abc");
+    });
+    render2();
+    await waitFor(() => expect(screen.getByAltText("img1.jpg")).toBeInTheDocument());
+    const leftImg = screen.getByAltText("img1.jpg");
+
+    await user.click(leftImg);
+
+    expect(mockInvoke).toHaveBeenCalledWith("open_file", expect.anything());
+  });
+});
+
