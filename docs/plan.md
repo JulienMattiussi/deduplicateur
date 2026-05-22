@@ -1162,6 +1162,15 @@ Lot de petites ameliorations post-1.1.1, chacune avec son propre changement focu
 - [x] 3 nouveaux tests TS dans `GroupCard.test.tsx` section "Badge original - independant du tri local" : badge sur le bon fichier sans tri (meme si files[0] dans le fixture n'est pas le plus ancien), badge stable apres tri par Nom asc, badge stable apres tri par Modifie desc.
 - [x] 317 tests Rust / 471 tests TypeScript / tsc clean.
 
+### Synchronisation des GIF animes dans le comparateur (Windows / WebView2) ✅ (1.2.2)
+
+**Bug residuel apres 1.2.1** : la cle React partagee sur les deux `<img>` resynchronisait bien les GIF sous WebKitGTK (Linux) mais PAS sous WebView2 (Windows). WebView2 conserve l'element DOM et l'animation en cours quand seule la `key` change et que la `src` est inchangee - le remount React n'est pas honore. Seul le cote dont la `src` change reellement redemarre, l'autre continue son animation.
+
+- [x] [src/ImageComparator.tsx](../src/ImageComparator.tsx) : refonte du fetch en un seul `useEffect` dependant des deux indices, avec `useRef` pour memoriser les paths affiches au precedent render et detecter lequel a vraiment change. Si le groupe contient au moins un fichier `.gif` -> reset les DEUX thumbs a `null` (les deux `<img>` sont retires du DOM via condition de rendu false) + fetch les deux URLs en parallele via `Promise.all` + `setLeftThumb` / `setRightThumb` dans le meme `.then()` -> React batche les setState -> un seul re-render -> les deux balises remontent dans le meme tick -> animations alignees frame 0. Sinon (pas de GIF) -> on ne refetch que le cote qui a vraiment change, preservant l'UX des images statiques (pas de clignotement parasite).
+- [x] Suppression du prop `imgKey` d'`ImagePanel` et de la `key` partagee sur les `<img>` en mode overlay : devenus inutiles avec le nouveau pattern, et insuffisants seuls sous WebView2.
+- [x] 2 tests TS dans `ImageComparator.test.tsx` section F : `groupe avec un GIF : changer un onglet refetch les DEUX urls` (verifie que `get_image_url` est appele pour les deux paths quand un onglet change dans un groupe `.gif`) et `groupe sans GIF : changer un onglet ne refetch que le cote qui change` (verifie l'absence de refetch parasite sur l'autre cote pour les groupes purs images statiques). L'ancien test "remonte aussi l'img gauche" remplace puisque base sur la mecanique de key non-fiable.
+- [x] 317 tests Rust / 473 tests TypeScript / tsc clean.
+
 ### Synchronisation des GIF animes dans le comparateur d'images ✅
 
 **Bug** : dans un groupe a 3+ fichiers contenant des GIF animes, changer le fichier compare d'un cote via les onglets faisait redemarrer ce cote a la frame 0 mais l'autre cote continuait son animation en cours. Resultat : les deux GIF jouaient a des positions differentes, desynchronises. Specifique aux GIF parce que `<img>` HTML5 n'expose aucune API JS pour controler la position d'animation - la seule facon de re-synchroniser est de demonter / remonter les deux <img> ensemble.

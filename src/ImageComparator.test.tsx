@@ -191,34 +191,71 @@ describe("F - chargement des images", () => {
     });
   });
 
-  it("changer l'onglet droit remonte aussi l'img gauche (sync GIF animes)", async () => {
-    // Quand l'utilisateur change le fichier compare d'un cote, les deux <img>
-    // doivent etre demontees-remontees ensemble pour que les GIF animes
-    // redemarrent simultanement (pas d'API JS pour controler une position dans
-    // un <img>). Vu sans le fix : le <img> non touche garde sa reference DOM
-    // et son GIF continue de jouer pendant que l'autre repart a 0.
+  it("groupe avec un GIF : changer un onglet refetch les DEUX urls (sync GIF animes)", async () => {
+    // Quand le groupe contient au moins un GIF anime, changer le fichier compare
+    // d'un cote re-fetch aussi l'URL de l'autre cote, et set les deux thumbs
+    // ensemble dans le meme tick pour que les deux <img> remontent simultanement
+    // (pas d'API JS pour controler une position dans un <img>, et sous WebView2
+    // Windows la cle React seule ne suffit pas si la src est inchangee).
+    const user = userEvent.setup();
+    const gifGroup3 = {
+      id: "gif3", hash: "ghi", size: 1024, similar: true, video_similar: false,
+      files: [
+        makeFile("/a/anim1.gif", "anim1.gif"),
+        makeFile("/b/anim2.gif", "anim2.gif"),
+        makeFile("/c/anim3.gif", "anim3.gif"),
+      ],
+    };
+    render2({ groups: [gifGroup3] });
+    await waitFor(() => {
+      expect(screen.getByAltText("anim1.gif")).toBeInTheDocument();
+      expect(screen.getByAltText("anim2.gif")).toBeInTheDocument();
+    });
+
+    mockInvoke.mockClear();
+
+    // Clic sur l'onglet du 3e fichier dans la barre droite : seul rightIdx change
+    const tabsRight = screen.getByTestId("tabs-right");
+    await user.click(within(tabsRight).getByText("anim3.gif"));
+
+    await waitFor(() => {
+      expect(screen.getByAltText("anim3.gif")).toBeInTheDocument();
+    });
+
+    // Les deux URLs doivent avoir ete re-fetchees (gauche inchangee fonctionnellement
+    // mais re-fetchee pour batcher le remount avec la droite).
+    const urlCalls = mockInvoke.mock.calls
+      .filter(c => c[0] === "get_image_url")
+      .map(c => (c[1] as { path: string }).path);
+    expect(urlCalls).toContain("/a/anim1.gif");
+    expect(urlCalls).toContain("/c/anim3.gif");
+  });
+
+  it("groupe sans GIF : changer un onglet ne refetch que le cote qui change", async () => {
+    // Cas miroir : pour un groupe d'images statiques (PNG, JPEG, etc), inutile
+    // de remonter l'autre cote a chaque changement d'onglet. On preserve l'UX
+    // en ne re-fetching que le cote qui change vraiment.
     const user = userEvent.setup();
     render2({ groups: [group3] });
     await waitFor(() => {
       expect(screen.getByAltText("img3.jpg")).toBeInTheDocument();
       expect(screen.getByAltText("img4.jpg")).toBeInTheDocument();
     });
-    const leftBefore = screen.getByAltText("img3.jpg");
-    const rightBefore = screen.getByAltText("img4.jpg");
 
-    // Clic sur l'onglet du 3e fichier dans la barre droite
+    mockInvoke.mockClear();
+
     const tabsRight = screen.getByTestId("tabs-right");
     await user.click(within(tabsRight).getByText("img5.jpg"));
 
     await waitFor(() => {
       expect(screen.getByAltText("img5.jpg")).toBeInTheDocument();
     });
-    const leftAfter = screen.getByAltText("img3.jpg");
-    const rightAfter = screen.getByAltText("img5.jpg");
 
-    // Les deux noeuds DOM doivent etre nouveaux (la key partagee a force le remount)
-    expect(leftAfter).not.toBe(leftBefore);
-    expect(rightAfter).not.toBe(rightBefore);
+    const urlCalls = mockInvoke.mock.calls
+      .filter(c => c[0] === "get_image_url")
+      .map(c => (c[1] as { path: string }).path);
+    expect(urlCalls).toContain("/e/img5.jpg");
+    expect(urlCalls).not.toContain("/c/img3.jpg"); // cote gauche non refetche
   });
 
   it("affiche l'URL retournee pour un .gif (URL media server, anime nativement)", async () => {

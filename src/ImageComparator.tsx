@@ -42,14 +42,12 @@ function ImagePanel({
   meta,
   kept,
   onKeep,
-  imgKey,
 }: {
   file: DuplicateFile;
   thumb: string | null;
   meta: ImageMeta | null;
   kept: boolean;
   onKeep: () => void;
-  imgKey?: string;
 }) {
   return (
     <div className="comparator-panel">
@@ -58,7 +56,6 @@ function ImagePanel({
         {thumb === "error" && <span className="comparator-thumb-error">🖼</span>}
         {thumb && thumb !== "error" && (
           <img
-            key={imgKey}
             src={thumb}
             alt={file.name}
             className="comparator-img"
@@ -92,41 +89,78 @@ export function ImageComparator({
   const [rightMeta, setRightMeta] = useState<ImageMeta | null>(null);
   const sliderWrapRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!nav.hasValidGroup) return;
-    setLeftThumb(null);
-    setLeftMeta(null);
-    setSliderPos(50);
-    const lf = nav.group.files[nav.effectiveLeftIdx];
-    // get_image_url anime les GIF (renvoie l'URL du media server) et retombe sur
-    // une data URL JPEG redimensionnee pour les autres formats.
-    invoke<string>("get_image_url", { path: lf.path, maxSize: 800 })
-      .then(setLeftThumb).catch(() => setLeftThumb("error"));
-    invoke<ImageMeta>("get_image_meta", { path: lf.path })
-      .then(setLeftMeta).catch(() => {});
-  }, [nav.groupIdx, nav.effectiveLeftIdx]);
+  // Memorise les paths affiches au precedent render pour savoir lequel a change.
+  // Necessaire car le useEffect ci-dessous depend des deux indices : sans ca on
+  // ne pourrait pas distinguer "left a change" de "right a change" et on devrait
+  // toujours reset les deux cotes (regression UX pour les images statiques).
+  const prevPaths = useRef({ left: "", right: "" });
 
   useEffect(() => {
     if (!nav.hasValidGroup) return;
-    setRightThumb(null);
-    setRightMeta(null);
+
+    const lf = nav.group.files[nav.effectiveLeftIdx];
     const rf = nav.group.files[nav.effectiveRightIdx];
-    invoke<string>("get_image_url", { path: rf.path, maxSize: 800 })
-      .then(setRightThumb).catch(() => setRightThumb("error"));
-    invoke<ImageMeta>("get_image_meta", { path: rf.path })
-      .then(setRightMeta).catch(() => {});
-  }, [nav.groupIdx, nav.effectiveRightIdx]);
+    const leftChanged = prevPaths.current.left !== lf.path;
+    const rightChanged = prevPaths.current.right !== rf.path;
+    if (!leftChanged && !rightChanged) return;
+    prevPaths.current = { left: lf.path, right: rf.path };
+
+    setSliderPos(50);
+
+    // Si le groupe contient au moins un GIF anime, on reset ET re-fetch les
+    // deux cotes ensemble pour resynchroniser les animations. Les `<img>`
+    // HTML5 n'ont pas d'API JS pour controler la position d'animation, et
+    // sous WebView2 (Windows) la cle React seule ne suffit pas a forcer le
+    // remount si la `src` est inchangee. Reset des thumbs a null -> les `<img>`
+    // sont vraiment retires du DOM (condition de rendu false), puis re-fetch
+    // les deux URLs en parallele et setLeftThumb + setRightThumb dans le meme
+    // `.then()` -> React batche les setState -> les deux balises remontent
+    // dans le meme tick -> les deux GIF demarrent ensemble.
+    //
+    // Pour les groupes sans GIF, on garde la granularite : on ne reset que le
+    // cote qui a vraiment change. Pas de clignotement parasite sur l'autre.
+    const groupHasGif = nav.group.files.some(f =>
+      f.path.toLowerCase().endsWith(".gif")
+    );
+
+    if (groupHasGif) {
+      setLeftThumb(null);
+      setRightThumb(null);
+      setLeftMeta(null);
+      setRightMeta(null);
+      Promise.all([
+        invoke<string>("get_image_url", { path: lf.path, maxSize: 800 }).catch(() => "error"),
+        invoke<string>("get_image_url", { path: rf.path, maxSize: 800 }).catch(() => "error"),
+      ]).then(([leftUrl, rightUrl]) => {
+        setLeftThumb(leftUrl);
+        setRightThumb(rightUrl);
+      });
+      invoke<ImageMeta>("get_image_meta", { path: lf.path }).then(setLeftMeta).catch(() => {});
+      invoke<ImageMeta>("get_image_meta", { path: rf.path }).then(setRightMeta).catch(() => {});
+      return;
+    }
+
+    if (leftChanged) {
+      setLeftThumb(null);
+      setLeftMeta(null);
+      invoke<string>("get_image_url", { path: lf.path, maxSize: 800 })
+        .then(setLeftThumb).catch(() => setLeftThumb("error"));
+      invoke<ImageMeta>("get_image_meta", { path: lf.path })
+        .then(setLeftMeta).catch(() => {});
+    }
+    if (rightChanged) {
+      setRightThumb(null);
+      setRightMeta(null);
+      invoke<string>("get_image_url", { path: rf.path, maxSize: 800 })
+        .then(setRightThumb).catch(() => setRightThumb("error"));
+      invoke<ImageMeta>("get_image_meta", { path: rf.path })
+        .then(setRightMeta).catch(() => {});
+    }
+  }, [nav.groupIdx, nav.effectiveLeftIdx, nav.effectiveRightIdx, nav.hasValidGroup, nav.group]);
 
   if (!nav.hasValidGroup) return null;
 
   const { leftFile, rightFile, keepFile, isKept } = nav;
-
-  // Cle de remount partagee : change a chaque fois que l'utilisateur change l'un
-  // OU l'autre des fichiers compares. Force React a demonter et remonter les deux
-  // <img> simultanement, ce qui resynchronise les GIF animes (qui n'ont pas d'API
-  // JS de controle de position). Pour les images statiques le remount est
-  // invisible (data URL en cache memoire).
-  const remountKey = `${nav.groupIdx}-${nav.effectiveLeftIdx}-${nav.effectiveRightIdx}`;
 
   function onSliderMouseDown(e: React.MouseEvent) {
     e.preventDefault();
@@ -165,13 +199,11 @@ export function ImageComparator({
           <ImagePanel
             file={leftFile} thumb={leftThumb} meta={leftMeta}
             kept={isKept(leftFile)} onKeep={() => keepFile(leftFile.path)}
-            imgKey={`L-${remountKey}`}
           />
           <div className="comparator-divider" />
           <ImagePanel
             file={rightFile} thumb={rightThumb} meta={rightMeta}
             kept={isKept(rightFile)} onKeep={() => keepFile(rightFile.path)}
-            imgKey={`R-${remountKey}`}
           />
         </div>
       ) : (
@@ -179,7 +211,6 @@ export function ImageComparator({
           <div className="comparator-slider-wrap" ref={sliderWrapRef}>
             {leftThumb && leftThumb !== "error" && (
               <img
-                key={`L-${remountKey}`}
                 src={leftThumb}
                 className="comparator-overlay-img"
                 alt={leftFile.name}
@@ -189,7 +220,6 @@ export function ImageComparator({
             )}
             {rightThumb && rightThumb !== "error" && (
               <img
-                key={`R-${remountKey}`}
                 src={rightThumb}
                 className="comparator-overlay-img"
                 alt={rightFile.name}

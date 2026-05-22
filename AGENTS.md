@@ -618,6 +618,23 @@ type de composant et demonte/remonte l'integralite du sous-arbre DOM - l'element
 recrée et perd son etat (position, lecture en cours). **Toujours definir les composants au niveau
 module**, jamais a l'interieur d'un autre composant.
 
+### Synchronisation de deux GIF animes `<img>` : reset les deux thumbs ensemble, pas juste une `key`
+
+Les GIF animes affiches via `<img src=...>` n'ont **aucune API JS pour controler la position d'animation**. Quand deux GIF jouent en parallele dans un comparateur et que l'utilisateur change l'un des deux via une barre d'onglets, le cote modifie redemarre a frame 0 (le navigateur charge la nouvelle src) mais l'autre cote continue son animation -> desync visible.
+
+**Premiere tentative (insuffisante)** : passer une `key` partagee aux deux `<img>` qui change a chaque modif d'onglet, en se reposant sur React pour demonter+remonter les deux balises ensemble. Marche sous **WebKitGTK (Linux)** mais PAS sous **WebView2 (Windows)** : WebView2 conserve l'element DOM et l'animation en cours quand seule la `key` React change et que la `src` est inchangee. Le remount React n'est pas honore.
+
+**Solution qui marche partout** : forcer le demontage reel via la condition de rendu, puis batcher les setState :
+1. Detecter si le groupe contient au moins un GIF (`file.path.toLowerCase().endsWith(".gif")`).
+2. Si oui, dans le `useEffect` qui suit les changements d'onglet : `setLeftThumb(null)` ET `setRightThumb(null)`. Les `<img>` disparaissent vraiment du DOM (rendu conditionnel `{thumb && ...}` devient false).
+3. Fetch les deux URLs en parallele via `Promise.all`.
+4. `setLeftThumb` + `setRightThumb` dans le **meme `.then()`** : React batche les setState en un seul re-render -> les deux `<img>` montent dans le meme tick -> les deux GIF demarrent a frame 0 ensemble.
+5. Si pas de GIF : preserver l'UX en ne refetchant que le cote qui a vraiment change (sinon clignotement parasite sur l'autre cote pour des images statiques qui n'en ont pas besoin).
+
+Detection du "cote qui a change" via `useRef({ left: "", right: "" })` qui memorise les paths au precedent render, car le `useEffect` doit maintenant dependre des DEUX indices pour pouvoir reset les deux ensemble en cas de GIF.
+
+Cf. `src/ImageComparator.tsx` pour l'implementation. Tests d'invariance dans `src/ImageComparator.test.tsx` section F.
+
 ### Synchronisation bidirectionnelle de deux `<video>` : boucle infinie asynchrone
 Un guard `syncingRef` ne protege pas contre les evenements asynchrones du navigateur.
 Scenario : `left.play()` → `onPlay` → `syncingRef = true` → `right.play()` → `syncingRef = false`
