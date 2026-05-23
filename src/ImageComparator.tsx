@@ -190,6 +190,13 @@ export function ImageComparator({
   // toujours reset les deux cotes (regression UX pour les images statiques).
   const prevPaths = useRef({ left: "", right: "" });
 
+  // Compteur incrementé a chaque "reset" pour les groupes contenant un GIF :
+  // ajoute en fragment URL `#_remount=N` aux deux sources pour forcer le browser
+  // a considerer chaque load comme une URL distincte. Sans ca, WebView2 (Windows)
+  // reutilise l'image GIF deja decodee et l'animation continue (le reset+refetch
+  // de la src identique ne suffit pas a faire redemarrer l'animation a frame 0).
+  const gifTickRef = useRef(0);
+
   useEffect(() => {
     if (!nav.hasValidGroup) return;
 
@@ -219,6 +226,7 @@ export function ImageComparator({
     );
 
     if (groupHasGif) {
+      const tick = ++gifTickRef.current;
       setLeftThumb(null);
       setRightThumb(null);
       setLeftMeta(null);
@@ -227,8 +235,14 @@ export function ImageComparator({
         invoke<string>("get_image_url", { path: lf.path, maxSize: 800 }).catch(() => "error"),
         invoke<string>("get_image_url", { path: rf.path, maxSize: 800 }).catch(() => "error"),
       ]).then(([leftUrl, rightUrl]) => {
-        setLeftThumb(leftUrl);
-        setRightThumb(rightUrl);
+        // Append fragment URL pour que WebView2 considere chaque load comme une
+        // nouvelle URL et redecode le GIF a frame 0. Sans ca, WebView2 reutilise
+        // le decodage en cache et l'animation continue depuis sa position
+        // actuelle, meme apres un remount du <img>.
+        const withTick = (url: string) =>
+          url === "error" ? url : `${url}#_remount=${tick}`;
+        setLeftThumb(withTick(leftUrl));
+        setRightThumb(withTick(rightUrl));
       });
       invoke<ImageMeta>("get_image_meta", { path: lf.path }).then(setLeftMeta).catch(() => {});
       invoke<ImageMeta>("get_image_meta", { path: rf.path }).then(setRightMeta).catch(() => {});

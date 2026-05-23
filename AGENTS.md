@@ -624,12 +624,19 @@ Les GIF animes affiches via `<img src=...>` n'ont **aucune API JS pour controler
 
 **Premiere tentative (insuffisante)** : passer une `key` partagee aux deux `<img>` qui change a chaque modif d'onglet, en se reposant sur React pour demonter+remonter les deux balises ensemble. Marche sous **WebKitGTK (Linux)** mais PAS sous **WebView2 (Windows)** : WebView2 conserve l'element DOM et l'animation en cours quand seule la `key` React change et que la `src` est inchangee. Le remount React n'est pas honore.
 
-**Solution qui marche partout** : forcer le demontage reel via la condition de rendu, puis batcher les setState :
+**Deuxieme tentative (encore insuffisante sous WebView2)** : forcer le demontage reel via la condition de rendu, puis batcher les setState :
 1. Detecter si le groupe contient au moins un GIF (`file.path.toLowerCase().endsWith(".gif")`).
 2. Si oui, dans le `useEffect` qui suit les changements d'onglet : `setLeftThumb(null)` ET `setRightThumb(null)`. Les `<img>` disparaissent vraiment du DOM (rendu conditionnel `{thumb && ...}` devient false).
 3. Fetch les deux URLs en parallele via `Promise.all`.
-4. `setLeftThumb` + `setRightThumb` dans le **meme `.then()`** : React batche les setState en un seul re-render -> les deux `<img>` montent dans le meme tick -> les deux GIF demarrent a frame 0 ensemble.
-5. Si pas de GIF : preserver l'UX en ne refetchant que le cote qui a vraiment change (sinon clignotement parasite sur l'autre cote pour des images statiques qui n'en ont pas besoin).
+4. `setLeftThumb` + `setRightThumb` dans le meme `.then()` : React batche les setState en un seul re-render -> les deux `<img>` montent dans le meme tick.
+
+Insuffisant : WebView2 maintient un **cache GIF par URL** independant du cycle DOM. Quand on remonte un `<img>` avec la meme `src`, le browser reutilise l'animation deja decodee et reprend depuis sa position en cours - le remount React ne reinitialise pas l'animation.
+
+**Solution qui marche partout** : ajouter le steps 1-4 ci-dessus PLUS forcer une URL effectivement differente a chaque cycle via un fragment URL :
+
+5. Maintenir un compteur `gifTickRef = useRef(0)`. Incrementer a chaque `useEffect` qui touche un groupe GIF (`++gifTickRef.current`).
+6. Apres le `Promise.all`, append `#_remount=${tick}` aux deux URLs avant de les set. `data:image/gif;base64,...#_remount=1` ou `http://127.0.0.1:port/path.gif#_remount=1` sont valides : le serveur HTTP / le decoder data-URL ignore le fragment, mais le browser considere chaque URL comme distincte -> nouveau load -> nouveau decodage -> animation a frame 0.
+7. Si pas de GIF : preserver l'UX en ne refetchant que le cote qui a vraiment change (sinon clignotement parasite sur l'autre cote pour des images statiques qui n'en ont pas besoin).
 
 Detection du "cote qui a change" via `useRef({ left: "", right: "" })` qui memorise les paths au precedent render, car le `useEffect` doit maintenant dependre des DEUX indices pour pouvoir reset les deux ensemble en cas de GIF.
 
