@@ -1162,6 +1162,18 @@ Lot de petites ameliorations post-1.1.1, chacune avec son propre changement focu
 - [x] 3 nouveaux tests TS dans `GroupCard.test.tsx` section "Badge original - independant du tri local" : badge sur le bon fichier sans tri (meme si files[0] dans le fixture n'est pas le plus ancien), badge stable apres tri par Nom asc, badge stable apres tri par Modifie desc.
 - [x] 317 tests Rust / 471 tests TypeScript / tsc clean.
 
+### Zoom + pan synchronises dans le comparateur de videos ✅ (1.2.2)
+
+**Feature** : etendre le zoom + pan synchronise (deja present sur le comparateur d'images depuis ce meme cycle de release) au comparateur de videos. Meme molette pour zoomer centre sur le curseur, meme drag pour panner, meme sync visuel entre les deux panneaux, meme reset au close+reopen.
+
+- [x] [src/hooks/useZoomPan.ts](../src/hooks/useZoomPan.ts) (nouveau) : hook reutilisable qui sort la logique de zoom/pan du `ImageComparator`. Encapsule le state (`zoom`, `pan`, `dragging`), les constantes (`ZOOM_MIN=1`, `ZOOM_MAX=10`, `ZOOM_FACTOR=1.2`, `DRAG_THRESHOLD_PX=3`), les handlers (`handleWheel`, `handleMouseDown`), le `useEffect` global du drag (mousemove/mouseup), et expose `transform`, `cursor`, et `wasDragged()` (pour distinguer un clic d'un drag-suivi-de-relachement).
+- [x] [src/ImageComparator.tsx](../src/ImageComparator.tsx) : refactor pour utiliser `useZoomPan`. Suppression de ~50 lignes de logique inline, comportement strictement equivalent (29 tests passent inchanges).
+- [x] [src/VideoComparator.tsx](../src/VideoComparator.tsx) : integration `useZoomPan`. `transform` + `cursor` + `onWheel` + `onMouseDown` passes aux deux `VideoPanel` (mode cote-a-cote uniquement, pas de mode overlay video). `transform-origin: 0 0` applique au `<video>`.
+- [x] Compromis documente : a zoom > 1, le mousedown intercepte les controls natifs du `<video>` master (play/pause au clic, scrub bar). Dezoomer (molette inversee) restitue l'acces.
+- [x] 5 nouveaux tests TS dans `VideoComparator.test.tsx` section G : zoom monte cote gauche, sync depuis cote droit, clamp a 1, cursor `zoom-in` a idle, cursor `grab` apres zoom.
+- [x] Article d'aide `video-comparator-sync` mis a jour FR+EN.
+- [x] 321 tests Rust / 487 tests TypeScript / tsc clean.
+
 ### Images servies en resolution native pour le comparateur ✅ (1.2.2)
 
 **Feature** : le comparateur d'images affichait jusque la une miniature JPEG 800px (data URL) pour tous les formats sauf les `.gif`. Resultat : des qu'on zoomait au-dela d'environ 1x sur une image plus grande que 800px, on voyait des pixels du redimensionnement -> impossible de comparer les details au pixel pres, ce qui est pourtant la raison d'etre du comparateur dans un dedup d'images.

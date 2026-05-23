@@ -601,12 +601,16 @@ The **📂** button next to the folder name opens the file's folder in the file 
 
 **Synchronisation automatique** : play, pause et déplacement dans la vidéo de gauche sont immédiatement répercutés sur la droite. La vidéo de droite est muette par défaut pour éviter la superposition du son.
 
-**Onglets de fichiers** : pour les groupes de 3+ fichiers, des onglets en haut (Gauche / Droite) permettent de sélectionner quel fichier s'affiche dans chaque panneau. Changer d'onglet ne modifie pas l'autre panneau.`,
+**Onglets de fichiers** : pour les groupes de 3+ fichiers, des onglets en haut (Gauche / Droite) permettent de sélectionner quel fichier s'affiche dans chaque panneau. Changer d'onglet ne modifie pas l'autre panneau.
+
+**Zoom et déplacement** : comme pour le comparateur d'images, le **curseur loupe** au survol signale que le zoom est disponible. Utilisez la **molette de la souris** pour zoomer (jusqu'à 10x), centré sur la position du curseur et **synchronisé entre les deux vidéos**. Une fois zoomé, cliquez-glissez pour **déplacer la vue** dans les deux lecteurs en même temps. Le zoom est réinitialisé en fermant et rouvrant le comparateur. À noter : à zoom > 1, les contrôles natifs du lecteur (play/pause au clic, scrubber) sont temporairement neutralisés au profit du drag-pan ; dézoomer (molette inversée) restitue l'accès aux contrôles.`,
       en: `**Controls on the left video**: the native playback bar (play/pause, scrubbing, volume) is shown only below the left video. The right video follows automatically.
 
 **Automatic synchronization**: play, pause, and seeking in the left video are immediately applied to the right. The right video is muted by default to avoid sound overlap.
 
-**File tabs**: for groups of 3+ files, tabs at the top (Left / Right) let you select which file appears in each panel. Changing one tab does not affect the other.`,
+**File tabs**: for groups of 3+ files, tabs at the top (Left / Right) let you select which file appears in each panel. Changing one tab does not affect the other.
+
+**Zoom and pan**: like the image comparator, the **magnifier cursor** when hovering signals that zoom is available. Use the **mouse wheel** to zoom (up to 10x), centered on the cursor position and **synchronised between both videos**. Once zoomed, click-and-drag to **pan the view** in both players at once. Zoom is reset when closing and reopening the comparator. Note: while zoomed (> 1x), the native player controls (click to play/pause, scrubber) are temporarily intercepted by drag-pan; zoom back out (reverse wheel) to regain control access.`,
     },
   },
 

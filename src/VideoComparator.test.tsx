@@ -355,3 +355,66 @@ describe("F - chargement des metadonnees", () => {
     });
   });
 });
+
+// ---- G : zoom + pan synchronises ----
+describe("G - zoom et pan synchronises", () => {
+  function getTransform(el: HTMLElement): string {
+    return el.style.transform ?? "";
+  }
+
+  it("scroll vers le haut augmente le zoom des deux <video>", async () => {
+    renderComp();
+    await waitFor(() => expect(screen.getByTestId("video-left")).toBeInTheDocument());
+    const leftVideo = screen.getByTestId("video-left");
+    const rightVideo = screen.getByTestId("video-right");
+    expect(getTransform(leftVideo)).toMatch(/scale\(1\)/);
+    expect(getTransform(rightVideo)).toMatch(/scale\(1\)/);
+
+    const area = leftVideo.parentElement!;
+    fireEvent.wheel(area, { deltaY: -100, clientX: 50, clientY: 50 });
+
+    expect(getTransform(leftVideo)).toMatch(/scale\(1\.2\)/);
+    expect(getTransform(rightVideo)).toMatch(/scale\(1\.2\)/);
+  });
+
+  it("le scroll cote droit zoome aussi le cote gauche (sync)", async () => {
+    renderComp();
+    await waitFor(() => expect(screen.getByTestId("video-right")).toBeInTheDocument());
+    const leftVideo = screen.getByTestId("video-left");
+    const rightVideo = screen.getByTestId("video-right");
+    const rightArea = rightVideo.parentElement!;
+
+    fireEvent.wheel(rightArea, { deltaY: -100, clientX: 100, clientY: 50 });
+
+    expect(getTransform(leftVideo)).toMatch(/scale\(1\.2\)/);
+    expect(getTransform(rightVideo)).toMatch(/scale\(1\.2\)/);
+  });
+
+  it("scroll vers le bas ne descend pas en dessous de zoom = 1", async () => {
+    renderComp();
+    await waitFor(() => expect(screen.getByTestId("video-left")).toBeInTheDocument());
+    const leftVideo = screen.getByTestId("video-left");
+    const area = leftVideo.parentElement!;
+
+    fireEvent.wheel(area, { deltaY: 100, clientX: 50, clientY: 50 });
+    fireEvent.wheel(area, { deltaY: 100, clientX: 50, clientY: 50 });
+
+    expect(getTransform(leftVideo)).toMatch(/scale\(1\)/);
+  });
+
+  it("cursor 'zoom-in' (loupe) sur la zone video a zoom = 1", async () => {
+    renderComp();
+    await waitFor(() => expect(screen.getByTestId("video-left")).toBeInTheDocument());
+    const area = screen.getByTestId("video-left").parentElement!;
+    expect(area.style.cursor).toBe("zoom-in");
+  });
+
+  it("cursor 'grab' apres un zoom > 1 (pan dispo)", async () => {
+    renderComp();
+    await waitFor(() => expect(screen.getByTestId("video-left")).toBeInTheDocument());
+    const leftVideo = screen.getByTestId("video-left");
+    const area = leftVideo.parentElement!;
+    fireEvent.wheel(area, { deltaY: -100, clientX: 50, clientY: 50 });
+    expect(area.style.cursor).toBe("grab");
+  });
+});

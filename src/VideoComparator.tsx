@@ -7,6 +7,7 @@ import type { ComparatorProps } from "./comparatorShared";
 import { useComparatorNav, ComparatorShell, MetaBlockBase, KeepButton, toMediaUrl } from "./comparatorShared";
 import { isNativePlayerAvailable } from "./components/NativeVideo";
 import { NativeComparatorBody } from "./components/NativeComparatorBody";
+import { useZoomPan } from "./hooks/useZoomPan";
 import type { AudioTrack } from "./types";
 
 function channelsLabel(channels?: number | null, layout?: string | null): string {
@@ -100,6 +101,10 @@ function VideoPanel({
   onPause,
   onSeeked,
   onKeep,
+  transform,
+  cursor,
+  onWheel,
+  onMouseDown,
 }: {
   file: DuplicateFile;
   meta: VideoMetadata | null;
@@ -114,11 +119,20 @@ function VideoPanel({
   onPause?: () => void;
   onSeeked?: () => void;
   onKeep: () => void;
+  transform: string;
+  cursor: string;
+  onWheel: (e: React.WheelEvent<HTMLDivElement>) => void;
+  onMouseDown: (e: React.MouseEvent<HTMLDivElement>) => void;
 }) {
   const { t } = useLang();
   return (
     <div className="comparator-panel">
-      <div className="comparator-image-area comparator-video-area">
+      <div
+        className="comparator-image-area comparator-video-area"
+        style={{ cursor }}
+        onWheel={onWheel}
+        onMouseDown={onMouseDown}
+      >
         {unsupported ? (
           <div className="comparator-video-unsupported" data-testid={`video-unsupported-${side}`}>
             <div className="comparator-video-unsupported-title">{t.videoUnsupported}</div>
@@ -137,6 +151,7 @@ function VideoPanel({
               className="comparator-video"
               controls={master}
               muted={!master}
+              style={{ transform, transformOrigin: "0 0" }}
               onPlay={master ? onPlay : undefined}
               onPause={master ? onPause : undefined}
               onSeeked={master ? onSeeked : undefined}
@@ -217,6 +232,16 @@ export function VideoComparator({
     return () => { cancelled = true; };
   }, [nav.groupIdx, nav.effectiveRightIdx]);
 
+  // Zoom + pan partages entre les deux <video>. Le hook gere la molette
+  // (zoom centre sur la position du curseur), le drag-pan quand zoom > 1, et
+  // produit un `transform` CSS applique aux deux balises pour synchronisation
+  // visuelle automatique (les conteneurs ont la meme taille).
+  // ATTENTION : a zoom > 1, le mousedown intercepte les controls natifs du
+  // <video> master (play/pause au clic, scrub bar). L'utilisateur doit
+  // dezoomer pour interagir avec les controls. Compromis acceptable car
+  // le zoom est intentionnel et le dezoom est trivial (molette inversee).
+  const { transform, cursor, handleWheel, handleMouseDown } = useZoomPan();
+
   if (!nav.hasValidGroup) return null;
 
   const { leftFile, rightFile, keepFile, isKept } = nav;
@@ -285,6 +310,8 @@ export function VideoComparator({
           preparing={leftPreparing} unsupported={leftUnsupported}
           onPlay={syncPlay} onPause={syncPause} onSeeked={syncSeek}
           onKeep={() => keepFile(leftFile.path)}
+          transform={transform} cursor={cursor}
+          onWheel={handleWheel} onMouseDown={handleMouseDown}
         />
         <div className="comparator-divider" />
         <VideoPanel
@@ -292,6 +319,8 @@ export function VideoComparator({
           kept={isKept(rightFile)} side="right" src={rightSrc} master={false}
           preparing={rightPreparing} unsupported={rightUnsupported}
           onKeep={() => keepFile(rightFile.path)}
+          transform={transform} cursor={cursor}
+          onWheel={handleWheel} onMouseDown={handleMouseDown}
         />
       </div>
     </ComparatorShell>
