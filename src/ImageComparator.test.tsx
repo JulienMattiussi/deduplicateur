@@ -231,10 +231,13 @@ describe("F - chargement des images", () => {
     expect(urlCalls).toContain("/c/anim3.gif");
   });
 
-  it("groupe avec un GIF : un fragment `#_remount=N` est ajoute aux src et change a chaque changement d'onglet", async () => {
-    // Sous WebView2 (Windows) le browser cache le GIF decode et l'animation
-    // continue meme apres reset+refetch d'une src identique. Le fragment force
-    // le browser a traiter chaque load comme une nouvelle URL -> redecodage -> frame 0.
+  it("groupe avec un GIF : un query `?_remount=N` est ajoute aux URLs HTTP et change a chaque changement d'onglet", async () => {
+    // Sous WebView2 (Windows) le browser cache le GIF decode par URL et
+    // l'animation continue meme apres reset+refetch d'une src identique. Un
+    // fragment URL est strippe avant la lookup cache (comportement HTTP
+    // standard) donc insuffisant. Un query param fait partie de la cle de
+    // cache : `path.gif?_v=1` et `path.gif?_v=2` sont deux URLs distinctes
+    // pour le browser, qui refait un fetch + decode + animation a frame 0.
     const user = userEvent.setup();
     const gifGroup3 = {
       id: "gif3", hash: "ghi", size: 1024, similar: true, video_similar: false,
@@ -249,33 +252,38 @@ describe("F - chargement des images", () => {
       return Promise.resolve(null);
     });
     render2({ groups: [gifGroup3] });
-    await waitFor(() => expect(screen.getByAltText("anim1.gif")).toBeInTheDocument());
+    await waitFor(() => {
+      const src = screen.getByAltText("anim1.gif").getAttribute("src") ?? "";
+      expect(src).toMatch(/[?&]_remount=\d+$/);
+    });
     const leftSrc1 = screen.getByAltText("anim1.gif").getAttribute("src") ?? "";
-    expect(leftSrc1).toMatch(/#_remount=\d+$/);
-    const tick1 = leftSrc1.match(/#_remount=(\d+)/)?.[1];
+    const tick1 = leftSrc1.match(/[?&]_remount=(\d+)/)?.[1];
 
     // Change l'onglet droit
     const tabsRight = screen.getByTestId("tabs-right");
     await user.click(within(tabsRight).getByText("anim3.gif"));
-    await waitFor(() => expect(screen.getByAltText("anim3.gif")).toBeInTheDocument());
+    await waitFor(() => {
+      const src = screen.getByAltText("anim3.gif").getAttribute("src") ?? "";
+      expect(src).toMatch(/[?&]_remount=\d+$/);
+    });
 
     const leftSrc2 = screen.getByAltText("anim1.gif").getAttribute("src") ?? "";
     const rightSrc2 = screen.getByAltText("anim3.gif").getAttribute("src") ?? "";
-    const tick2 = leftSrc2.match(/#_remount=(\d+)/)?.[1];
+    const tick2 = leftSrc2.match(/[?&]_remount=(\d+)/)?.[1];
 
     expect(tick2).toBeDefined();
     expect(tick2).not.toBe(tick1);
     // Les deux <img> portent le meme tick (sync) pour le meme cycle
-    expect(rightSrc2).toContain(`#_remount=${tick2}`);
+    expect(rightSrc2).toContain(`_remount=${tick2}`);
   });
 
-  it("groupe sans GIF : pas de fragment `#_remount` ajoute aux src", async () => {
+  it("groupe sans GIF : pas de query `_remount` ajoute aux src", async () => {
     render2({ groups: [group3] });
     await waitFor(() => expect(screen.getByAltText("img3.jpg")).toBeInTheDocument());
     const leftSrc = screen.getByAltText("img3.jpg").getAttribute("src") ?? "";
     const rightSrc = screen.getByAltText("img4.jpg").getAttribute("src") ?? "";
-    expect(leftSrc).not.toContain("#_remount=");
-    expect(rightSrc).not.toContain("#_remount=");
+    expect(leftSrc).not.toContain("_remount=");
+    expect(rightSrc).not.toContain("_remount=");
   });
 
   it("groupe sans GIF : changer un onglet ne refetch que le cote qui change", async () => {

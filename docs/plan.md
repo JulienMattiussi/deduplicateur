@@ -1179,15 +1179,17 @@ Lot de petites ameliorations post-1.1.1, chacune avec son propre changement focu
 
 **Bug residuel apres 1.2.1** : la cle React partagee sur les deux `<img>` resynchronisait bien les GIF sous WebKitGTK (Linux) mais PAS sous WebView2 (Windows). WebView2 conserve le decodage GIF en cache (par URL) et reprend l'animation depuis sa position en cours, meme apres remount du `<img>` avec la meme src. Seul le cote dont la `src` change reellement redemarre, l'autre continue son animation.
 
-Trois iterations ont ete necessaires pour cerner le comportement reel :
+Cinq iterations ont ete necessaires pour cerner le comportement reel :
 1. **Tentative 1 (1.2.1)** : `key` React partagee sur les deux `<img>` pour forcer demount+remount React. Suffisant sous WebKitGTK mais WebView2 conserve l'element DOM en l'absence de changement de src.
-2. **Tentative 2 (apres 1.2.1, avant 1.2.2)** : reset `null` des deux thumbs + `Promise.all` + setState batches. Les `<img>` sont retires du DOM via condition de rendu, puis remontes ensemble. Suffisant en theorie mais WebView2 garde le decodage GIF en cache memoire par URL exacte -> meme load -> meme animation en cours.
-3. **Tentative 3 (1.2.2, qui marche)** : reset + Promise.all + setState batches + **fragment URL `#_remount=N`** qui s'incremente a chaque cycle. WebView2 traite chaque URL distincte comme un nouveau load -> redecodage -> animation a frame 0 garantie.
+2. **Tentative 2** : reset `null` des deux thumbs + `Promise.all` + setState batches. Insuffisant : WebView2 garde le decodage GIF en cache memoire par URL exacte -> meme load -> meme animation en cours.
+3. **Tentative 3** : fragment URL `#_remount=N`. Insuffisant : les browsers strippent le fragment avant la lookup cache (comportement HTTP standard).
+4. **Tentative 4** : query param `?_remount=N` (vraie partie de la cle de cache). Insuffisant tout de meme : "pas meme un clignotement" - React 18 coalesce les renders entre null et nouvelle URL, le browser saute le paint intermediaire, les `<img>` ne sont jamais visuellement retires.
+5. **Tentative 5 (qui marche)** : reset null + double `requestAnimationFrame` + Promise.all + query param `?_remount=N`. Le double rAF garantit qu'au moins un paint complet a lieu avec les `<img>` absents avant qu'on remette les URLs -> WebView2 voit un vrai cycle demount/remount + URL distincte -> nouveau decodage -> frame 0.
 
-- [x] [src/ImageComparator.tsx](../src/ImageComparator.tsx) : `useEffect` unique dependant des deux indices, `useRef` pour memoriser les paths au precedent render (detecter lequel a change), `gifTickRef` pour le compteur de remount. Si le groupe contient au moins un fichier `.gif` -> increment gifTick, reset les deux thumbs a null, Promise.all des deux fetch, append `#_remount=${tick}` aux deux URLs avant de les set. Sinon (pas de GIF) -> on ne refetch que le cote qui a vraiment change, preservant l'UX des images statiques (pas de clignotement parasite).
-- [x] Suppression du prop `imgKey` d'`ImagePanel` et de la `key` partagee sur les `<img>` en mode overlay : devenus inutiles avec le pattern fragment + reset.
-- [x] 4 tests TS dans `ImageComparator.test.tsx` section F : changer un onglet refetch les deux urls (tentative 2), un fragment `#_remount=N` est ajoute et s'incremente (tentative 3), pas de fragment quand le groupe n'a pas de GIF, et le cas non-GIF ne refetch que le cote modifie.
-- [x] AGENTS.md : nouvelle section "Synchronisation de deux GIF animes" documente les trois tentatives et pourquoi seule la troisieme marche sous WebView2.
+- [x] [src/ImageComparator.tsx](../src/ImageComparator.tsx) : `useEffect` unique dependant des deux indices, `useRef` pour memoriser les paths au precedent render (detecter lequel a change), `gifTickRef` pour le compteur de remount. Si le groupe contient au moins un fichier `.gif` -> increment gifTick, reset les deux thumbs a null, Promise.all des deux fetch, double `requestAnimationFrame`, puis append `?_remount=${tick}` (query, pour les URLs HTTP) ou `#_remount=${tick}` (fragment, fallback pour data URLs) aux deux URLs avant de les set. Sinon (pas de GIF) -> on ne refetch que le cote qui a vraiment change, preservant l'UX des images statiques (pas de clignotement parasite).
+- [x] Suppression du prop `imgKey` d'`ImagePanel` et de la `key` partagee sur les `<img>` en mode overlay : devenus inutiles avec le pattern reset + double rAF + query.
+- [x] 4 tests TS dans `ImageComparator.test.tsx` section F : changer un onglet refetch les deux urls (tentative 2), un query `?_remount=N` est ajoute et s'incremente (tentative 5), pas de query quand le groupe n'a pas de GIF, et le cas non-GIF ne refetch que le cote modifie.
+- [x] AGENTS.md : section "Synchronisation de deux GIF animes" documente les cinq tentatives et pourquoi seule la cinquieme marche sous WebView2.
 - [x] 317 tests Rust / 480 tests TypeScript / tsc clean.
 
 ### Synchronisation des GIF animes dans le comparateur d'images ✅

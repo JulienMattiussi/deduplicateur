@@ -227,22 +227,49 @@ export function ImageComparator({
 
     if (groupHasGif) {
       const tick = ++gifTickRef.current;
+
+      // Phase 1 : reset les thumbs a null pour que les <img> sortent du DOM via
+      // la condition de rendu. React commit ce render apres le useEffect courant.
       setLeftThumb(null);
       setRightThumb(null);
       setLeftMeta(null);
       setRightMeta(null);
+
+      // Phase 2 : attendre 2 frames pour garantir un paint browser de l'etat
+      // "img absent" avant de remettre les URLs. React 18 batche les renders et
+      // WebView2 saute le paint intermediaire si les deux setState arrivent dans
+      // la meme frame -> constate empiriquement "pas meme un clignotement", l'<img>
+      // n'est jamais vraiment retire visuellement, et WebView2 reprend l'animation
+      // en cours.
       Promise.all([
         invoke<string>("get_image_url", { path: lf.path, maxSize: 800 }).catch(() => "error"),
         invoke<string>("get_image_url", { path: rf.path, maxSize: 800 }).catch(() => "error"),
       ]).then(([leftUrl, rightUrl]) => {
-        // Append fragment URL pour que WebView2 considere chaque load comme une
-        // nouvelle URL et redecode le GIF a frame 0. Sans ca, WebView2 reutilise
-        // le decodage en cache et l'animation continue depuis sa position
-        // actuelle, meme apres un remount du <img>.
-        const withTick = (url: string) =>
-          url === "error" ? url : `${url}#_remount=${tick}`;
-        setLeftThumb(withTick(leftUrl));
-        setRightThumb(withTick(rightUrl));
+        // Append un query param pour que WebView2 considere chaque load comme
+        // une URL distincte au niveau du cache HTTP. Le fragment `#...` ne
+        // suffit pas : WebView2 normalise l'URL (strip le fragment) avant la
+        // lookup cache -> meme cle -> meme animation en cours. Le query, lui,
+        // fait partie de la cle de cache. Le media server ignore les query
+        // params (lit uniquement `uri().path()`) donc transparent cote backend.
+        // Pour les data URLs (non-GIF dans un groupe mixte), on utilise un
+        // fragment a la place (les query params n'ont pas de semantique dans
+        // les data URLs).
+        const withTick = (url: string) => {
+          if (url === "error") return url;
+          if (url.startsWith("http://") || url.startsWith("https://")) {
+            const sep = url.includes("?") ? "&" : "?";
+            return `${url}${sep}_remount=${tick}`;
+          }
+          return `${url}#_remount=${tick}`;
+        };
+        const leftTagged = withTick(leftUrl);
+        const rightTagged = withTick(rightUrl);
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            setLeftThumb(leftTagged);
+            setRightThumb(rightTagged);
+          });
+        });
       });
       invoke<ImageMeta>("get_image_meta", { path: lf.path }).then(setLeftMeta).catch(() => {});
       invoke<ImageMeta>("get_image_meta", { path: rf.path }).then(setRightMeta).catch(() => {});

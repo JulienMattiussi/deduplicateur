@@ -624,7 +624,7 @@ Les GIF animes affiches via `<img src=...>` n'ont **aucune API JS pour controler
 
 **Premiere tentative (insuffisante)** : passer une `key` partagee aux deux `<img>` qui change a chaque modif d'onglet, en se reposant sur React pour demonter+remonter les deux balises ensemble. Marche sous **WebKitGTK (Linux)** mais PAS sous **WebView2 (Windows)** : WebView2 conserve l'element DOM et l'animation en cours quand seule la `key` React change et que la `src` est inchangee. Le remount React n'est pas honore.
 
-**Deuxieme tentative (encore insuffisante sous WebView2)** : forcer le demontage reel via la condition de rendu, puis batcher les setState :
+**Deuxieme tentative (insuffisante sous WebView2)** : forcer le demontage reel via la condition de rendu, puis batcher les setState :
 1. Detecter si le groupe contient au moins un GIF (`file.path.toLowerCase().endsWith(".gif")`).
 2. Si oui, dans le `useEffect` qui suit les changements d'onglet : `setLeftThumb(null)` ET `setRightThumb(null)`. Les `<img>` disparaissent vraiment du DOM (rendu conditionnel `{thumb && ...}` devient false).
 3. Fetch les deux URLs en parallele via `Promise.all`.
@@ -632,11 +632,23 @@ Les GIF animes affiches via `<img src=...>` n'ont **aucune API JS pour controler
 
 Insuffisant : WebView2 maintient un **cache GIF par URL** independant du cycle DOM. Quand on remonte un `<img>` avec la meme `src`, le browser reutilise l'animation deja decodee et reprend depuis sa position en cours - le remount React ne reinitialise pas l'animation.
 
-**Solution qui marche partout** : ajouter le steps 1-4 ci-dessus PLUS forcer une URL effectivement differente a chaque cycle via un fragment URL :
+**Troisieme tentative (insuffisante)** : ajouter un fragment URL `#_remount=N` qui s'incremente a chaque cycle. Insuffisant : les browsers (WebView2 inclus) **strippent le fragment** avant la lookup cache (comportement HTTP standard - le fragment ne quitte jamais le browser). `url#1` et `url#2` aboutissent a la meme cle de cache.
 
-5. Maintenir un compteur `gifTickRef = useRef(0)`. Incrementer a chaque `useEffect` qui touche un groupe GIF (`++gifTickRef.current`).
-6. Apres le `Promise.all`, append `#_remount=${tick}` aux deux URLs avant de les set. `data:image/gif;base64,...#_remount=1` ou `http://127.0.0.1:port/path.gif#_remount=1` sont valides : le serveur HTTP / le decoder data-URL ignore le fragment, mais le browser considere chaque URL comme distincte -> nouveau load -> nouveau decodage -> animation a frame 0.
-7. Si pas de GIF : preserver l'UX en ne refetchant que le cote qui a vraiment change (sinon clignotement parasite sur l'autre cote pour des images statiques qui n'en ont pas besoin).
+**Quatrieme tentative (insuffisante)** : reset null + Promise.all + setState dans `.then` + query param `?_remount=N`. Le query param fait bien partie de la cle de cache. Insuffisant tout de meme : **constate empiriquement "pas meme un clignotement"** lors du changement d'onglet. React 18 batche / coalesce les renders entre la phase null et la phase URL nouvelle, et le browser saute le paint intermediaire -> les `<img>` ne sont JAMAIS visuellement retires du DOM -> WebView2 voit juste une bascule de src sur un meme element et reprend l'animation en cours.
+
+**Cinquieme tentative (qui marche)** : meme pattern PLUS un delai de 2 frames d'animation (double `requestAnimationFrame`) entre le reset null et le set des nouvelles URLs. Le double rAF garantit qu'au moins un paint complet du browser a lieu avec les `<img>` absents avant qu'on les remette. WebView2 percoit alors un vrai cycle demount/remount + URL distincte -> nouveau decodage -> animation a frame 0.
+
+Pattern final dans `src/ImageComparator.tsx::useEffect` :
+1. Detecter `groupHasGif`.
+2. Incrementer `gifTickRef.current`.
+3. `setLeftThumb(null)` / `setRightThumb(null)` (commit du render correspondant apres le useEffect).
+4. `Promise.all([fetch_left, fetch_right])`.
+5. Dans le `.then`, `requestAnimationFrame(() => requestAnimationFrame(() => { setLeftThumb(url + "?_remount=" + tick); setRightThumb(url + "?_remount=" + tick); }))`.
+6. Si pas de GIF : preserver l'UX en ne refetchant que le cote qui a vraiment change (sinon clignotement parasite sur l'autre cote pour des images statiques qui n'en ont pas besoin).
+
+Pour les URLs HTTP du media server, append `?_remount=N`. Pour les data URLs (rare dans un groupe avec GIF mais possible), append `#_remount=N` car les data URLs n'ont pas de semantique query string. Le media server ignore les query params (lit uniquement `req.uri().path()`).
+
+**Ne PAS utiliser `flushSync(setLeftThumb(null))`** : provoque un warning React "flushSync was called from inside a lifecycle method" quand appele depuis un `useEffect`. Le commit naturel apres le useEffect suffit, c'est le browser qui doit avoir le temps de peindre, d'ou les rAF.
 
 Detection du "cote qui a change" via `useRef({ left: "", right: "" })` qui memorise les paths au precedent render, car le `useEffect` doit maintenant dependre des DEUX indices pour pouvoir reset les deux ensemble en cas de GIF.
 
