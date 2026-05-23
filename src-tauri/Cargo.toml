@@ -1,6 +1,6 @@
 [package]
 name = "deduplicateur"
-version = "1.2.1"
+version = "1.2.2"
 description = "Détecteur et suppresseur de fichiers en double"
 authors = ["YavaDeus"]
 edition = "2021"

@@ -4,6 +4,36 @@ All notable changes to Déduplicateur are documented here.
 
 This file follows the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.2.2] - 2026-05-23
+
+Patch release focused on the image and video comparators: synchronised zoom + pan via the mouse wheel on both, images served at their native resolution so the zoom is meaningful, and a final fix for animated GIF synchronisation under WebView2 (Windows) that had eluded the 1.2.1 release.
+
+### Added
+
+- **Synchronised zoom + pan in the image and video comparators**. Mouse wheel zooms (1x to 10x, factor 1.2 per tic) centered on the cursor position. Drag-pan once zoomed past 1x. Both panels mirror each other automatically because the same CSS transform is applied to both `<img>` (or both `<video>`). Reset on close+reopen, preserved across tab and group navigation. Magnifier cursor (`zoom-in`) on idle zoom signals the interaction; `grab` / `grabbing` once zoomed. The shared logic lives in a new `useZoomPan` hook used by both comparators. Note for the video comparator: while zoomed, the native player controls (click to play/pause, scrubber) are temporarily intercepted by drag-pan; zooming back out restores them.
+
+### Changed
+
+- **Image comparator now serves images at native resolution**. Previously the comparator displayed a 800px JPEG thumbnail (data URL) for every format except `.gif`, which meant zooming past 1x on any image larger than 800px showed resampled pixels - defeating the purpose of a deduplication comparator where you want to inspect details at the pixel level. For formats the `<img>` element can decode natively (PNG, JPEG, WEBP, AVIF, BMP, SVG, ICO, plus GIF with magic-byte verification), `get_image_url` now returns the media server URL pointing at the original file. The 800px thumbnail pipeline is kept as a fallback for formats the browser cannot decode (TIFF, HEIC, RAW).
+
+### Fixed
+
+- **Animated GIF synchronisation in the image comparator under WebView2 (Windows)**. The 1.2.1 fix relied on a shared React `key` to force both `<img>` to remount in lockstep when one tab changed - which works under WebKitGTK (Linux) but not under WebView2 (Windows), where the DOM element is kept when only the React key changes and the `src` is unchanged. After multiple iterations the working fix combines three mechanisms: (1) reset both thumb states to `null` so the `<img>` are actually removed from the DOM via the conditional render, (2) wait for two `requestAnimationFrame` cycles to guarantee a real browser paint of the absent state (React 18 was coalescing the renders so fast that WebView2 was skipping the intermediate paint - the user reported "not even a flicker"), and (3) append a `?_remount=N` query string to the URLs so WebView2 treats each load as a distinct cache entry instead of reusing the in-progress GIF decode. All five attempts are documented in AGENTS.md.
+
+### Documentation
+
+- Help article `comparator-modes` updated FR+EN to mention zoom/pan and the magnifier cursor for images.
+- Help article `video-comparator-sync` updated FR+EN to mention zoom/pan and the "controls intercepted at zoom > 1" compromise.
+- AGENTS.md: new section "Synchronisation de deux GIF animes" documents the five attempts and why only the fifth one works under WebView2.
+
+### Quality
+
+- 321 Rust tests (+4 since 1.2.1): all on `is_browser_native_image` (accepted formats, case-insensitivity, rejected formats, GIF magic-byte gating).
+- 487 TypeScript tests (+15 since 1.2.1): zoom/pan tests on the image and video comparators, magnifier cursor tests, GIF sync regression tests (query param appended to URLs, no query on non-GIF groups).
+- `useZoomPan` hook extracted from `ImageComparator` to share zoom/pan logic between both comparators (~50 lines centralised, behaviour strictly equivalent).
+
+[1.2.2]: https://github.com/JulienMattiussi/deduplicateur/releases/tag/v1.2.2
+
 ## [1.2.1] - 2026-05-22
 
 Patch release focused on UX coherence in the results view: the text filter now also scopes the automatic selection actions, the "Original" badge correctly stays on the oldest file regardless of local sort, animated GIFs in the image comparator stay synchronised when switching tabs, and the folder counter in by-folder mode updates as folders are emptied.

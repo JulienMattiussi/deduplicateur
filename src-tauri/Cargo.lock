@@ -935,7 +935,7 @@ dependencies = [
 
 [[package]]
 name = "deduplicateur"
-version = "1.2.1"
+version = "1.2.2"
 dependencies = [
  "axum",
  "base64 0.21.7",
