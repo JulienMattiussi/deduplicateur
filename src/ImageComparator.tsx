@@ -182,7 +182,9 @@ export function ImageComparator({
   }, [dragging]);
 
   const transform = `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`;
-  const cursor = zoom > ZOOM_MIN ? (dragging ? "grabbing" : "grab") : "default";
+  // zoom-in (loupe avec +) a zoom=1 pour suggerer visuellement la possibilite
+  // de zoomer a la molette. grab/grabbing prend le relais des qu'on est zoome.
+  const cursor = zoom > ZOOM_MIN ? (dragging ? "grabbing" : "grab") : "zoom-in";
 
   // Memorise les paths affiches au precedent render pour savoir lequel a change.
   // Necessaire car le useEffect ci-dessous depend des deux indices : sans ca on

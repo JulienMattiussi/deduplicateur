@@ -402,6 +402,22 @@ describe("G - zoom et pan synchronises", () => {
     expect(getTransform(rightImg)).toMatch(/scale\(1\.2\)/);
   });
 
+  it("cursor 'zoom-in' (loupe) sur la zone image a zoom = 1", async () => {
+    render2();
+    await waitFor(() => expect(screen.getByAltText("img1.jpg")).toBeInTheDocument());
+    const area = screen.getByAltText("img1.jpg").parentElement!;
+    expect(area.style.cursor).toBe("zoom-in");
+  });
+
+  it("cursor 'grab' apres un zoom > 1 (pan dispo)", async () => {
+    render2();
+    await waitFor(() => expect(screen.getByAltText("img1.jpg")).toBeInTheDocument());
+    const leftImg = screen.getByAltText("img1.jpg");
+    const area = leftImg.parentElement!;
+    fireEvent.wheel(area, { deltaY: -100, clientX: 50, clientY: 50 });
+    expect(area.style.cursor).toBe("grab");
+  });
+
   it("clic sur l'image a zoom = 1 ouvre le fichier (pas de drag detecte)", async () => {
     const user = userEvent.setup();
     mockInvoke.mockImplementation((cmd: string) => {

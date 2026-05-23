@@ -221,13 +221,18 @@ pub async fn get_image_url(
     use tauri::Manager;
     let port = app.state::<crate::MediaServerPort>().0;
     tauri::async_runtime::spawn_blocking(move || {
-        if is_animated_gif(std::path::Path::new(&path)) {
-            // Le `<img>` HTML5 anime le GIF lui-meme : pas de resize cote serveur,
-            // on sert le fichier d'origine via le media server local.
+        // Pour les formats decodes nativement par le `<img>` HTML5, on sert le
+        // fichier d'origine via le media server local. Cela preserve la
+        // resolution native (essentielle pour un comparateur ou l'utilisateur
+        // peut zoomer pour comparer les details au pixel pres). Si on retombait
+        // sur le pipeline thumbnail JPEG, la miniature 800px serait pixelisee
+        // des qu'on zoome au-dela d'environ 1x sur des images plus grandes.
+        // Pour les formats que le navigateur ne sait pas decoder (TIFF, HEIC,
+        // RAW...), on conserve le pipeline data URL JPEG comme fallback.
+        if is_browser_native_image(std::path::Path::new(&path)) {
             let encoded = percent_encoding::utf8_percent_encode(&path, percent_encoding::NON_ALPHANUMERIC).to_string();
             return Ok(format!("http://127.0.0.1:{}/{}", port, encoded));
         }
-        // Pipeline thumbnail JPEG existant pour tout le reste (PNG, WEBP, JPEG, etc.)
         let img = image::open(&path).map_err(|e| e.to_string())?;
         let thumb = img.thumbnail(max_size, max_size);
         let mut buf = Vec::new();
@@ -240,6 +245,28 @@ pub async fn get_image_url(
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+/// Retourne true si l'extension du fichier correspond a un format que le
+/// `<img>` HTML5 sait decoder nativement (la liste WebKit/Chromium couverte
+/// par WebView2 et WebKitGTK est large). Pour ces formats, on peut servir le
+/// fichier original via le media server au lieu de passer par un thumbnail
+/// JPEG redimensionne. Pour les `.gif`, la verification additionnelle des
+/// magic bytes evite de servir un fichier qui ment sur son contenu (cf.
+/// `is_animated_gif` ci-dessous), mais pour les autres formats l'extension
+/// suffit : un fichier menteur produira juste une image "cassee" cote
+/// frontend (placeholder erreur), sans risque de boucle ou de freeze.
+fn is_browser_native_image(path: &std::path::Path) -> bool {
+    let ext = match path.extension().and_then(|e| e.to_str()) {
+        Some(e) => e.to_ascii_lowercase(),
+        None => return false,
+    };
+    match ext.as_str() {
+        "gif" => is_animated_gif(path),
+        "png" | "jpg" | "jpeg" | "jfif" | "pjpeg" | "pjp" => true,
+        "webp" | "avif" | "bmp" | "svg" | "ico" => true,
+        _ => false,
+    }
 }
 
 /// Detecte un fichier GIF par extension + magic bytes `GIF87a` ou `GIF89a` (6 octets).
@@ -363,8 +390,9 @@ pub async fn get_image_meta(path: String) -> Result<ImageMeta, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::is_animated_gif;
+    use super::{is_animated_gif, is_browser_native_image};
     use std::io::Write;
+    use std::path::PathBuf;
     use tempfile::NamedTempFile;
 
     fn write_temp(suffix: &str, bytes: &[u8]) -> NamedTempFile {
@@ -418,5 +446,47 @@ mod tests {
         // dont le magic ressemble fortuitement a un GIF mais qui sont autre chose.
         let f = write_temp(".jpg", b"GIF89a\x01\x00\x01\x00");
         assert!(!is_animated_gif(f.path()));
+    }
+
+    #[test]
+    fn is_browser_native_image_accepte_formats_courants() {
+        // Pour les formats decodes nativement par WebView2 / WebKitGTK, on se base
+        // uniquement sur l'extension (l'existence du fichier importe peu pour ce test).
+        for ext in ["png", "jpg", "jpeg", "jfif", "pjpeg", "pjp", "webp", "avif", "bmp", "svg", "ico"] {
+            assert!(
+                is_browser_native_image(&PathBuf::from(format!("/tmp/foo.{}", ext))),
+                "{} doit etre considere natif",
+                ext
+            );
+        }
+    }
+
+    #[test]
+    fn is_browser_native_image_accepte_majuscules() {
+        assert!(is_browser_native_image(&PathBuf::from("/tmp/IMG.JPG")));
+        assert!(is_browser_native_image(&PathBuf::from("/tmp/photo.PNG")));
+    }
+
+    #[test]
+    fn is_browser_native_image_rejette_formats_non_decodes() {
+        for ext in ["tiff", "tif", "heic", "heif", "cr2", "nef", "arw", "psd", "raw"] {
+            assert!(
+                !is_browser_native_image(&PathBuf::from(format!("/tmp/foo.{}", ext))),
+                "{} ne doit PAS etre considere natif",
+                ext
+            );
+        }
+    }
+
+    #[test]
+    fn is_browser_native_image_gif_passe_par_magic_check() {
+        // Pour les .gif, l'extension seule ne suffit pas : on doit aussi avoir
+        // le magic byte. Un .gif menteur (contenu PNG par exemple) doit etre rejete
+        // et passer par le pipeline thumbnail JPEG (qui flatten).
+        let valid = write_temp(".gif", b"GIF89a\x01\x00");
+        assert!(is_browser_native_image(valid.path()));
+
+        let liar = write_temp(".gif", b"\x89PNG\r\n\x1A\n");
+        assert!(!is_browser_native_image(liar.path()));
     }
 }

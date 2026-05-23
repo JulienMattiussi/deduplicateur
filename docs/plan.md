@@ -1162,6 +1162,15 @@ Lot de petites ameliorations post-1.1.1, chacune avec son propre changement focu
 - [x] 3 nouveaux tests TS dans `GroupCard.test.tsx` section "Badge original - independant du tri local" : badge sur le bon fichier sans tri (meme si files[0] dans le fixture n'est pas le plus ancien), badge stable apres tri par Nom asc, badge stable apres tri par Modifie desc.
 - [x] 317 tests Rust / 471 tests TypeScript / tsc clean.
 
+### Images servies en resolution native pour le comparateur ✅ (1.2.2)
+
+**Feature** : le comparateur d'images affichait jusque la une miniature JPEG 800px (data URL) pour tous les formats sauf les `.gif`. Resultat : des qu'on zoomait au-dela d'environ 1x sur une image plus grande que 800px, on voyait des pixels du redimensionnement -> impossible de comparer les details au pixel pres, ce qui est pourtant la raison d'etre du comparateur dans un dedup d'images.
+
+- [x] [src-tauri/src/commands/files.rs::get_image_url](../src-tauri/src/commands/files.rs) : nouvelle helper `is_browser_native_image(path)` qui retourne `true` pour les extensions decodees nativement par `<img>` HTML5 (PNG, JPG/JPEG/JFIF, WEBP, AVIF, BMP, SVG, ICO, et GIF avec verification magic bytes). Pour ces formats, on sert le fichier d'origine via le media server local (URL `http://127.0.0.1:port/...`). Pour les autres (TIFF, HEIC, RAW...), on conserve le pipeline thumbnail JPEG 800px en fallback (le navigateur ne sait pas les decoder de toute facon).
+- [x] [src-tauri/src/video/media_server.rs::video_mime](../src-tauri/src/video/media_server.rs) : etendu pour servir les bons MIME types image (`image/png`, `image/jpeg`, `image/webp`, `image/avif`, `image/bmp`, `image/svg+xml`, `image/x-icon`) en plus du `image/gif` deja present.
+- [x] 4 nouveaux tests Rust dans `commands::files::tests` : `is_browser_native_image_accepte_formats_courants`, `is_browser_native_image_accepte_majuscules`, `is_browser_native_image_rejette_formats_non_decodes`, `is_browser_native_image_gif_passe_par_magic_check`.
+- [x] 321 tests Rust / 482 tests TypeScript / tsc clean.
+
 ### Zoom + pan synchronises dans le comparateur d'images ✅ (1.2.2)
 
 **Feature** : permettre a l'utilisateur de zoomer dans les images du comparateur via la molette de la souris, avec le zoom synchronise entre les deux images affichees. Drag a la souris pour deplacer la vue quand zoom > 1. Reset automatique au close+reopen du comparateur.

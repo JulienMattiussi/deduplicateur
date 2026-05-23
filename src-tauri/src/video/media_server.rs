@@ -19,9 +19,18 @@ fn video_mime(path: &std::path::Path) -> &'static str {
         Some("flac") => "audio/flac",
         Some("m4a") | Some("aac") => "audio/mp4",
         Some("aiff") | Some("aif") => "audio/aiff",
-        // Image animee : GIF (le `<img>` HTML5 anime nativement, contrairement au
-        // pipeline data URL JPEG de get_image_thumbnail qui aplatit en une frame).
+        // Images servies brutes (sans redimensionnement) au comparateur pour
+        // preserver la resolution native. Le `<img>` HTML5 sait decoder ces
+        // formats nativement, donc pas besoin de passer par le pipeline data URL
+        // JPEG (qui plafonnait a 800px et masquait les details au zoom).
         Some("gif") => "image/gif",
+        Some("png") => "image/png",
+        Some("jpg") | Some("jpeg") | Some("jfif") | Some("pjpeg") | Some("pjp") => "image/jpeg",
+        Some("webp") => "image/webp",
+        Some("avif") => "image/avif",
+        Some("bmp") => "image/bmp",
+        Some("svg") => "image/svg+xml",
+        Some("ico") => "image/x-icon",
         _ => "video/mp4",
     }
 }
