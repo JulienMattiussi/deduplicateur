@@ -3,12 +3,7 @@ import { render, waitFor, cleanup } from "@testing-library/react";
 import { createRef } from "react";
 import { NativeVideo, isNativePlayerAvailable, type NativeVideoHandle } from "./NativeVideo";
 
-// Mock du module Tauri invoke. Vitest applique le mock avant l'import du composant.
-vi.mock("@tauri-apps/api/core", () => ({
-  invoke: vi.fn(),
-}));
-
-// Reimporter apres le mock pour acces a la fonction mockee.
+// Mock global @tauri-apps/api/core defini dans src/test-setup.ts
 import { invoke } from "@tauri-apps/api/core";
 
 const mockInvoke = invoke as ReturnType<typeof vi.fn>;

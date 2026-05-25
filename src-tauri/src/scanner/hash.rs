@@ -197,12 +197,8 @@ pub fn compute_hashes_from_bytes(bytes: &[u8], coarse_size: u32, fine_size: u32)
 }
 
 /// Vrai si l'extension du nom indique une image supportee par le pipeline pHash.
-pub fn is_image_path(name: &str) -> bool {
-    let ext = name.rsplit('.').next().unwrap_or("").to_lowercase();
-    matches!(ext.as_str(),
-        "jpg" | "jpeg" | "png" | "webp" | "bmp" | "gif" | "tiff" | "tif" | "avif"
-    )
-}
+/// Re-export depuis `crate::media_types` (source de verite unique).
+pub use crate::media_types::is_image_str as is_image_path;
 
 /// Calcule les hash grossier et fin en un seul decodage d'image.
 /// Si use_exif_thumbnail est true, tente d'utiliser le thumbnail EXIF embarque (JPEG uniquement) :

@@ -4,7 +4,6 @@ import userEvent from "@testing-library/user-event";
 import { MissingToolBanner } from "./MissingToolBanner";
 import { LangProvider } from "../LangContext";
 
-vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/plugin-shell", () => ({ open: vi.fn() }));
 
 import { invoke } from "@tauri-apps/api/core";

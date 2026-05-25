@@ -248,25 +248,24 @@ pub async fn get_image_url(
 }
 
 /// Retourne true si l'extension du fichier correspond a un format que le
-/// `<img>` HTML5 sait decoder nativement (la liste WebKit/Chromium couverte
-/// par WebView2 et WebKitGTK est large). Pour ces formats, on peut servir le
+/// `<img>` HTML5 sait decoder nativement. Pour ces formats, on peut servir le
 /// fichier original via le media server au lieu de passer par un thumbnail
 /// JPEG redimensionne. Pour les `.gif`, la verification additionnelle des
 /// magic bytes evite de servir un fichier qui ment sur son contenu (cf.
-/// `is_animated_gif` ci-dessous), mais pour les autres formats l'extension
-/// suffit : un fichier menteur produira juste une image "cassee" cote
-/// frontend (placeholder erreur), sans risque de boucle ou de freeze.
+/// `is_animated_gif` ci-dessous).
+///
+/// La liste vit dans `crate::media_types::BROWSER_NATIVE_IMAGE_EXTS` ; le `.gif`
+/// est gere a part car necessite la verification magic-byte en plus de l'extension.
 fn is_browser_native_image(path: &std::path::Path) -> bool {
-    let ext = match path.extension().and_then(|e| e.to_str()) {
-        Some(e) => e.to_ascii_lowercase(),
-        None => return false,
-    };
-    match ext.as_str() {
-        "gif" => is_animated_gif(path),
-        "png" | "jpg" | "jpeg" | "jfif" | "pjpeg" | "pjp" => true,
-        "webp" | "avif" | "bmp" | "svg" | "ico" => true,
-        _ => false,
+    if crate::media_types::is_browser_native_image_ext(path) {
+        return true;
     }
+    // GIF : extension seule insuffisante, on exige aussi le magic byte.
+    let is_gif_ext = path.extension()
+        .and_then(|e| e.to_str())
+        .map(|s| s.eq_ignore_ascii_case("gif"))
+        .unwrap_or(false);
+    is_gif_ext && is_animated_gif(path)
 }
 
 /// Detecte un fichier GIF par extension + magic bytes `GIF87a` ou `GIF89a` (6 octets).

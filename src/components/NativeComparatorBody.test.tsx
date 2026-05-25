@@ -3,10 +3,7 @@ import { render, screen, waitFor, cleanup, fireEvent } from "@testing-library/re
 import { NativeComparatorBody } from "./NativeComparatorBody";
 import { LangProvider } from "../LangContext";
 
-vi.mock("@tauri-apps/api/core", () => ({
-  invoke: vi.fn(),
-}));
-
+// Mock global @tauri-apps/api/core defini dans src/test-setup.ts
 import { invoke } from "@tauri-apps/api/core";
 const mockInvoke = invoke as ReturnType<typeof vi.fn>;
 

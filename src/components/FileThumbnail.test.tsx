@@ -3,7 +3,6 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { FileThumbnail } from "./FileThumbnail";
 
-vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("../fileActions", () => ({ openFile: vi.fn() }));
 
 import { invoke } from "@tauri-apps/api/core";

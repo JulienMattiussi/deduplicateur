@@ -5,6 +5,7 @@ mod commands;
 mod exact_cache;
 mod filters;
 mod ignore_list;
+mod media_types;
 mod native_player;
 mod notifications;
 mod phash;

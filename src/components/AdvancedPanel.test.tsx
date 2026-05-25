@@ -5,7 +5,6 @@ import { LangProvider } from "../LangContext";
 import type { PHashConfig } from "../types";
 import { DEFAULT_PHASH_CONFIG } from "../hooks/useScanConfig";
 
-vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 function renderPanel(props: {
   config?: PHashConfig;

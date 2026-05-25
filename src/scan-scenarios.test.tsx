@@ -16,7 +16,6 @@ import { translations } from "./i18n";
 
 // ---- Mocks ---------------------------------------------------------------
 
-vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(() => Promise.resolve(() => {})),
 }));

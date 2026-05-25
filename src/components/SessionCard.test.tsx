@@ -3,7 +3,6 @@ import { render, screen } from "@testing-library/react";
 import { LangProvider } from "../LangContext";
 import { SessionCard } from "./SessionCard";
 
-vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 // ---- L : SessionCard ----
 const makeSession = (overrides = {}) => ({

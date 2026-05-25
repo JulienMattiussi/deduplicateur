@@ -6,7 +6,6 @@ import { FiltersPanel } from "./FiltersPanel";
 import { LangProvider } from "../LangContext";
 
 
-vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 beforeEach(() => {
   vi.clearAllMocks();

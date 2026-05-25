@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, waitFor, act } from "@testing-library/react";
 
-vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 // Mock @tauri-apps/api/webview avec un emetteur simulé
 type DragDropEvent =

@@ -5,7 +5,6 @@ import App from "./App";
 import { LangProvider } from "./LangContext";
 
 // ----- Mocks globaux -----
-vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(() => Promise.resolve(() => {})),
 }));

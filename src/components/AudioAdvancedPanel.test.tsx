@@ -5,7 +5,6 @@ import { LangProvider } from "../LangContext";
 import type { AudioConfig } from "../types";
 import { DEFAULT_AUDIO_CONFIG } from "../hooks/useScanConfig";
 
-vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 function renderPanel(props: {
   config?: AudioConfig;

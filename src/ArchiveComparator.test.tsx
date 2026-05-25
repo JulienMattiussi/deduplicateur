@@ -5,7 +5,6 @@ import { ArchiveComparator } from "./ArchiveComparator";
 import { LangProvider } from "./LangContext";
 import type { ArchiveInGroup } from "./types";
 
-vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 import { invoke } from "@tauri-apps/api/core";
 const mockInvoke = invoke as ReturnType<typeof vi.fn>;

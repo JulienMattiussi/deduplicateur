@@ -3,7 +3,6 @@ import { render, screen, fireEvent, within } from "@testing-library/react";
 import { GroupCard } from "./GroupCard";
 import { LangProvider } from "../LangContext";
 
-vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 beforeEach(() => {
   vi.clearAllMocks();

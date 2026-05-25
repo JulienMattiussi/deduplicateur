@@ -7,30 +7,10 @@ use std::sync::Arc;
 use crate::filters::passes_filters;
 use super::types::DuplicateFile;
 
-pub fn is_video(path: &str) -> bool {
-    let ext = Path::new(path)
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("")
-        .to_ascii_lowercase();
-    matches!(
-        ext.as_str(),
-        "mp4" | "avi" | "mkv" | "mov" | "wmv" | "webm" | "flv" | "m4v" | "mpg" | "mpeg"
-            | "3gp" | "ts" | "mts" | "m2ts"
-    )
-}
-
-pub fn is_image(path: &str) -> bool {
-    let ext = Path::new(path)
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("")
-        .to_ascii_lowercase();
-    matches!(
-        ext.as_str(),
-        "jpg" | "jpeg" | "png" | "webp" | "bmp" | "gif" | "tiff" | "tif" | "avif"
-    )
-}
+// Re-exports historiques : les listes d'extensions vivent maintenant dans
+// `crate::media_types` (source de verite unique). Les call sites existants qui
+// importent `scanner::fs::is_image` / `is_video` continuent de fonctionner.
+pub use crate::media_types::{is_image_str as is_image, is_video_str as is_video};
 
 // 10 parametres : tous des criteres de filtrage independants.
 // Refactorer en struct casserait la lisibilite des call sites (callers passent des litteraux).

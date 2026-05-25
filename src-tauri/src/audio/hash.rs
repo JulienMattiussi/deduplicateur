@@ -7,18 +7,10 @@ pub struct AudioMetadata {
     pub duration_secs: f64,
 }
 
-pub const AUDIO_EXTS: &[&str] = &[
-    "mp3", "flac", "ogg", "m4a", "aac", "wav", "wma", "opus", "aiff", "aif", "ape",
-];
-
-pub fn is_audio(path: &str) -> bool {
-    let ext = std::path::Path::new(path)
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(|e| e.to_lowercase())
-        .unwrap_or_default();
-    AUDIO_EXTS.contains(&ext.as_str())
-}
+// La liste vit dans `crate::media_types::AUDIO_EXTS` (source de verite unique).
+// Re-export historique de `is_audio` pour ne pas casser les call sites
+// (`crate::audio::is_audio` via `audio/mod.rs`).
+pub use crate::media_types::is_audio_str as is_audio;
 
 pub fn fpcalc_available() -> bool {
     run_fpcalc(&["--version"]).is_some()

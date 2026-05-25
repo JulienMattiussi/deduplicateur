@@ -1,6 +1,20 @@
 import "@testing-library/jest-dom";
 import { vi } from "vitest";
 
+// Mock global du module Tauri core : tous les tests qui font `invoke(...)` doivent
+// passer par un vi.fn() configurable. Centraliser ici evite la duplication du
+// `vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }))` au debut de
+// chaque fichier de test (~18 fichiers concernes). Chaque test conserve la main :
+// `import { invoke } from "@tauri-apps/api/core"; const mockInvoke = invoke as
+// ReturnType<typeof vi.fn>; mockInvoke.mockImplementation(...)`.
+vi.mock("@tauri-apps/api/core", () => ({
+  // Implementation par defaut : Promise.resolve() pour que les composants qui
+  // enchainent `.then(...)` sans configurer le mock dans leur fichier de test
+  // ne crashent pas. Les tests qui ont besoin d'une valeur specifique font
+  // `mockInvoke.mockImplementation(...)` ou `mockInvoke.mockResolvedValue(...)`.
+  invoke: vi.fn(() => Promise.resolve()),
+}));
+
 // Mock global du module Tauri window : les tests jsdom n'ont pas d'environnement
 // Tauri runtime, donc `getCurrentWindow().setTitle(...)` planterait. On expose
 // un objet stub avec un `setTitle` mock que les tests peuvent inspecter en
