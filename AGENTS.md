@@ -393,6 +393,16 @@ sous la racine scannée. Les niveaux plus profonds sont mis à plat (ignorés). 
 Les groupes sont triés par `folder_key` alphabétique, puis par espace gaspillé décroissant
 à l'intérieur de chaque dossier. La clé vide `""` passe donc avant toute lettre.
 
+**Toutes les phases de scan doivent respecter l'isolement par sous-dossier.** La phase exacte
+partitionne ses candidats avant de hasher (impossible de former un groupe inter-dossiers).
+Les phases similar (pHash images, vidéo, audio) ne partitionnent PAS leurs candidats, mais
+elles **filtrent les paires inter-dossiers** dans `similar_pairs` avant `build_similar_groups`,
+via un `Vec<String>` de `first_level_subdir` pré-calculé pour chaque candidat. Sans ce filtre,
+deux fichiers similaires dans des sous-dossiers différents formeraient un groupe avec
+`folder_key=""` rattaché au "dossier racine" (régression vue puis corrigée post-1.2.2).
+Si on ajoute une nouvelle phase de détection de similarité, **prévoir le même filtre** dans la
+construction des paires - cf. `phash_phase.rs` pour le pattern.
+
 ### `value || undefined` sur un bool requis : "missing required key"
 Pattern piège : `scanArchives: config.scanArchives || undefined` dans les args d'un `invoke`. Quand le bool vaut `false`, l'expression évalue à `undefined`, Tauri sérialise la clé comme absente, et la commande Rust qui attend un `bool` non-optionnel rejette avec "command X missing required key Y". À l'inverse, c'est OK pour des clés déclarées `Option<T>` côté Rust (timestamps, secondaryFolder...). Règle : ne jamais utiliser `|| undefined` sur un bool, passer la valeur telle quelle (`scanArchives: config.scanArchives`).
 

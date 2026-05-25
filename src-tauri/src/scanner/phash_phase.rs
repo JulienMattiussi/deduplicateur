@@ -529,6 +529,25 @@ where
     ));
 
     let root_path = Path::new(&params.folder);
+
+    // En mode by_folder : filtrer les paires dont les deux fichiers ne sont pas
+    // dans le meme premier-niveau-de-sous-dossier. Le mode "par sous-dossier"
+    // garantit que les fichiers de dossiers differents ne sont jamais compares
+    // entre eux (cf. doc d'aide `filter-sort`). Sans ce filtre, deux images
+    // similaires dans des sous-dossiers differents formeraient un groupe avec
+    // folder_key="" (rattache au "dossier racine"), ce qui contredit la
+    // semantique du mode.
+    let similar_pairs = if params.by_folder {
+        let subdirs: Vec<String> = images.iter()
+            .map(|img| super::fs::first_level_subdir(root_path, Path::new(&img.file.path)))
+            .collect();
+        similar_pairs.into_iter()
+            .filter(|(i, j)| subdirs[*i] == subdirs[*j])
+            .collect()
+    } else {
+        similar_pairs
+    };
+
     let new_groups = build_similar_groups(
         n, similar_pairs,
         |i| images[i].file.clone(),

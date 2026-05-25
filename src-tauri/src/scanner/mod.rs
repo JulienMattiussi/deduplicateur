@@ -962,7 +962,13 @@ mod tests {
     }
 
     #[test]
-    fn by_folder_phash_groupe_multi_dossiers_cle_vide() {
+    fn by_folder_phash_ne_compare_pas_images_de_dossiers_differents() {
+        // En mode by_folder, deux images similaires dans des sous-dossiers
+        // differents ne doivent PAS former un groupe : la semantique du mode
+        // est "chaque sous-dossier est analyse independamment". Le bug
+        // historique creait un groupe avec folder_key="" rattache au "dossier
+        // racine" - corrige en filtrant les paires inter-dossiers dans
+        // phash_phase avant la construction des groupes.
         let dir = TempDir::new().unwrap();
         std::fs::create_dir(dir.path().join("A")).unwrap();
         std::fs::create_dir(dir.path().join("B")).unwrap();
@@ -979,8 +985,30 @@ mod tests {
             no_cancel(), no_progress,
         ).unwrap();
         let similar: Vec<_> = r.groups.iter().filter(|g| g.similar).collect();
+        assert_eq!(similar.len(), 0, "aucun groupe similar ne doit etre forme cross-dossiers");
+    }
+
+    #[test]
+    fn by_folder_phash_compare_quand_meme_dans_meme_sous_dossier() {
+        // Garde-fou : la regression precedente ne doit pas casser la formation
+        // de groupes legitimes A L'INTERIEUR d'un meme sous-dossier.
+        let dir = TempDir::new().unwrap();
+        std::fs::create_dir(dir.path().join("Photos")).unwrap();
+        write_solid_png(&dir.path().join("Photos"), "a.png", [0, 128, 255], 40);
+        write_solid_png(&dir.path().join("Photos"), "b.png", [0, 128, 255], 80);
+
+        let r = scan_folder(
+            ScanParams {
+                find_similar: true,
+                by_folder: true,
+                recursive: true,
+                ..ScanParams::new(dir.path().to_str().unwrap())
+            },
+            no_cancel(), no_progress,
+        ).unwrap();
+        let similar: Vec<_> = r.groups.iter().filter(|g| g.similar).collect();
         assert_eq!(similar.len(), 1);
-        assert_eq!(similar[0].folder_key.as_deref(), Some(""));
+        assert_eq!(similar[0].folder_key.as_deref(), Some("Photos"));
     }
 
     // --- Tests pHash ---

@@ -138,6 +138,19 @@ where
         .collect();
 
     let root_path = Path::new(&params.folder);
+
+    // Mode by_folder : filtrer les paires inter-dossiers (cf. phash_phase.rs).
+    let similar_pairs = if params.by_folder {
+        let subdirs: Vec<String> = audio_data.iter()
+            .map(|a| super::fs::first_level_subdir(root_path, Path::new(&a.file.path)))
+            .collect();
+        similar_pairs.into_iter()
+            .filter(|(i, j)| subdirs[*i] == subdirs[*j])
+            .collect()
+    } else {
+        similar_pairs
+    };
+
     let new_groups = build_similar_groups(
         n, similar_pairs,
         |i| audio_data[i].file.clone(),
