@@ -420,15 +420,13 @@ describe("T - Régressions", () => {
   });
 
   /**
-   * Bug 3 : les textes almostDone / estimating / aboutTime commençaient par "- "
+   * Bug 3 : le texte almostDone commençait par "- "
    * ce qui affichait un tiret solitaire sur sa ligne dans ProgressETA.
+   * (Les anciennes cles `estimating` / `aboutTime` ont ete supprimees,
+   * elles n'etaient utilisees nulle part.)
    */
   it("Bug 3 - almostDone ne commence pas par un tiret", () => {
     expect(translations.fr.almostDone).not.toMatch(/^-/);
-    expect(translations.fr.estimating).not.toMatch(/^-/);
-    expect(translations.fr.aboutTime).not.toMatch(/^-/);
     expect(translations.en.almostDone).not.toMatch(/^-/);
-    expect(translations.en.estimating).not.toMatch(/^-/);
-    expect(translations.en.aboutTime).not.toMatch(/^-/);
   });
 });
