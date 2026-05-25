@@ -15,13 +15,13 @@ use std::path::Path;
 /// en une seule passe sur les en-tetes. Retourne (count, bytes_decompresses).
 /// Utilise pour fusionner le precheck d'espace disque dans la phase counting_archives.
 pub fn count_and_estimate_archive_image_entries(path: &Path) -> (usize, u64) {
-    count_and_estimate_archive_entries_filtered(path, |name| crate::scanner::hash::is_image_path(name))
+    count_and_estimate_archive_entries_filtered(path, crate::scanner::hash::is_image_path)
 }
 
 /// Compte ET estime la taille totale (bytes) d'extraction des entrees audio d'une archive.
 /// Cf. `count_and_estimate_archive_image_entries`.
 pub fn count_and_estimate_archive_audio_entries(path: &Path) -> (usize, u64) {
-    count_and_estimate_archive_entries_filtered(path, |name| crate::audio::is_audio(name))
+    count_and_estimate_archive_entries_filtered(path, crate::audio::is_audio)
 }
 
 /// Compte les entrees passant le filtre + somme leur taille decompressee.

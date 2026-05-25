@@ -508,6 +508,8 @@ where
 }
 
 #[cfg(test)]
+#[allow(clippy::field_reassign_with_default)] // pattern courant en tests pour ne configurer
+                                                // qu'un sous-ensemble de champs sans dupliquer Default
 mod tests {
     use super::*;
     use std::fs;

@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { LangProvider } from "./LangContext";
-import { KeepButton, MetaBlockBase, toMediaUrl } from "./comparatorShared";
+import { KeepButton, MetaBlockBase, MetaField, toMediaUrl } from "./comparatorShared";
 
 const mockInvoke = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...args: any[]) => mockInvoke(...args) }));
@@ -55,6 +55,45 @@ describe("KeepButton", () => {
     renderBtn(false, onKeep);
     await user.click(screen.getByRole("button"));
     expect(onKeep).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("MetaField", () => {
+  it("rend une ligne label + valeur", () => {
+    render(<MetaField label="Taille" value="1.5 Mo" />);
+    expect(screen.getByText("Taille")).toBeInTheDocument();
+    expect(screen.getByText("1.5 Mo")).toBeInTheDocument();
+  });
+
+  it("accepte du markup React dans label et value", () => {
+    render(
+      <MetaField
+        label={<span data-testid="label-node">L</span>}
+        value={<span data-testid="value-node">V</span>}
+      />
+    );
+    expect(screen.getByTestId("label-node")).toBeInTheDocument();
+    expect(screen.getByTestId("value-node")).toBeInTheDocument();
+  });
+
+  it("applique valueClassName a la cellule value uniquement", () => {
+    const { container } = render(
+      <MetaField label="L" value="V" valueClassName="audio-list" />
+    );
+    const value = container.querySelector(".comparator-meta-value");
+    expect(value).toHaveClass("comparator-meta-value");
+    expect(value).toHaveClass("audio-list");
+    // Le label n'a pas la classe additionnelle
+    const label = container.querySelector(".comparator-meta-label");
+    expect(label).not.toHaveClass("audio-list");
+  });
+
+  it("applique valueStyle a la cellule value", () => {
+    const { container } = render(
+      <MetaField label="L" value="V" valueStyle={{ opacity: 0.5 }} />
+    );
+    const value = container.querySelector(".comparator-meta-value") as HTMLElement;
+    expect(value.style.opacity).toBe("0.5");
   });
 });
 

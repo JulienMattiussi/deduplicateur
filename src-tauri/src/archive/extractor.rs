@@ -49,7 +49,7 @@ pub fn scan_temp_parent(data_dir: &Path) -> PathBuf {
 /// `is_image_path`. Wrapper sur `estimate_extraction_size_filtered` pour retro-compat.
 #[allow(dead_code)]
 pub fn estimate_extraction_size(archive_paths: &[String]) -> u64 {
-    estimate_extraction_size_filtered(archive_paths, |name| is_image_path(name))
+    estimate_extraction_size_filtered(archive_paths, is_image_path)
 }
 
 /// Estime la taille totale (bytes) qu'occupera l'extraction des entrees passant le predicat
@@ -136,7 +136,7 @@ pub fn extract_image_entries(
     data_dir: &Path,
     on_entry: EntryCallback,
 ) -> std::io::Result<EntryExtraction> {
-    extract_entries_filtered(archive_paths, data_dir, |name| is_image_path(name), on_entry)
+    extract_entries_filtered(archive_paths, data_dir, is_image_path, on_entry)
 }
 
 /// Extrait toutes les entrees audio des archives donnees (filtre `is_audio`).
@@ -145,7 +145,7 @@ pub fn extract_audio_entries(
     data_dir: &Path,
     on_entry: EntryCallback,
 ) -> std::io::Result<EntryExtraction> {
-    extract_entries_filtered(archive_paths, data_dir, |name| crate::audio::is_audio(name), on_entry)
+    extract_entries_filtered(archive_paths, data_dir, crate::audio::is_audio, on_entry)
 }
 
 /// Extrait toutes les entrees passant le predicat `filter` vers un nouveau dossier

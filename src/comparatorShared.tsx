@@ -15,6 +15,34 @@ export function toMediaUrl(path: string, port: number): string {
 }
 
 /**
+ * Ligne de meta partagee par tous les MetaBlock (Image/Video/Audio/Archive) :
+ * un label aligne a gauche, une valeur a droite, structure DOM unique pour
+ * eviter la duplication de `<div className="comparator-meta-row">...</div>`
+ * dans chaque comparateur. `label` et `value` acceptent du markup React pour
+ * les cas avec contenu dynamique (ex. nombre de pistes audio dans le label,
+ * liste de spans dans la valeur).
+ */
+export function MetaField({
+  label,
+  value,
+  valueClassName,
+  valueStyle,
+}: {
+  label: React.ReactNode;
+  value: React.ReactNode;
+  valueClassName?: string;
+  valueStyle?: React.CSSProperties;
+}) {
+  const className = valueClassName ? `comparator-meta-value ${valueClassName}` : "comparator-meta-value";
+  return (
+    <div className="comparator-meta-row">
+      <span className="comparator-meta-label">{label}</span>
+      <span className={className} style={valueStyle}>{value}</span>
+    </div>
+  );
+}
+
+/**
  * Bouton "Garder celui-ci" partage par les comparateurs Image/Video/Audio.
  * Affiche un coche (✓) prefixe quand le fichier est marque comme garde.
  */
@@ -129,46 +157,6 @@ export function useComparatorNav({
     keepFile,
     isKept,
   };
-}
-
-/**
- * Coquille minimaliste pour comparateur : overlay plein ecran, header (titre + close),
- * gestion d'Echap. Pas de navigation entre groupes ni de tabs - utilise par les comparateurs
- * mono-paire (ArchiveComparator).
- */
-export function ComparatorBasicShell({
-  title,
-  headerExtra,
-  onClose,
-  children,
-}: {
-  title: string;
-  headerExtra?: React.ReactNode;
-  onClose: () => void;
-  children: React.ReactNode;
-}) {
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      const inInput = (e.target as HTMLElement).tagName === "INPUT";
-      if (inInput) return;
-      if (e.key === "Escape") onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  return (
-    <div className="comparator-overlay">
-      <div className="comparator-header">
-        <span className="comparator-title">{title}</span>
-        <div className="comparator-header-right">
-          {headerExtra}
-          <button className="btn-ghost btn-sm" onClick={onClose}>✕</button>
-        </div>
-      </div>
-      {children}
-    </div>
-  );
 }
 
 export function ComparatorShell({

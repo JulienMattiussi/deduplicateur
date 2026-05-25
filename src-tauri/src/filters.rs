@@ -48,6 +48,7 @@ pub fn passes_filters(
 mod tests {
     use super::*;
 
+    #[allow(clippy::too_many_arguments)] // miroir de la signature de passes_filters
     fn pf(path: &Path, size: u64, modified: u64, excl: &[String], incl: &[String], min_sz: u64, max_sz: u64, min_ts: u64, max_ts: u64) -> bool {
         passes_filters(path, size, modified, excl, incl, min_sz, max_sz, min_ts, max_ts)
     }

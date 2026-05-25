@@ -395,7 +395,7 @@ mod tests {
 
     #[test]
     fn build_groups_paire_simple() {
-        let files = vec![make_file("a"), make_file("b"), make_file("c")];
+        let files = [make_file("a"), make_file("b"), make_file("c")];
         let groups = build_similar_groups(3, vec![(0, 1)], |i| files[i].clone(),
             "test", true, false, false, |_| None, false);
         assert_eq!(groups.len(), 1);
@@ -405,7 +405,7 @@ mod tests {
 
     #[test]
     fn build_groups_pas_de_paire_pas_de_groupe() {
-        let files = vec![make_file("a"), make_file("b")];
+        let files = [make_file("a"), make_file("b")];
         let groups = build_similar_groups(2, vec![], |i| files[i].clone(),
             "test", false, false, true, |_| None, false);
         assert_eq!(groups.len(), 0);
@@ -413,7 +413,7 @@ mod tests {
 
     #[test]
     fn build_groups_by_folder_assigne_folder_key() {
-        let files = vec![make_file("a"), make_file("b")];
+        let files = [make_file("a"), make_file("b")];
         let groups = build_similar_groups(2, vec![(0, 1)], |i| files[i].clone(),
             "audio", false, false, true,
             |_| Some("Photos".to_string()), false);
@@ -423,10 +423,8 @@ mod tests {
 
     #[test]
     fn build_groups_compare_mode_garde_groupes_croises() {
-        let files = vec![
-            make_file_src("a", FileSource::Primary),
-            make_file_src("b", FileSource::Secondary),
-        ];
+        let files = [make_file_src("a", FileSource::Primary),
+            make_file_src("b", FileSource::Secondary)];
         let groups = build_similar_groups(2, vec![(0, 1)], |i| files[i].clone(),
             "video", false, true, false, |_| None, true);
         assert_eq!(groups.len(), 1);
@@ -434,10 +432,8 @@ mod tests {
 
     #[test]
     fn build_groups_compare_mode_filtre_groupes_internes() {
-        let files = vec![
-            make_file_src("a", FileSource::Primary),
-            make_file_src("b", FileSource::Primary),
-        ];
+        let files = [make_file_src("a", FileSource::Primary),
+            make_file_src("b", FileSource::Primary)];
         let groups = build_similar_groups(2, vec![(0, 1)], |i| files[i].clone(),
             "video", false, true, false, |_| None, true);
         assert_eq!(groups.len(), 0);
@@ -445,7 +441,7 @@ mod tests {
 
     #[test]
     fn build_groups_transitif_trois_fichiers() {
-        let files = vec![make_file("a"), make_file("b"), make_file("c")];
+        let files = [make_file("a"), make_file("b"), make_file("c")];
         // a~b et b~c -> {a,b,c} dans un seul groupe
         let groups = build_similar_groups(3, vec![(0, 1), (1, 2)], |i| files[i].clone(),
             "phash", true, false, false, |_| None, false);

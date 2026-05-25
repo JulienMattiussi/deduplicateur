@@ -112,7 +112,7 @@ impl NativePlayerRegistry {
             map.get(&id).cloned().ok_or_else(|| format!("native_player: id {} introuvable", id))?
         };
         let guard = arc.lock().map_err(|_| "native_player: player mutex poisonné".to_string())?;
-        f(&*guard)
+        f(&guard)
     }
 
     /// Operation atomique sur deux players (gauche/droite du comparateur). Acquiert
@@ -141,9 +141,9 @@ impl NativePlayerRegistry {
         let lo = lo_arc.lock().map_err(|_| "native_player: player mutex poisonné".to_string())?;
         let hi = hi_arc.lock().map_err(|_| "native_player: player mutex poisonné".to_string())?;
         if swapped {
-            f(&*hi, &*lo)
+            f(&hi, &lo)
         } else {
-            f(&*lo, &*hi)
+            f(&lo, &hi)
         }
     }
 

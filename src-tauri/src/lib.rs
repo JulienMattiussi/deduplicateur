@@ -348,7 +348,7 @@ pub fn run() {
 mod tests {
     use super::*;
     use scanner::{ArchiveGroupResult, ArchiveInGroup, DuplicateFile, DuplicateGroup};
-    use video::VideoMetadata;
+    
     use std::thread;
 
     // ── DiskDecisionState ───────────────────────────────────────────────────────

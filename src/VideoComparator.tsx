@@ -4,7 +4,7 @@ import type { DuplicateFile, VideoMetadata, PreparedVideo } from "./types";
 import { formatDurationSecs } from "./utils";
 import { useLang } from "./LangContext";
 import type { ComparatorProps } from "./comparatorShared";
-import { useComparatorNav, ComparatorShell, MetaBlockBase, KeepButton, toMediaUrl } from "./comparatorShared";
+import { useComparatorNav, ComparatorShell, MetaBlockBase, MetaField, KeepButton, toMediaUrl } from "./comparatorShared";
 import { isNativePlayerAvailable } from "./components/NativeVideo";
 import { NativeComparatorBody } from "./components/NativeComparatorBody";
 import { useZoomPan } from "./hooks/useZoomPan";
@@ -35,54 +35,47 @@ function formatAudioFallback(meta: VideoMetadata, noneLabel: string): string {
 
 function VideoMetaBlock({ file, meta }: { file: DuplicateFile; meta: VideoMetadata | null }) {
   const { t } = useLang();
-  return (
-    <MetaBlockBase file={file}>
-      {meta ? (
-        <>
-          <div className="comparator-meta-row">
-            <span className="comparator-meta-label">{t.imageMetaDimensions}</span>
-            <span className="comparator-meta-value">{meta.width}x{meta.height}</span>
-          </div>
-          <div className="comparator-meta-row">
-            <span className="comparator-meta-label">{t.colDuration}</span>
-            <span className="comparator-meta-value">{formatDurationSecs(meta.duration_secs)}</span>
-          </div>
-          <div className="comparator-meta-row">
-            <span className="comparator-meta-label">{t.videoMetaCodec}</span>
-            <span className="comparator-meta-value">{meta.codec}</span>
-          </div>
-          <div className="comparator-meta-row">
-            <span className="comparator-meta-label">
-              {t.videoMetaAudio}
-              {meta.audio_tracks && meta.audio_tracks.length > 1 ? ` (${meta.audio_tracks.length})` : ""}
-            </span>
-            {meta.audio_tracks && meta.audio_tracks.length > 0 ? (
-              <span className="comparator-meta-value comparator-meta-audio-list">
-                {meta.audio_tracks.map((track, i) => (
-                  <span
-                    key={track.index ?? i}
-                    className={`audio-track${track.default ? " audio-track--default" : ""}`}
-                    title={`#${track.index} - ${track.codec}${channelsLabel(track.channels, track.channel_layout)}${track.language ? ` [${track.language}]` : ""}${track.default ? " (défaut)" : ""}`}
-                  >
-                    {formatTrack(track)}
-                  </span>
-                ))}
-              </span>
-            ) : (
-              <span
-                className="comparator-meta-value"
-                style={!meta.audio_codec ? { opacity: 0.6, fontStyle: "italic" } : undefined}
-              >
-                {formatAudioFallback(meta, t.videoMetaAudioNone)}
-              </span>
-            )}
-          </div>
-        </>
-      ) : (
+  if (!meta) {
+    return (
+      <MetaBlockBase file={file}>
         <div className="comparator-meta-row">
           <span className="comparator-meta-label" style={{ opacity: 0.5 }}>...</span>
         </div>
-      )}
+      </MetaBlockBase>
+    );
+  }
+  const audioLabel = (
+    <>
+      {t.videoMetaAudio}
+      {meta.audio_tracks && meta.audio_tracks.length > 1 ? ` (${meta.audio_tracks.length})` : ""}
+    </>
+  );
+  const audioValue = meta.audio_tracks && meta.audio_tracks.length > 0 ? (
+    <>
+      {meta.audio_tracks.map((track, i) => (
+        <span
+          key={track.index ?? i}
+          className={`audio-track${track.default ? " audio-track--default" : ""}`}
+          title={`#${track.index} - ${track.codec}${channelsLabel(track.channels, track.channel_layout)}${track.language ? ` [${track.language}]` : ""}${track.default ? " (défaut)" : ""}`}
+        >
+          {formatTrack(track)}
+        </span>
+      ))}
+    </>
+  ) : formatAudioFallback(meta, t.videoMetaAudioNone);
+  return (
+    <MetaBlockBase file={file}>
+      <MetaField label={t.imageMetaDimensions} value={`${meta.width}x${meta.height}`} />
+      <MetaField label={t.colDuration} value={formatDurationSecs(meta.duration_secs)} />
+      <MetaField label={t.videoMetaCodec} value={meta.codec} />
+      <MetaField
+        label={audioLabel}
+        value={audioValue}
+        valueClassName={meta.audio_tracks && meta.audio_tracks.length > 0 ? "comparator-meta-audio-list" : undefined}
+        valueStyle={meta.audio_tracks && meta.audio_tracks.length > 0
+          ? undefined
+          : (!meta.audio_codec ? { opacity: 0.6, fontStyle: "italic" } : undefined)}
+      />
     </MetaBlockBase>
   );
 }

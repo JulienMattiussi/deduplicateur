@@ -17,7 +17,7 @@ pub use detect::{detect_archive_format, detect_archive_format_verified};
 // Re-exports utilises uniquement par les tests de ce module (cf. mod tests en bas).
 // Ne pas retirer sans aussi changer le `use super::*;` des tests.
 #[cfg(test)]
-pub use count::{count_and_estimate_archive_entries_filtered, count_archive_entries_filtered};
+pub use count::count_archive_entries_filtered;
 #[cfg(test)]
 pub use detect::verify_archive_magic;
 
@@ -379,7 +379,7 @@ mod tests {
         // 257 octets de zeros puis "ustar".
         let mut bytes = vec![0u8; 257];
         bytes.extend_from_slice(b"ustar\x00");
-        bytes.extend(std::iter::repeat(0u8).take(50));
+        bytes.extend(std::iter::repeat_n(0u8, 50));
         let f = write_temp(".tar", &bytes);
         assert!(verify_archive_magic(f.path(), &ArchiveFormat::Tar));
     }
@@ -464,7 +464,7 @@ mod tests {
             let mut w = ArchiveWriter::create(f.path()).unwrap();
             w.set_encrypt_header(false);
             for (name, data) in entries {
-                let entry = SzEntry::new_file(*name);
+                let entry = SzEntry::new_file(name);
                 w.push_archive_entry(entry, Some(*data)).unwrap();
             }
             w.finish().unwrap();

@@ -651,9 +651,9 @@ The actual deletion is done from the main list via the "Delete N files" button. 
       en: ["comparator", "audio", "compare", "listen", "sound", "music", "mp3", "flac"],
     },
     body: {
-      fr: `Le bouton **Comparer** apparait dans l'en-tete de chaque groupe audio. Il ouvre le comparateur audio en plein ecran.
+      fr: `Le bouton **Comparer** apparaît dans l'en-tête de chaque groupe audio. Il ouvre le comparateur audio en plein écran.
 
-Le comparateur affiche les deux fichiers cote a cote avec un lecteur audio pour chacun. Le lecteur de gauche est le **maitre** : appuyer sur lecture, pause ou sauter a un instant synchronise automatiquement le lecteur de droite.
+Le comparateur affiche les deux fichiers côte à côte avec un lecteur audio pour chacun. Le lecteur de gauche est le **maître** : appuyer sur lecture, pause ou sauter à un instant synchronise automatiquement le lecteur de droite.
 
 Naviguer entre les groupes avec les boutons **◀ ▶** ou les touches **← →** du clavier.`,
       en: `The **Compare** button appears in the header of each audio group. It opens the audio comparator in full screen.
@@ -672,11 +672,11 @@ Navigate between groups using the **◀ ▶** buttons or the **← →** keyboar
       en: ["keep", "delete", "choose", "comparator", "audio", "retain"],
     },
     body: {
-      fr: `Cliquer sur **Garder celui-ci** sous le lecteur souhaite : tous les autres fichiers du groupe sont coches pour suppression et le comparateur se ferme.
+      fr: `Cliquer sur **Garder celui-ci** sous le lecteur souhaité : tous les autres fichiers du groupe sont cochés pour suppression et le comparateur se ferme.
 
-Les metadonnees sous chaque lecteur (nom du fichier, dossier, taille, duree) permettent de comparer les fichiers avant de choisir.
+Les métadonnées sous chaque lecteur (nom du fichier, dossier, taille, durée) permettent de comparer les fichiers avant de choisir.
 
-Le bouton **📂** a cote du dossier ouvre le dossier du fichier dans le gestionnaire de fichiers. Le bouton **⏵** a cote du nom du fichier ouvre directement le fichier dans le lecteur audio systeme.`,
+Le bouton **📂** à côté du dossier ouvre le dossier du fichier dans le gestionnaire de fichiers. Le bouton **⏵** à côté du nom du fichier ouvre directement le fichier dans le lecteur audio système.`,
       en: `Click **Keep this one** under the desired player: all other files in the group are checked for deletion and the comparator closes.
 
 The metadata below each player (file name, folder, size, duration) lets you compare files before choosing.
@@ -1109,7 +1109,7 @@ La notification affiche :
 
 La notification utilise la **langue active** de l'interface (FR ou EN) au moment du lancement du scan.
 
-**Permissions** : sur macOS et Linux, aucune permission supplémentaire n'est nécessaire. Sur Windows, la notification apparait dans le centre de notifications de la barre des tâches.`,
+**Permissions** : sur macOS et Linux, aucune permission supplémentaire n'est nécessaire. Sur Windows, la notification apparaît dans le centre de notifications de la barre des tâches.`,
       en: `When a long scan finishes, the application sends a **system notification** (Windows Action Center, macOS, or libnotify on Linux).
 
 The notification shows:

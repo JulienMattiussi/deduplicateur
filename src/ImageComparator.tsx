@@ -4,7 +4,7 @@ import type { DuplicateFile, ImageMeta } from "./types";
 import { useLang } from "./LangContext";
 import { openFile } from "./fileActions";
 import type { ComparatorProps } from "./comparatorShared";
-import { useComparatorNav, ComparatorShell, MetaBlockBase, KeepButton } from "./comparatorShared";
+import { useComparatorNav, ComparatorShell, MetaBlockBase, MetaField, KeepButton } from "./comparatorShared";
 import { useZoomPan } from "./hooks/useZoomPan";
 
 function ImageMetaBlock({ file, meta }: { file: DuplicateFile; meta: ImageMeta | null }) {
@@ -13,19 +13,10 @@ function ImageMetaBlock({ file, meta }: { file: DuplicateFile; meta: ImageMeta |
     <MetaBlockBase file={file}>
       {meta ? (
         <>
-          <div className="comparator-meta-row">
-            <span className="comparator-meta-label">{t.imageMetaDimensions}</span>
-            <span className="comparator-meta-value">{meta.width}×{meta.height}</span>
-          </div>
-          <div className="comparator-meta-row">
-            <span className="comparator-meta-label">{t.imageMetaFormat}</span>
-            <span className="comparator-meta-value">{meta.format}</span>
-          </div>
+          <MetaField label={t.imageMetaDimensions} value={`${meta.width}×${meta.height}`} />
+          <MetaField label={t.imageMetaFormat} value={meta.format} />
           {meta.exif_date && (
-            <div className="comparator-meta-row">
-              <span className="comparator-meta-label">{t.imageMetaExifDate}</span>
-              <span className="comparator-meta-value">{meta.exif_date}</span>
-            </div>
+            <MetaField label={t.imageMetaExifDate} value={meta.exif_date} />
           )}
         </>
       ) : (

@@ -221,6 +221,34 @@ pub fn compute_two_pass_hashes(
     compute_hashes_from_image(&img, coarse_size, fine_size)
 }
 
+pub fn hamming_distance(a: &[u8], b: &[u8]) -> u32 {
+    a.iter().zip(b.iter()).map(|(x, y)| (x ^ y).count_ones()).sum()
+}
+
+/// Retourne true si la paire (a, b) passe tous les filtres de comparaison pHash.
+pub fn pair_passes_filters(
+    a: &ImageData,
+    b: &ImageData,
+    use_aspect_filter: bool,
+    aspect_tolerance: f32,
+    use_two_pass: bool,
+    coarse_threshold: u32,
+    threshold: u32,
+) -> bool {
+    if use_aspect_filter {
+        if let (Some(ai), Some(aj)) = (a.aspect, b.aspect) {
+            let max_r = ai.max(aj);
+            if max_r > 0.0 && (ai - aj).abs() / max_r > aspect_tolerance {
+                return false;
+            }
+        }
+    }
+    if use_two_pass && hamming_distance(&a.coarse, &b.coarse) > coarse_threshold {
+        return false;
+    }
+    hamming_distance(&a.fine, &b.fine) <= threshold
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -336,32 +364,4 @@ mod tests {
         std::fs::write(&p, &jpeg).unwrap();
         assert!(try_extract_exif_thumbnail(p.to_str().unwrap()).is_none());
     }
-}
-
-pub fn hamming_distance(a: &[u8], b: &[u8]) -> u32 {
-    a.iter().zip(b.iter()).map(|(x, y)| (x ^ y).count_ones()).sum()
-}
-
-/// Retourne true si la paire (a, b) passe tous les filtres de comparaison pHash.
-pub fn pair_passes_filters(
-    a: &ImageData,
-    b: &ImageData,
-    use_aspect_filter: bool,
-    aspect_tolerance: f32,
-    use_two_pass: bool,
-    coarse_threshold: u32,
-    threshold: u32,
-) -> bool {
-    if use_aspect_filter {
-        if let (Some(ai), Some(aj)) = (a.aspect, b.aspect) {
-            let max_r = ai.max(aj);
-            if max_r > 0.0 && (ai - aj).abs() / max_r > aspect_tolerance {
-                return false;
-            }
-        }
-    }
-    if use_two_pass && hamming_distance(&a.coarse, &b.coarse) > coarse_threshold {
-        return false;
-    }
-    hamming_distance(&a.fine, &b.fine) <= threshold
 }

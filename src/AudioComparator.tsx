@@ -4,7 +4,7 @@ import type { DuplicateFile } from "./types";
 import { formatDurationSecs } from "./utils";
 import { useLang } from "./LangContext";
 import type { ComparatorProps } from "./comparatorShared";
-import { useComparatorNav, ComparatorShell, MetaBlockBase, KeepButton, toMediaUrl } from "./comparatorShared";
+import { useComparatorNav, ComparatorShell, MetaBlockBase, MetaField, KeepButton, toMediaUrl } from "./comparatorShared";
 
 function AudioMetaBlock({ file }: { file: DuplicateFile }) {
   const { t } = useLang();
@@ -12,10 +12,7 @@ function AudioMetaBlock({ file }: { file: DuplicateFile }) {
   return (
     <MetaBlockBase file={file}>
       {duration != null && (
-        <div className="comparator-meta-row">
-          <span className="comparator-meta-label">{t.colDuration}</span>
-          <span className="comparator-meta-value">{formatDurationSecs(duration)}</span>
-        </div>
+        <MetaField label={t.colDuration} value={formatDurationSecs(duration)} />
       )}
     </MetaBlockBase>
   );

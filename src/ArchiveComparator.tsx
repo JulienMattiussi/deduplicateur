@@ -4,8 +4,48 @@ import { useLang } from "./LangContext";
 import { formatSize, formatDate, formatDurationSecs, dirname, basename } from "./utils";
 import { revealInFolder } from "./fileActions";
 import { ArchiveEntryThumbnail, ArchiveEntryAudioPlayer, isAudioPath } from "./components/FileThumbnail";
-import { ComparatorBasicShell } from "./comparatorShared";
 import type { ArchiveComparison, ArchiveEntryResult, ArchiveInGroup } from "./types";
+
+/**
+ * Coquille minimaliste pour comparateur d'archives : overlay plein ecran,
+ * header (titre + close), gestion d'Echap. Pas de navigation entre groupes
+ * (les archives ne sont qu'une seule "session" affichee). Specifique a ce
+ * comparateur, garde local pour rester explicite.
+ */
+function ComparatorBasicShell({
+  title,
+  headerExtra,
+  onClose,
+  children,
+}: {
+  title: string;
+  headerExtra?: React.ReactNode;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const inInput = (e.target as HTMLElement).tagName === "INPUT";
+      if (inInput) return;
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div className="comparator-overlay">
+      <div className="comparator-header">
+        <span className="comparator-title">{title}</span>
+        <div className="comparator-header-right">
+          {headerExtra}
+          <button className="btn-ghost btn-sm" onClick={onClose}>✕</button>
+        </div>
+      </div>
+      {children}
+    </div>
+  );
+}
 
 interface Props {
   /** Toutes les archives du groupe similaires entre elles. Permet de changer

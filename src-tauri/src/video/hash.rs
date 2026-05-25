@@ -244,7 +244,7 @@ fn crop_and_resize_to_8x8(pixels: &[u8], w: u32, h: u32, borders: BlackBorders) 
                     count += 1;
                 }
             }
-            out[(j * 8 + i) as usize] = if count > 0 { (sum / count) as u8 } else { 0 };
+            out[(j * 8 + i) as usize] = sum.checked_div(count).unwrap_or(0) as u8;
         }
     }
     out
@@ -506,11 +506,9 @@ mod tests {
     #[test]
     fn intersection_des_bandes_min_par_cote() {
         // Simule la logique d'intersection : on prend le min de chaque cote.
-        let frames = vec![
-            BlackBorders { left: 10, right: 10, top: 0, bottom: 0 },
+        let frames = [BlackBorders { left: 10, right: 10, top: 0, bottom: 0 },
             BlackBorders { left: 12, right: 8, top: 2, bottom: 0 },
-            BlackBorders { left: 9, right: 11, top: 0, bottom: 0 },
-        ];
+            BlackBorders { left: 9, right: 11, top: 0, bottom: 0 }];
         let common = BlackBorders {
             left: frames.iter().map(|f| f.left).min().unwrap(),
             right: frames.iter().map(|f| f.right).min().unwrap(),
@@ -583,7 +581,7 @@ mod tests {
         let h1 = mean_hash_64(&all_255);
         // l'un donne 0, l'autre 0xFFFFFFFFFFFFFFFF -> distance 64
         let d = sequence_distance(&[h0], &[h1]);
-        assert!(d >= 0.0 && d <= 64.0);
+        assert!((0.0..=64.0).contains(&d));
     }
 
     #[test]
