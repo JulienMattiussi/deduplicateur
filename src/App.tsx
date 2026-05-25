@@ -6,7 +6,7 @@ import { save as dialogSave } from "@tauri-apps/plugin-dialog";
 import "./App.css";
 import { formatSize, formatDuration, VIDEO_EXTS, IMAGE_EXTS, AUDIO_EXTS } from "./utils";
 import { useLang } from "./LangContext";
-import type { DuplicateGroup, FolderSummary, IgnoreEntry, ScanProfile, ScanSummary, ArchiveGroupResult, ArchiveDiskCheck } from "./types";
+import type { DuplicateGroup, FolderSummary, ScanProfile, ScanSummary, ArchiveGroupResult, ArchiveDiskCheck } from "./types";
 import { interp } from "./i18n";
 import { useScanConfig } from "./hooks/useScanConfig";
 import { useScanExecution } from "./hooks/useScanExecution";
@@ -15,6 +15,8 @@ import { useResults } from "./hooks/useResults";
 import { useSelectionState, type SmartMode } from "./hooks/useSelectionState";
 import { useDragDrop } from "./hooks/useDragDrop";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
+import { useTheme } from "./hooks/useTheme";
+import { useIgnoreList } from "./hooks/useIgnoreList";
 import { IgnoredPanel } from "./components/IgnoredPanel";
 import { HelpPanel } from "./components/HelpPanel";
 import { useProfiles } from "./hooks/useProfiles";
@@ -45,9 +47,7 @@ export default function App() {
   const [sessions, setSessions] = useState<ScanSummary[]>([]);
   const [summary, setSummary] = useState<ScanSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [theme, setTheme] = useState<"dark" | "light">(() =>
-    (localStorage.getItem("theme") as "dark" | "light") ?? "dark"
-  );
+  const { theme, toggleTheme } = useTheme();
   const [filterText, setFilterText] = useState("");
   const [comparatorIdx, setComparatorIdx] = useState<number | null>(null);
   const [videoComparatorIdx, setVideoComparatorIdx] = useState<number | null>(null);
@@ -57,7 +57,7 @@ export default function App() {
   const [resumingId, setResumingId] = useState<string | null>(null);
   const [smartRule, setSmartRule] = useState<SmartMode>("newest");
   const [priorityFolder, setPriorityFolder] = useState("");
-  const [ignoredEntries, setIgnoredEntries] = useState<IgnoreEntry[]>([]);
+  const { ignoredEntries, reload: loadIgnoredEntries } = useIgnoreList();
   const [helpOpen, setHelpOpen] = useState(false);
   const [cacheBytes, setCacheBytes] = useState<number | null>(null);
   const [panelResetKey, setPanelResetKey] = useState(0);
@@ -70,10 +70,6 @@ export default function App() {
   const scanExec = useScanExecution(handleScanComplete, setError);
   const selection = useSelectionState(results.groups, handleDeleteComplete, setError);
   const profilesHook = useProfiles();
-
-  useEffect(() => {
-    localStorage.setItem("theme", theme);
-  }, [theme]);
 
   // Pendant un scan, on prefixe le titre de la fenetre par le pourcentage de
   // progression - visible directement dans la barre des taches de l'OS sans
@@ -146,14 +142,6 @@ export default function App() {
     selectedCount: selection.selected.size,
   });
 
-  async function loadIgnoredEntries() {
-    try {
-      const entries = await invoke<IgnoreEntry[]>("get_ignore_list");
-      setIgnoredEntries(entries);
-    } catch {
-      // non-fatal
-    }
-  }
 
   // Apres clear_ignore_entry / clear_all_ignored : des groupes precedemment
   // ignores peuvent reapparaitre, et avec eux d'eventuels dossiers retires de
@@ -184,7 +172,7 @@ export default function App() {
     invoke<ScanSummary[]>("list_sessions")
       .then((s) => startTransition(() => setSessions(s)))
       .catch(() => {});
-    loadIgnoredEntries();
+    // useIgnoreList se charge automatiquement au mount, pas besoin de l'appeler ici.
   }, []);
 
   function resetResults() {
@@ -556,7 +544,7 @@ export default function App() {
           <div className="header-top-right">
             <button
               className="theme-btn"
-              onClick={() => setTheme((v) => v === "dark" ? "light" : "dark")}
+              onClick={toggleTheme}
               title={theme === "dark" ? "Mode clair" : "Mode sombre"}
             >
               {theme === "dark" ? "☀" : "☽"}
