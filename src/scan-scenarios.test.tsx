@@ -378,6 +378,76 @@ describe("T - Régressions", () => {
   });
 
   /**
+   * Bug 5 : en mode by_folder, un dossier avec plus de groupes que la page (50)
+   * voyait sa pagination cassee apres suppression. L'offset de loadFolderPage
+   * etait un compteur cumulatif (state.offset) qui ne suivait pas la purge du
+   * cache backend -> get_folder_groups_page etait rappele avec un offset trop
+   * grand -> page vide -> dossier qui disparait. Le fix passe un offsetOverride
+   * = nombre de groupes du dossier encore affiches.
+   */
+  it("Bug 5 - by_folder : suppression de la page chargee recharge la suite avec offset corrige", async () => {
+    const user = userEvent.setup();
+    // Dossier "Big" avec 3 groupes au total mais on en charge 2 a la fois.
+    const mk = (id: string) => ({
+      id, hash: id, size: 2048, similar: true, folder_key: "Big",
+      files: [
+        { path: `/Big/${id}_a.jpg`, size: 2048, name: `${id}_a.jpg`, modified: 1700000000 },
+        { path: `/Big/${id}_b.jpg`, size: 2048, name: `${id}_b.jpg`, modified: 1700001000 },
+      ],
+    });
+    const g1 = mk("g1"), g2 = mk("g2"), g3 = mk("g3");
+    const summary = {
+      id: "s-bug5", folder: "/home/test",
+      total_wasted_bytes: 3 * 2048, total_groups: 3, scanned_files: 6,
+      duration_ms: 100, by_folder: true, total_folders: 1, partial: false, find_similar: true,
+    };
+
+    let folderPageCalls = 0;
+    const folderPageOffsets: number[] = [];
+    mockInvoke.mockImplementation(makeDefaultMock({
+      scan_folder: summary,
+      list_folder_keys: [{ folder_key: "Big", group_count: 3, total_wasted_bytes: 3 * 2048 }],
+      get_folder_groups_page: (_cmd: string, args: any) => {
+        folderPageCalls++;
+        folderPageOffsets.push(args.offset);
+        // 1er appel (offset 0) : on renvoie 2 groupes, has_more=true (1 en attente).
+        // 2e appel (apres suppr, offset corrige 0) : on renvoie le 3eme, has_more=false.
+        if (folderPageCalls === 1) return Promise.resolve({ groups: [g1, g2], has_more: true });
+        return Promise.resolve({ groups: [g3], has_more: false });
+      },
+      // "Tout cocher" coche le doublon (2e fichier) de chaque groupe charge.
+      select_all_duplicates: ["/Big/g1_b.jpg", "/Big/g2_b.jpg"],
+      delete_files: [],
+    }));
+    mockDialogOpen.mockResolvedValue("/home/test");
+
+    render(<App />);
+    await user.click(screen.getByText(/Cliquer pour choisir un dossier/));
+    await waitFor(() => screen.getByText("/home/test"));
+    await user.selectOptions(screen.getAllByRole("combobox")[0], "by_folder");
+    await user.click(screen.getByText("🖼 Images"));
+    await user.click(screen.getByText("Analyser"));
+    await waitFor(() => screen.getByTestId("stats-row"), { timeout: 5000 });
+
+    await user.click(screen.getByText(/Big/));
+    await waitFor(() => screen.getByText("g1_a.jpg"));
+
+    // Cocher tout (les 2 groupes charges) puis supprimer.
+    await user.click(screen.getByRole("button", { name: "Tout cocher" }));
+    const deleteBtn = await screen.findByText(/Supprimer \d+ fichier/);
+    await user.click(deleteBtn);
+    await user.click(await screen.findByRole("button", { name: "Supprimer" }));
+
+    // Apres suppression : le 3eme groupe doit etre charge (pagination relancee).
+    await waitFor(() => {
+      expect(screen.getByText("g3_a.jpg")).toBeInTheDocument();
+    });
+    // Le 2e appel a get_folder_groups_page doit utiliser offset=0 (pas 2),
+    // car les 2 groupes charges ont ete supprimes du cache backend.
+    expect(folderPageOffsets[folderPageOffsets.length - 1]).toBe(0);
+  });
+
+  /**
    * Bug 2 : en mode by_folder, FolderSection ne transmettait pas onCompare/onCompareVideo
    * à GroupCard. Le bouton "Comparer" n'était donc jamais rendu pour les groupes images.
    */

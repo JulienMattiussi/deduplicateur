@@ -50,10 +50,16 @@ export function useResults(setError: (e: string | null) => void) {
     }
   }
 
-  async function loadFolderPage(folderKey: string, limit: number = 50) {
+  // offsetOverride : force l'offset de depart au lieu d'utiliser le compteur
+  // cumulatif `state.offset`. Necessaire apres une suppression ou un ignore en
+  // mode by_folder : le cache backend a ete purge / filtre, donc les indices ont
+  // decale. Le compteur cumulatif pointerait alors dans le vide (page vide ->
+  // dossier qui disparait). L'appelant passe le nombre de groupes du dossier
+  // encore affiches, qui correspond exactement a l'offset a reprendre.
+  async function loadFolderPage(folderKey: string, limit: number = 50, offsetOverride?: number) {
     const state = folderState[folderKey];
     if (state?.loading) return;
-    const offset = state?.offset ?? 0;
+    const offset = offsetOverride ?? state?.offset ?? 0;
     setFolderState((prev) => ({
       ...prev,
       [folderKey]: { loading: true, hasMore: state?.hasMore ?? true, offset },

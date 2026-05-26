@@ -282,7 +282,10 @@ export default function App() {
       if (summary?.by_folder) {
         for (const [key, n] of folderRemoved) {
           if (results.folderState[key]?.hasMore !== false) {
-            results.loadFolderPage(key, n);
+            // Apres purge du cache backend, l'offset a reprendre = nombre de
+            // groupes de ce dossier encore affiches (les indices ont decale).
+            const remainingInFolder = updatedGroups.filter((g) => (g.folder_key ?? "") === key).length;
+            results.loadFolderPage(key, n, remainingInFolder);
           }
         }
       } else if (results.hasMore) {
@@ -382,17 +385,22 @@ export default function App() {
       }
     });
 
-    if (summary?.by_folder) {
-      if (results.folderState[folderKey]?.hasMore !== false) {
-        results.loadFolderPage(folderKey, 1);
-      }
-    } else if (results.hasMore) {
-      results.loadPage(remainingGroups.length, true, 1);
-    }
-
     try {
+      // Enregistrer l'ignore AVANT de recharger : sinon le backend retourne
+      // encore le groupe qu'on vient d'ignorer (le filtre ignored n'est applique
+      // qu'a la lecture). On attend donc la confirmation avant loadFolderPage.
       await invoke("ignore_group", { groupId });
       await loadIgnoredEntries();
+      if (summary?.by_folder) {
+        if (results.folderState[folderKey]?.hasMore !== false) {
+          // Offset a reprendre = nombre de groupes du dossier encore affiches
+          // (la pagination backend est decalee par le filtre ignored).
+          const remainingInFolder = remainingGroups.filter((g) => (g.folder_key ?? "") === folderKey).length;
+          results.loadFolderPage(folderKey, 1, remainingInFolder);
+        }
+      } else if (results.hasMore) {
+        results.loadPage(remainingGroups.length, true, 1);
+      }
     } catch (e) {
       setError(String(e));
     }
