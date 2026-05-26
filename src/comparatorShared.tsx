@@ -1,8 +1,92 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import type { DuplicateGroup, DuplicateFile } from "./types";
 import { formatSize, dirname } from "./utils";
 import { useLang } from "./LangContext";
 import { revealInFolder, openFile } from "./fileActions";
+
+/**
+ * Groupe d'onglets scrollables (cote Gauche ou Droite). Affiche des fleches
+ * de scroll laterales quand les onglets debordent de la largeur disponible.
+ * Les fleches sont automatiquement cachees quand tout rentre, et grisees
+ * quand on est aux bornes du scroll. Le scroll lui-meme reste possible au
+ * trackpad / molette horizontale.
+ */
+function ScrollableTabsGroup({
+  side,
+  label,
+  children,
+}: {
+  side: "left" | "right";
+  label: string;
+  children: React.ReactNode;
+}) {
+  const scrollableRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+  // True si la largeur naturelle des onglets depasse la largeur dispo (= il y
+  // a de l'overflow). Permet de cacher completement les fleches quand tout
+  // rentre, evitant la pollution visuelle pour les groupes a 2-3 fichiers.
+  const [hasOverflow, setHasOverflow] = useState(false);
+
+  const checkScroll = useCallback(() => {
+    const el = scrollableRef.current;
+    if (!el) return;
+    const overflow = el.scrollWidth > el.clientWidth + 1;
+    setHasOverflow(overflow);
+    setCanScrollLeft(el.scrollLeft > 0);
+    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
+  }, []);
+
+  useEffect(() => {
+    const el = scrollableRef.current;
+    if (!el) return;
+    checkScroll();
+    const ro = new ResizeObserver(checkScroll);
+    ro.observe(el);
+    el.addEventListener("scroll", checkScroll);
+    return () => {
+      ro.disconnect();
+      el.removeEventListener("scroll", checkScroll);
+    };
+  }, [checkScroll]);
+
+  // Re-check au changement de contenu (nouveau groupe affiche -> nombre
+  // d'onglets different).
+  useEffect(() => {
+    checkScroll();
+  }, [children, checkScroll]);
+
+  function scrollByDelta(delta: number) {
+    scrollableRef.current?.scrollBy({ left: delta, behavior: "smooth" });
+  }
+
+  return (
+    <div className="comparator-tabs-group" data-testid={`tabs-${side}`}>
+      <span className="comparator-tabs-side">{label}</span>
+      {hasOverflow && (
+        <button
+          className="comparator-tabs-scroll-btn"
+          disabled={!canScrollLeft}
+          onClick={() => scrollByDelta(-200)}
+          data-testid={`tabs-${side}-scroll-left`}
+          aria-label="Scroll left"
+        >◀</button>
+      )}
+      <div className="comparator-tabs-scrollable" ref={scrollableRef}>
+        {children}
+      </div>
+      {hasOverflow && (
+        <button
+          className="comparator-tabs-scroll-btn"
+          disabled={!canScrollRight}
+          onClick={() => scrollByDelta(200)}
+          data-testid={`tabs-${side}-scroll-right`}
+          aria-label="Scroll right"
+        >▶</button>
+      )}
+    </div>
+  );
+}
 
 /**
  * Construit une URL pour le serveur media local (audio/video) a partir d'un chemin disque.
@@ -192,8 +276,7 @@ export function ComparatorShell({
       </div>
 
       <div className="comparator-tabs">
-        <div className="comparator-tabs-group" data-testid="tabs-left">
-          <span className="comparator-tabs-side">{t.panelLeft}</span>
+        <ScrollableTabsGroup side="left" label={t.panelLeft}>
           {group.files.map((f, i) => (
             <button
               key={`l${i}`}
@@ -202,9 +285,8 @@ export function ComparatorShell({
               title={f.name}
             >{f.name}</button>
           ))}
-        </div>
-        <div className="comparator-tabs-group" data-testid="tabs-right">
-          <span className="comparator-tabs-side">{t.panelRight}</span>
+        </ScrollableTabsGroup>
+        <ScrollableTabsGroup side="right" label={t.panelRight}>
           {group.files.map((f, i) => (
             <button
               key={`r${i}`}
@@ -213,7 +295,7 @@ export function ComparatorShell({
               title={f.name}
             >{f.name}</button>
           ))}
-        </div>
+        </ScrollableTabsGroup>
       </div>
 
       {children}
