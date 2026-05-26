@@ -11,13 +11,15 @@ import { revealInFolder, openFile } from "./fileActions";
  * quand on est aux bornes du scroll. Le scroll lui-meme reste possible au
  * trackpad / molette horizontale.
  */
-function ScrollableTabsGroup({
+export function ScrollableTabsGroup({
   side,
   label,
+  testIdPrefix = "tabs",
   children,
 }: {
   side: "left" | "right";
   label: string;
+  testIdPrefix?: string;
   children: React.ReactNode;
 }) {
   const scrollableRef = useRef<HTMLDivElement>(null);
@@ -61,14 +63,14 @@ function ScrollableTabsGroup({
   }
 
   return (
-    <div className="comparator-tabs-group" data-testid={`tabs-${side}`}>
+    <div className="comparator-tabs-group" data-testid={`${testIdPrefix}-${side}`}>
       <span className="comparator-tabs-side">{label}</span>
       {hasOverflow && (
         <button
           className="comparator-tabs-scroll-btn"
           disabled={!canScrollLeft}
           onClick={() => scrollByDelta(-200)}
-          data-testid={`tabs-${side}-scroll-left`}
+          data-testid={`${testIdPrefix}-${side}-scroll-left`}
           aria-label="Scroll left"
         >◀</button>
       )}
@@ -80,7 +82,7 @@ function ScrollableTabsGroup({
           className="comparator-tabs-scroll-btn"
           disabled={!canScrollRight}
           onClick={() => scrollByDelta(200)}
-          data-testid={`tabs-${side}-scroll-right`}
+          data-testid={`${testIdPrefix}-${side}-scroll-right`}
           aria-label="Scroll right"
         >▶</button>
       )}
@@ -243,6 +245,70 @@ export function useComparatorNav({
   };
 }
 
+/**
+ * Pattern "deux groupes d'onglets de selection cote a cote" partage par
+ * tous les comparateurs (fichier dans ComparatorShell, archive dans
+ * ArchiveComparator). Encapsule :
+ * - le wrapper `<div className="comparator-tabs">`
+ * - les deux `ScrollableTabsGroup` gauche/droite
+ * - le rendu des onglets (boutons avec etat actif)
+ *
+ * Toute modification de la mecanique des onglets (scroll, styling, etc.)
+ * se propage automatiquement aux deux comparateurs.
+ */
+export function DualScrollableTabs<T>({
+  items,
+  leftIdx,
+  rightIdx,
+  onPickLeft,
+  onPickRight,
+  getLabel,
+  leftSideLabel,
+  rightSideLabel,
+  testIdPrefix = "tabs",
+}: {
+  items: T[];
+  leftIdx: number;
+  rightIdx: number;
+  onPickLeft: (i: number) => void;
+  onPickRight: (i: number) => void;
+  getLabel: (item: T, i: number) => string;
+  leftSideLabel: string;
+  rightSideLabel: string;
+  testIdPrefix?: string;
+}) {
+  return (
+    <div className="comparator-tabs">
+      <ScrollableTabsGroup side="left" label={leftSideLabel} testIdPrefix={testIdPrefix}>
+        {items.map((item, i) => {
+          const label = getLabel(item, i);
+          return (
+            <button
+              key={`l${i}`}
+              className={`comparator-tab${leftIdx === i ? " comparator-tab--active" : ""}`}
+              onClick={() => onPickLeft(i)}
+              title={label}
+            >{label}</button>
+          );
+        })}
+      </ScrollableTabsGroup>
+      <ScrollableTabsGroup side="right" label={rightSideLabel} testIdPrefix={testIdPrefix}>
+        {items.map((item, i) => {
+          const label = getLabel(item, i);
+          return (
+            <button
+              key={`r${i}`}
+              className={`comparator-tab${rightIdx === i ? " comparator-tab--active" : ""}`}
+              onClick={() => onPickRight(i)}
+              title={label}
+            >{label}</button>
+          );
+        })}
+      </ScrollableTabsGroup>
+    </div>
+  );
+}
+
 export function ComparatorShell({
   nav,
   groups,
@@ -275,28 +341,16 @@ export function ComparatorShell({
         </div>
       </div>
 
-      <div className="comparator-tabs">
-        <ScrollableTabsGroup side="left" label={t.panelLeft}>
-          {group.files.map((f, i) => (
-            <button
-              key={`l${i}`}
-              className={`comparator-tab${effectiveLeftIdx === i ? " comparator-tab--active" : ""}`}
-              onClick={() => pickLeft(i)}
-              title={f.name}
-            >{f.name}</button>
-          ))}
-        </ScrollableTabsGroup>
-        <ScrollableTabsGroup side="right" label={t.panelRight}>
-          {group.files.map((f, i) => (
-            <button
-              key={`r${i}`}
-              className={`comparator-tab${effectiveRightIdx === i ? " comparator-tab--active" : ""}`}
-              onClick={() => pickRight(i)}
-              title={f.name}
-            >{f.name}</button>
-          ))}
-        </ScrollableTabsGroup>
-      </div>
+      <DualScrollableTabs
+        items={group.files}
+        leftIdx={effectiveLeftIdx}
+        rightIdx={effectiveRightIdx}
+        onPickLeft={pickLeft}
+        onPickRight={pickRight}
+        getLabel={(f) => f.name}
+        leftSideLabel={t.panelLeft}
+        rightSideLabel={t.panelRight}
+      />
 
       {children}
     </div>

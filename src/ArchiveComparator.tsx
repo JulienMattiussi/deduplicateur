@@ -4,6 +4,7 @@ import { useLang } from "./LangContext";
 import { formatSize, formatDate, formatDurationSecs, dirname, basename } from "./utils";
 import { revealInFolder } from "./fileActions";
 import { ArchiveEntryThumbnail, ArchiveEntryAudioPlayer, isAudioPath } from "./components/FileThumbnail";
+import { DualScrollableTabs } from "./comparatorShared";
 import type { ArchiveComparison, ArchiveEntryResult, ArchiveInGroup } from "./types";
 
 /**
@@ -312,36 +313,17 @@ export function ArchiveComparator({
   return (
     <ComparatorBasicShell title={t.archiveComparator} headerExtra={headerExtra} onClose={onClose}>
       {showTabs && (
-        <div className="comparator-tabs">
-          <div className="comparator-tabs-group" data-testid="archive-tabs-left">
-            <span className="comparator-tabs-side">{t.panelLeft}</span>
-            {archives.map((a, i) => {
-              const name = basename(a.path);
-              return (
-                <button
-                  key={`l${i}`}
-                  className={`comparator-tab${leftIdx === i ? " comparator-tab--active" : ""}`}
-                  onClick={() => pickLeft(i)}
-                  title={name}
-                >{name}</button>
-              );
-            })}
-          </div>
-          <div className="comparator-tabs-group" data-testid="archive-tabs-right">
-            <span className="comparator-tabs-side">{t.panelRight}</span>
-            {archives.map((a, i) => {
-              const name = basename(a.path);
-              return (
-                <button
-                  key={`r${i}`}
-                  className={`comparator-tab${rightIdx === i ? " comparator-tab--active" : ""}`}
-                  onClick={() => pickRight(i)}
-                  title={name}
-                >{name}</button>
-              );
-            })}
-          </div>
-        </div>
+        <DualScrollableTabs
+          items={archives}
+          leftIdx={leftIdx}
+          rightIdx={rightIdx}
+          onPickLeft={pickLeft}
+          onPickRight={pickRight}
+          getLabel={(a) => basename(a.path)}
+          leftSideLabel={t.panelLeft}
+          rightSideLabel={t.panelRight}
+          testIdPrefix="archive-tabs"
+        />
       )}
       {loading ? (
         <div className="archive-comparator-loading">
