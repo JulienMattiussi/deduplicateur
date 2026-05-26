@@ -819,32 +819,32 @@ describe("N - liste d'ignorés", () => {
   it("le panneau affiche les entrées après ouverture du dropdown", async () => {
     const user = await renderWithResults({
       get_ignore_list: [
-        { key: "k1", display_names: ["photo.jpg", "photo_copy.jpg"], ignored_at: 1700000000 },
+        { key: "/a/photo.jpg|/b/photo_copy.jpg", display_names: ["photo.jpg", "photo_copy.jpg"], ignored_at: 1700000000 },
       ],
     });
     await waitFor(() => expect(screen.getByText("1")).toBeInTheDocument());
     await user.click(screen.getByTestId("ignored-panel").querySelector("button")!);
-    expect(screen.getByText(/photo\.jpg/)).toBeInTheDocument();
+    expect(screen.getByText(/^photo\.jpg$/)).toBeInTheDocument();
   });
 
   it("cliquer Retirer appelle clear_ignore_entry avec la bonne clé", async () => {
     const user = await renderWithResults({
       get_ignore_list: [
-        { key: "k1", display_names: ["photo.jpg", "photo_copy.jpg"], ignored_at: 1700000000 },
+        { key: "/a/photo.jpg|/b/photo_copy.jpg", display_names: ["photo.jpg", "photo_copy.jpg"], ignored_at: 1700000000 },
       ],
     });
     await waitFor(() => expect(screen.getByText("1")).toBeInTheDocument());
     await user.click(screen.getByTestId("ignored-panel").querySelector("button")!);
     await user.click(screen.getByTestId("remove-ignored"));
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith("clear_ignore_entry", { key: "k1" });
+      expect(mockInvoke).toHaveBeenCalledWith("clear_ignore_entry", { key: "/a/photo.jpg|/b/photo_copy.jpg" });
     });
   });
 
   it("cliquer Tout effacer appelle clear_all_ignored", async () => {
     const user = await renderWithResults({
       get_ignore_list: [
-        { key: "k1", display_names: ["photo.jpg"], ignored_at: 1700000000 },
+        { key: "/a/photo.jpg", display_names: ["photo.jpg"], ignored_at: 1700000000 },
       ],
     });
     await waitFor(() => expect(screen.getByText("1")).toBeInTheDocument());

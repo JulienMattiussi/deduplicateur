@@ -423,6 +423,18 @@
   width: 100%;
   text-align: left;
   transition: background 0.15s, color 0.15s;
+  /* Sticky : le bandeau du dossier reste colle en haut de la zone scrollable
+     pendant qu'on parcourt ses groupes. z-index superieur a celui du
+     group-header pour rester au-dessus quand les deux se croisent. */
+  position: sticky;
+  top: 0;
+  z-index: 3;
+}
+
+/* En mode by_folder, le bandeau du groupe se cale juste SOUS le bandeau du
+   dossier (qui est sticky a top: 0 et mesure ~40px). */
+.folder-section .group-header {
+  top: 40px;
 }
 
 .folder-section-header:hover {
@@ -754,7 +766,11 @@
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: 10px;
-  overflow: hidden;
+  /* Pas d'`overflow: hidden` ici : un ancetre overflow!=visible confinerait le
+     `position: sticky` du `.group-header` a la card (le header ne collerait
+     jamais au scroll de .groups-list). Le border-radius est repris sur le
+     header (coins hauts) et le dernier enfant (coins bas) pour garder l'aspect
+     arrondi sans le clipping. */
   flex-shrink: 0;
 }
 
@@ -770,10 +786,25 @@
   background: var(--bg-card-header);
   border: none;
   border-bottom: 1px solid var(--border);
+  border-radius: 10px 10px 0 0;
   width: 100%;
   text-align: left;
   cursor: pointer;
   transition: background 0.15s;
+  /* Sticky : le bandeau du groupe reste visible en haut de la zone scrollable
+     tant que le groupe est a l'ecran. `top: 0` en mode "tout le dossier" ;
+     surcharge a la hauteur du bandeau de dossier en mode by_folder (cf. regle
+     `.folder-section .group-header`). */
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+/* Coins bas arrondis sur le dernier element de la card (remplace l'ancien
+   `overflow: hidden` de .group-card pour conserver l'aspect arrondi). */
+.group-card > *:last-child {
+  border-bottom-left-radius: 10px;
+  border-bottom-right-radius: 10px;
 }
 
 .group-header:hover {
@@ -2652,28 +2683,85 @@
 
 .ignored-entry {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
   background: var(--bg-card);
   border-radius: 6px;
   border: 1px solid var(--border);
 }
 
-.ignored-entry-info {
+.ignored-entry-files {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ignored-file-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ignored-file-thumb {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Contraint la miniature reutilisee de FileThumbnail a la taille de la ligne. */
+.ignored-file-thumb .file-thumb-img,
+.ignored-file-thumb .file-thumb-icon {
+  max-width: 36px;
+  max-height: 36px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.ignored-file-info {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
 }
 
-.ignored-names {
+.ignored-file-name {
   font-size: 12px;
   color: var(--text-2);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.ignored-file-dir {
+  font-size: 10px;
+  color: var(--text-4);
+  /* Tronque par la gauche : la fin du chemin (la plus informative) reste visible. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+}
+
+.ignored-file-actions {
+  flex-shrink: 0;
+  display: flex;
+  gap: 2px;
+}
+
+.ignored-entry-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
 }
 
 .ignored-date {

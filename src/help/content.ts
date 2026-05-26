@@ -721,7 +721,8 @@ Ignoring does not delete any files. It's a way of saying "I know these are dupli
     body: {
       fr: `Le bouton **"Groupes ignorés"** dans le coin supérieur droit (avec un badge indiquant le nombre d'entrées) ouvre un **panneau latéral** qui glisse depuis la droite, sur toute la hauteur de l'écran.
 
-- **Rechercher** : un champ en haut du panneau filtre les entrées par nom de fichier en temps réel.
+- **Aperçu et chemins** : chaque fichier du groupe ignoré est affiché avec une miniature, son nom et son dossier. Les boutons **⏵** (ouvrir le fichier) et **📁** (ouvrir le dossier) sont disponibles par fichier.
+- **Rechercher** : un champ en haut du panneau filtre les entrées par **nom de fichier ou chemin** en temps réel (taper un segment de dossier comme "vacances" suffit).
 - **Trier** : par **Date** (plus récents en premier, défaut) ou par **Nom** (alphabétique).
 - **Retirer** : supprime une entrée. Le groupe redeviendra visible au prochain scan.
 - **Tout effacer** : supprime toutes les entrées ignorées (bouton en bas du panneau).
@@ -733,7 +734,8 @@ La liste est **globale et persistante** : elle s'applique à tous les scans, que
 Le panneau est accessible en permanence depuis le header, même sans résultats affichés.`,
       en: `The **"Ignored groups"** button in the top-right corner (with a badge showing the entry count) opens a **side panel** that slides in from the right, spanning the full height of the screen.
 
-- **Search**: a field at the top filters entries by file name in real time.
+- **Preview and paths**: each file in the ignored group is shown with a thumbnail, its name and its folder. **⏵** (open the file) and **📁** (open the folder) buttons are available per file.
+- **Search**: a field at the top filters entries by **file name or path** in real time (typing a folder segment like "holidays" is enough).
 - **Sort**: by **Date** (most recent first, default) or by **Name** (alphabetical).
 - **Remove**: removes one entry. The group will reappear on the next scan.
 - **Clear all**: removes all ignored entries (button at the bottom of the panel).

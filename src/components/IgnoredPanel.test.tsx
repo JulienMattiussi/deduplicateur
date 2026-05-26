@@ -46,10 +46,11 @@ describe("IgnoredPanel", () => {
   it("ouvrir affiche les noms des fichiers ignorés", async () => {
     const user = userEvent.setup();
     renderPanel([
-      { key: "k1", display_names: ["photo.jpg", "photo_copy.jpg"], ignored_at: 1700000000 },
+      { key: "/a/photo.jpg|/b/photo_copy.jpg", display_names: ["photo.jpg", "photo_copy.jpg"], ignored_at: 1700000000 },
     ]);
     await user.click(screen.getByText(/Groupes ignorés/));
-    expect(screen.getByText(/photo\.jpg/)).toBeInTheDocument();
+    expect(screen.getByText(/^photo\.jpg$/)).toBeInTheDocument();
+    expect(screen.getByText(/^photo_copy\.jpg$/)).toBeInTheDocument();
   });
 
   it("n'affiche pas le bouton Tout effacer si vide", async () => {
@@ -104,8 +105,8 @@ describe("IgnoredPanel", () => {
   it("la recherche filtre les entrées par nom", async () => {
     const user = userEvent.setup();
     renderPanel([
-      { key: "k1", display_names: ["vacances.jpg"], ignored_at: 1700000000 },
-      { key: "k2", display_names: ["travail.pdf"], ignored_at: 1700000001 },
+      { key: "/photos/vacances.jpg", display_names: ["vacances.jpg"], ignored_at: 1700000000 },
+      { key: "/docs/travail.pdf", display_names: ["travail.pdf"], ignored_at: 1700000001 },
     ]);
     await user.click(screen.getByText(/Groupes ignorés/));
     expect(screen.getAllByTestId("ignored-entry")).toHaveLength(2);
@@ -128,8 +129,8 @@ describe("IgnoredPanel", () => {
   it("tri par nom ordonne alphabétiquement", async () => {
     const user = userEvent.setup();
     renderPanel([
-      { key: "k1", display_names: ["zebra.jpg"], ignored_at: 1700000099 },
-      { key: "k2", display_names: ["alpha.jpg"], ignored_at: 1700000000 },
+      { key: "/x/zebra.jpg", display_names: ["zebra.jpg"], ignored_at: 1700000099 },
+      { key: "/x/alpha.jpg", display_names: ["alpha.jpg"], ignored_at: 1700000000 },
     ]);
     await user.click(screen.getByText(/Groupes ignorés/));
     // Tri par defaut = date (plus recent en premier) -> zebra (ts plus grand) d'abord
