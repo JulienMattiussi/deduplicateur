@@ -38,8 +38,11 @@ impl ParentHandle {
         match handle.as_raw() {
             RawWindowHandle::Win32(h) => ParentHandle::Win32(h.hwnd.get() as u64),
             // h.window est `c_ulong` : u64 sur Linux 64 bits, u32 sur Windows. On caste
-            // explicitement pour eviter une erreur de compile cross-platform.
-            RawWindowHandle::Xlib(h) => ParentHandle::Xlib(h.window),
+            // explicitement pour eviter une erreur de compile cross-platform. Ne PAS
+            // retirer ce cast sous pretexte d'un warning clippy `unnecessary_cast` sur
+            // Linux : le build Windows en a besoin.
+            #[allow(clippy::unnecessary_cast)]
+            RawWindowHandle::Xlib(h) => ParentHandle::Xlib(h.window as u64),
             RawWindowHandle::Xcb(h) => ParentHandle::Xcb(h.window.get() as u64),
             _ => ParentHandle::Unsupported,
         }
