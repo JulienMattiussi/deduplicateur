@@ -111,6 +111,14 @@ pub fn list_sessions(app: tauri::AppHandle) -> Vec<ScanSummary> {
         Some(d) => d,
         None => return vec![],
     };
+    // Applique la liste d'ignores courante au summary de chaque session pour
+    // que la card "Mes analyses" affiche les compteurs reels (et non les
+    // compteurs originaux du scan). Sans ca, une session integralement
+    // ignoree resterait affichee a "12 groupes / 5.4 Go" alors que tout est
+    // dans la liste d'ignores - confusion garantie pour l'utilisateur.
+    // Coherent avec le pattern "cache brut, filtre dynamique" applique sur
+    // toutes les autres commandes de lecture (get_groups_page, list_folder_keys, etc.).
+    let ignored_keys = current_ignored_keys(&app);
     let mut sessions: Vec<ScanSummary> = std::fs::read_dir(&dir)
         .into_iter()
         .flatten()
@@ -119,7 +127,8 @@ pub fn list_sessions(app: tauri::AppHandle) -> Vec<ScanSummary> {
         .filter_map(|e| {
             let data = std::fs::read_to_string(e.path()).ok()?;
             let file: SessionFile = serde_json::from_str(&data).ok()?;
-            Some(file.summary)
+            let (_, filtered_summary) = filtered_view(&file.groups, &file.summary, &ignored_keys);
+            Some(filtered_summary)
         })
         .collect();
     sessions.sort_by(|a, b| b.id.cmp(&a.id));
@@ -411,6 +420,30 @@ mod tests {
             video_sim_threshold: None,
             audio_sim_threshold: None,
         }
+    }
+
+    #[test]
+    fn filtered_view_session_integralement_ignoree_retourne_compteurs_zero() {
+        // Scenario reproduisant le bug "une session avec tous les groupes ignores
+        // continue d'afficher 12 groupes / 5 Go dans Mes analyses". Le summary
+        // filtre doit montrer 0 groupes / 0 bytes. `list_sessions` applique ce
+        // filtre via filtered_view sur chaque session retournee.
+        let g1 = make_group("g1", 1000, &["/a/1.txt", "/a/1bis.txt"]);
+        let g2 = make_group("g2", 2000, &["/b/2.txt", "/b/2bis.txt"]);
+        let g3 = make_group("g3", 3000, &["/c/3.txt", "/c/3bis.txt"]);
+
+        let mut ignored = HashSet::new();
+        for g in [&g1, &g2, &g3] {
+            let paths: Vec<String> = g.files.iter().map(|f| f.path.clone()).collect();
+            ignored.insert(crate::ignore_list::group_ignore_key(&paths));
+        }
+
+        let summary = make_summary(3, 6000);
+        let (displayed, displayed_summary) = filtered_view(&[g1, g2, g3], &summary, &ignored);
+
+        assert_eq!(displayed.len(), 0);
+        assert_eq!(displayed_summary.total_groups, 0);
+        assert_eq!(displayed_summary.total_wasted_bytes, 0);
     }
 
     #[test]

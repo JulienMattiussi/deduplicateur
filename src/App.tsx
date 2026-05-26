@@ -182,6 +182,14 @@ export default function App() {
     setFilterText("");
     setArchiveGroups([]);
     setArchiveComparatorOpen(null);
+    // Re-fetch la liste des sessions : les compteurs ont peut-etre change pendant
+    // que l'utilisateur etait dans une session (suppression de fichiers -> save_session
+    // a mis a jour les counts ; ignore_group -> list_sessions applique maintenant
+    // filtered_view sur chaque summary). Sans ce re-fetch, la liste affichee
+    // resterait celle du mount initial -> compteurs stale.
+    invoke<ScanSummary[]>("list_sessions")
+      .then((s) => startTransition(() => setSessions(s)))
+      .catch(() => {});
   }
 
   async function handlePurgeCache() {
