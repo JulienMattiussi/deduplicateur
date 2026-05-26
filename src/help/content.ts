@@ -761,7 +761,9 @@ The panel is always accessible from the header, even without displayed results.`
     body: {
       fr: `Un profil sauvegarde une configuration complète : dossier, mode de scan, type de détection, seuil de similarité, filtres d'extensions, taille min/max, dossiers exclus et état du cache.
 
-**Sauvegarder** : saisissez un nom dans le champ du panneau **"Mes profils"** et cliquez "Sauvegarder". Un dossier doit être sélectionné.
+Le bouton **"Profils"** dans le header ouvre un **panneau latéral** (glissant depuis la droite, comme celui des groupes ignorés). Un champ de recherche filtre les profils par nom ou par dossier. Fermeture par ✕, Échap, ou clic en dehors.
+
+**Sauvegarder** : saisissez un nom en haut du panneau et cliquez "Sauvegarder". Un dossier doit être sélectionné.
 
 **Charger** : restaure la configuration dans l'interface sans lancer le scan. Vous pouvez ajuster avant de démarrer.
 
@@ -772,7 +774,9 @@ The panel is always accessible from the header, even without displayed results.`
 Les profils sont persistés sur le disque et disponibles entre les sessions.`,
       en: `A profile saves a complete configuration: folder, scan mode, detection type, similarity threshold, extension filters, min/max size, excluded folders, and cache state.
 
-**Save**: enter a name in the **"My profiles"** panel field and click "Save". A folder must be selected.
+The **"Profiles"** button in the header opens a **side panel** (sliding in from the right, like the ignored groups one). A search field filters profiles by name or folder. Close with ✕, Escape, or a click outside.
+
+**Save**: enter a name at the top of the panel and click "Save". A folder must be selected.
 
 **Load**: restores the configuration in the UI without launching the scan. You can adjust before starting.
 

@@ -1,9 +1,10 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { useLang } from "../LangContext";
 import type { IgnoreEntry, DuplicateFile } from "../types";
 import { basename, dirname, IMAGE_EXTS, VIDEO_EXTS, AUDIO_EXTS } from "../utils";
 import { openFile, revealInFolder } from "../fileActions";
 import { FileThumbnail } from "./FileThumbnail";
+import { SideDrawer } from "./SideDrawer";
 
 function formatIgnoreDate(ts: number): string {
   return new Date(ts * 1000).toLocaleDateString(undefined, {
@@ -77,16 +78,6 @@ export function IgnoredPanel({
   const [search, setSearch] = useState("");
   const [sortMode, setSortMode] = useState<SortMode>("date");
 
-  // Escape ferme le drawer.
-  useEffect(() => {
-    if (!open) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open]);
-
   const visibleEntries = useMemo(() => {
     const q = search.trim().toLowerCase();
     // Filtre sur les chemins COMPLETS (entry.key = paths tries joints par "|")
@@ -108,90 +99,81 @@ export function IgnoredPanel({
     return sorted;
   }, [entries, search, sortMode]);
 
+  const toolbar = entries.length > 0 ? (
+    <>
+      <input
+        className="ignored-search filter-input"
+        placeholder={t.helpSearch}
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        data-testid="ignored-search"
+      />
+      <div className="ignored-sort">
+        <span className="ignored-sort-label">{t.sortBy}</span>
+        <button
+          className={`ignored-sort-btn${sortMode === "date" ? " ignored-sort-btn--active" : ""}`}
+          onClick={() => setSortMode("date")}
+        >{t.sortDate}</button>
+        <button
+          className={`ignored-sort-btn${sortMode === "name" ? " ignored-sort-btn--active" : ""}`}
+          onClick={() => setSortMode("name")}
+        >{t.sortName}</button>
+      </div>
+    </>
+  ) : undefined;
+
+  const footer = entries.length > 0 ? (
+    <button
+      className="btn-ghost btn-sm"
+      onClick={onClearAll}
+      data-testid="clear-all-ignored"
+    >
+      {t.clearAllIgnored}
+    </button>
+  ) : undefined;
+
   return (
     <div className="ignored-container" data-testid="ignored-panel">
       <button className="btn-ghost" onClick={() => setOpen((v) => !v)}>
         {t.ignoredGroups}
         {entries.length > 0 && <span className="ignored-badge">{entries.length}</span>}
       </button>
-      {open && (
-        <>
-          <div className="ignored-overlay" onClick={() => setOpen(false)} />
-          <div className="ignored-drawer" data-testid="ignored-drawer">
-            <div className="ignored-drawer-header">
-              <span className="ignored-drawer-title">
-                {t.ignoredGroups}{entries.length > 0 ? ` (${entries.length})` : ""}
-              </span>
-              <button className="btn-ghost btn-sm" onClick={() => setOpen(false)} aria-label="Close">✕</button>
-            </div>
-
-            {entries.length > 0 && (
-              <div className="ignored-drawer-toolbar">
-                <input
-                  className="ignored-search filter-input"
-                  placeholder={t.helpSearch}
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  data-testid="ignored-search"
-                />
-                <div className="ignored-sort">
-                  <span className="ignored-sort-label">{t.sortBy}</span>
-                  <button
-                    className={`ignored-sort-btn${sortMode === "date" ? " ignored-sort-btn--active" : ""}`}
-                    onClick={() => setSortMode("date")}
-                  >{t.sortDate}</button>
-                  <button
-                    className={`ignored-sort-btn${sortMode === "name" ? " ignored-sort-btn--active" : ""}`}
-                    onClick={() => setSortMode("name")}
-                  >{t.sortName}</button>
-                </div>
-              </div>
-            )}
-
-            <div className="ignored-drawer-body">
-              {entries.length === 0 ? (
-                <p className="ignored-panel-empty">{t.noIgnoredGroups}</p>
-              ) : visibleEntries.length === 0 ? (
-                <p className="ignored-panel-empty">{t.helpNoResults}</p>
-              ) : (
-                <ul className="ignored-list">
-                  {visibleEntries.map((entry) => (
-                    <li key={entry.key} className="ignored-entry" data-testid="ignored-entry">
-                      <div className="ignored-entry-files">
-                        {entry.key.split("|").map((path) => (
-                          <IgnoredFileRow key={path} path={path} />
-                        ))}
-                      </div>
-                      <div className="ignored-entry-footer">
-                        <span className="ignored-date">{t.ignoredAt} {formatIgnoreDate(entry.ignored_at)}</span>
-                        <button
-                          className="btn-ghost btn-sm"
-                          onClick={() => onRemove(entry.key)}
-                          data-testid="remove-ignored"
-                        >
-                          {t.removeFromIgnored}
-                        </button>
-                      </div>
-                    </li>
+      <SideDrawer
+        open={open}
+        onClose={() => setOpen(false)}
+        testId="ignored-drawer"
+        title={`${t.ignoredGroups}${entries.length > 0 ? ` (${entries.length})` : ""}`}
+        toolbar={toolbar}
+        footer={footer}
+      >
+        {entries.length === 0 ? (
+          <p className="ignored-panel-empty">{t.noIgnoredGroups}</p>
+        ) : visibleEntries.length === 0 ? (
+          <p className="ignored-panel-empty">{t.helpNoResults}</p>
+        ) : (
+          <ul className="ignored-list">
+            {visibleEntries.map((entry) => (
+              <li key={entry.key} className="ignored-entry" data-testid="ignored-entry">
+                <div className="ignored-entry-files">
+                  {entry.key.split("|").map((path) => (
+                    <IgnoredFileRow key={path} path={path} />
                   ))}
-                </ul>
-              )}
-            </div>
-
-            {entries.length > 0 && (
-              <div className="ignored-drawer-footer">
-                <button
-                  className="btn-ghost btn-sm"
-                  onClick={onClearAll}
-                  data-testid="clear-all-ignored"
-                >
-                  {t.clearAllIgnored}
-                </button>
-              </div>
-            )}
-          </div>
-        </>
-      )}
+                </div>
+                <div className="ignored-entry-footer">
+                  <span className="ignored-date">{t.ignoredAt} {formatIgnoreDate(entry.ignored_at)}</span>
+                  <button
+                    className="btn-ghost btn-sm"
+                    onClick={() => onRemove(entry.key)}
+                    data-testid="remove-ignored"
+                  >
+                    {t.removeFromIgnored}
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </SideDrawer>
     </div>
   );
 }

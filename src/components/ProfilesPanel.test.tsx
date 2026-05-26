@@ -169,13 +169,24 @@ describe("ProfilesPanel", () => {
     expect(onSave).not.toHaveBeenCalled();
   });
 
-  it("fermeture au clic exterieur (click outside)", async () => {
+  it("fermeture au clic sur l'overlay", async () => {
     const user = userEvent.setup();
     renderPanel();
     await user.click(screen.getByText(/profils/i));
     expect(screen.getByText("Mon profil")).toBeInTheDocument();
-    // cliquer hors du composant
-    fireEvent.mouseDown(document.body);
+    // Clic sur l'overlay (zone sombre derriere le drawer) ferme le panneau.
+    const overlay = document.querySelector(".side-drawer-overlay") as HTMLElement;
+    expect(overlay).toBeTruthy();
+    fireEvent.click(overlay);
     expect(screen.queryByText("Mon profil")).not.toBeInTheDocument();
+  });
+
+  it("fermeture par la touche Echap", async () => {
+    const user = userEvent.setup();
+    renderPanel();
+    await user.click(screen.getByText(/profils/i));
+    expect(screen.getByTestId("profiles-drawer")).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByTestId("profiles-drawer")).not.toBeInTheDocument();
   });
 });
