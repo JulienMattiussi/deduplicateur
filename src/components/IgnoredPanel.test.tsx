@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { IgnoredPanel } from "./IgnoredPanel";
 import { LangProvider } from "../LangContext";
@@ -99,5 +99,55 @@ describe("IgnoredPanel", () => {
     ]);
     await user.click(screen.getByText(/Groupes ignorés/));
     expect(screen.getAllByTestId("ignored-entry")).toHaveLength(2);
+  });
+
+  it("la recherche filtre les entrées par nom", async () => {
+    const user = userEvent.setup();
+    renderPanel([
+      { key: "k1", display_names: ["vacances.jpg"], ignored_at: 1700000000 },
+      { key: "k2", display_names: ["travail.pdf"], ignored_at: 1700000001 },
+    ]);
+    await user.click(screen.getByText(/Groupes ignorés/));
+    expect(screen.getAllByTestId("ignored-entry")).toHaveLength(2);
+
+    await user.type(screen.getByTestId("ignored-search"), "vacances");
+    expect(screen.getAllByTestId("ignored-entry")).toHaveLength(1);
+    expect(screen.getByText(/vacances\.jpg/)).toBeInTheDocument();
+    expect(screen.queryByText(/travail\.pdf/)).not.toBeInTheDocument();
+  });
+
+  it("la recherche sans résultat affiche le message vide", async () => {
+    const user = userEvent.setup();
+    renderPanel([{ key: "k1", display_names: ["a.jpg"], ignored_at: 1700000000 }]);
+    await user.click(screen.getByText(/Groupes ignorés/));
+    await user.type(screen.getByTestId("ignored-search"), "zzz-introuvable");
+    expect(screen.queryAllByTestId("ignored-entry")).toHaveLength(0);
+    expect(screen.getByText(/Aucun résultat/)).toBeInTheDocument();
+  });
+
+  it("tri par nom ordonne alphabétiquement", async () => {
+    const user = userEvent.setup();
+    renderPanel([
+      { key: "k1", display_names: ["zebra.jpg"], ignored_at: 1700000099 },
+      { key: "k2", display_names: ["alpha.jpg"], ignored_at: 1700000000 },
+    ]);
+    await user.click(screen.getByText(/Groupes ignorés/));
+    // Tri par defaut = date (plus recent en premier) -> zebra (ts plus grand) d'abord
+    let entries = screen.getAllByTestId("ignored-entry");
+    expect(within(entries[0]).getByText(/zebra/)).toBeInTheDocument();
+
+    // Bascule tri par nom -> alpha d'abord
+    await user.click(screen.getByText("Nom"));
+    entries = screen.getAllByTestId("ignored-entry");
+    expect(within(entries[0]).getByText(/alpha/)).toBeInTheDocument();
+  });
+
+  it("Escape ferme le drawer", async () => {
+    const user = userEvent.setup();
+    renderPanel([{ key: "k1", display_names: ["a.jpg"], ignored_at: 1700000000 }]);
+    await user.click(screen.getByText(/Groupes ignorés/));
+    expect(screen.getByTestId("ignored-drawer")).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByTestId("ignored-drawer")).not.toBeInTheDocument();
   });
 });

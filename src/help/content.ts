@@ -719,18 +719,26 @@ Ignoring does not delete any files. It's a way of saying "I know these are dupli
       en: ["manage", "list", "ignored", "remove", "clear", "panel", "restore", "global"],
     },
     body: {
-      fr: `Le bouton **"Groupes ignorés"** dans le coin supérieur droit (avec un badge indiquant le nombre d'entrées) ouvre le panneau de gestion.
+      fr: `Le bouton **"Groupes ignorés"** dans le coin supérieur droit (avec un badge indiquant le nombre d'entrées) ouvre un **panneau latéral** qui glisse depuis la droite, sur toute la hauteur de l'écran.
 
+- **Rechercher** : un champ en haut du panneau filtre les entrées par nom de fichier en temps réel.
+- **Trier** : par **Date** (plus récents en premier, défaut) ou par **Nom** (alphabétique).
 - **Retirer** : supprime une entrée. Le groupe redeviendra visible au prochain scan.
-- **Tout effacer** : supprime toutes les entrées ignorées.
+- **Tout effacer** : supprime toutes les entrées ignorées (bouton en bas du panneau).
+
+Fermer le panneau : bouton **✕**, touche **Échap**, ou clic en dehors.
 
 La liste est **globale et persistante** : elle s'applique à tous les scans, quel que soit le dossier. Elle survit aux redémarrages de l'application.
 
 Le panneau est accessible en permanence depuis le header, même sans résultats affichés.`,
-      en: `The **"Ignored groups"** button in the top-right corner (with a badge showing the entry count) opens the management panel.
+      en: `The **"Ignored groups"** button in the top-right corner (with a badge showing the entry count) opens a **side panel** that slides in from the right, spanning the full height of the screen.
 
+- **Search**: a field at the top filters entries by file name in real time.
+- **Sort**: by **Date** (most recent first, default) or by **Name** (alphabetical).
 - **Remove**: removes one entry. The group will reappear on the next scan.
-- **Clear all**: removes all ignored entries.
+- **Clear all**: removes all ignored entries (button at the bottom of the panel).
+
+Close the panel: **✕** button, **Escape** key, or click outside.
 
 The list is **global and persistent**: it applies to all scans, regardless of the folder. It survives application restarts.
 

@@ -2531,31 +2531,108 @@
   line-height: 1.4;
 }
 
-.ignored-dropdown {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 12px;
-  min-width: 320px;
-  max-width: 420px;
-  z-index: 100;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+/* ── Drawer "Groupes ignores" : panneau lateral pleine hauteur, glisse depuis
+   la droite. Remplace l'ancien dropdown qui debordait de l'ecran quand la
+   liste devenait longue. ── */
+
+.ignored-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 200;
 }
 
-.ignored-dropdown-header {
+.ignored-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 420px;
+  max-width: 100vw;
+  background: var(--bg-panel);
+  border-left: 1px solid var(--border);
+  z-index: 201;
+  display: flex;
+  flex-direction: column;
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.3);
+}
+
+.ignored-drawer-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
 }
 
-.ignored-dropdown-title {
-  font-size: 13px;
-  font-weight: 500;
+.ignored-drawer-title {
+  font-size: 14px;
+  font-weight: 600;
   color: var(--text-2);
+}
+
+.ignored-drawer-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.ignored-search {
+  width: 100%;
+}
+
+.ignored-sort {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ignored-sort-label {
+  font-size: 11px;
+  color: var(--text-4);
+  margin-right: 2px;
+}
+
+.ignored-sort-btn {
+  background: transparent;
+  border: 1px solid var(--border-2);
+  border-radius: 5px;
+  color: var(--text-4);
+  font-size: 12px;
+  padding: 2px 10px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.ignored-sort-btn:hover {
+  background: var(--bg-input);
+  color: var(--text-2);
+}
+
+.ignored-sort-btn--active {
+  background: var(--bg-active);
+  color: var(--accent);
+  border-color: var(--bg-active-2);
+}
+
+/* Corps scrollable : prend toute la hauteur restante du drawer. C'est ce
+   `overflow-y: auto` + `flex: 1` qui empeche le debordement hors ecran. */
+.ignored-drawer-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 16px;
+}
+
+.ignored-drawer-footer {
+  padding: 10px 16px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+  display: flex;
+  justify-content: flex-end;
 }
 
 .ignored-panel-empty {
