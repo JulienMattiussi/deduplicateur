@@ -432,9 +432,12 @@
 }
 
 /* En mode by_folder, le bandeau du groupe se cale juste SOUS le bandeau du
-   dossier (qui est sticky a top: 0 et mesure ~40px). */
+   dossier. `--folder-header-h` est mesure en JS (cf. FolderSection) pour
+   coller pile a la hauteur reelle du bandeau dossier : une valeur en dur
+   laisserait une fine bande ou le contenu defilant transparait entre les
+   deux bandeaux sticky. Fallback 40px si la var n'est pas encore posee. */
 .folder-section .group-header {
-  top: 40px;
+  top: var(--folder-header-h, 40px);
 }
 
 .folder-section-header:hover {

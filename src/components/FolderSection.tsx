@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import type { FolderSummary, DuplicateGroup } from "../types";
 import { useLang } from "../LangContext";
 import { interp } from "../i18n";
@@ -34,6 +34,26 @@ export function FolderSection({
 }) {
   const { t } = useLang();
   const [expanded, setExpanded] = useState(false);
+  const sectionRef = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLButtonElement>(null);
+
+  // Mesure la hauteur reelle du bandeau de dossier et l'expose en CSS var
+  // `--folder-header-h` sur la section. Le bandeau de groupe (sticky) se cale
+  // exactement dessous via `top: var(--folder-header-h)`. Sans cette mesure,
+  // une valeur en dur (ex. 40px) laisse une fine bande ou le contenu defilant
+  // transparait entre les deux bandeaux sticky (hauteur reelle != valeur figee).
+  useEffect(() => {
+    const header = headerRef.current;
+    const section = sectionRef.current;
+    if (!header || !section) return;
+    const apply = () => {
+      section.style.setProperty("--folder-header-h", `${header.offsetHeight}px`);
+    };
+    apply();
+    const ro = new ResizeObserver(apply);
+    ro.observe(header);
+    return () => ro.disconnect();
+  }, []);
 
   function toggle() {
     const next = !expanded;
@@ -42,8 +62,8 @@ export function FolderSection({
   }
 
   return (
-    <div className="folder-section">
-      <button className="folder-section-header" onClick={toggle}>
+    <div className="folder-section" ref={sectionRef}>
+      <button className="folder-section-header" ref={headerRef} onClick={toggle}>
         <span className="folder-section-chevron">{expanded ? "▾" : "▸"}</span>
         <span className="folder-section-name" title={summary.folder_key === "" ? t.rootFolder : summary.folder_key}>
           📁 {summary.folder_key === "" ? <em data-testid="root-folder-label">{t.rootFolder}</em> : summary.folder_key}
