@@ -4,7 +4,7 @@ import type { DuplicateFile, ImageMeta } from "./types";
 import { useLang } from "./LangContext";
 import { openFile } from "./fileActions";
 import type { ComparatorProps } from "./comparatorShared";
-import { useComparatorNav, ComparatorShell, MetaBlockBase, MetaField, KeepButton } from "./comparatorShared";
+import { useComparatorNav, ComparatorShell, MetaBlockBase, MetaField, KeepActions } from "./comparatorShared";
 import { useZoomPan } from "./hooks/useZoomPan";
 
 function ImageMetaBlock({ file, meta }: { file: DuplicateFile; meta: ImageMeta | null }) {
@@ -33,7 +33,8 @@ function ImagePanel({
   thumb,
   meta,
   kept,
-  onKeep,
+  onKeepNext,
+  onKeepClose,
   transform,
   cursor,
   onWheel,
@@ -44,7 +45,8 @@ function ImagePanel({
   thumb: string | null;
   meta: ImageMeta | null;
   kept: boolean;
-  onKeep: () => void;
+  onKeepNext: () => void;
+  onKeepClose: () => void;
   transform: string;
   cursor: string;
   onWheel: (e: React.WheelEvent<HTMLDivElement>) => void;
@@ -73,7 +75,7 @@ function ImagePanel({
         )}
       </div>
       <div className="comparator-footer">
-        <KeepButton kept={kept} onKeep={onKeep} />
+        <KeepActions kept={kept} onKeepNext={onKeepNext} onKeepClose={onKeepClose} />
         <ImageMetaBlock file={file} meta={meta} />
       </div>
     </div>
@@ -85,10 +87,11 @@ export function ImageComparator({
   startIdx,
   selected,
   onSelectPaths,
+  onIgnore,
   onClose,
 }: ComparatorProps) {
   const { t } = useLang();
-  const nav = useComparatorNav({ groups, startIdx, selected, onSelectPaths, onClose });
+  const nav = useComparatorNav({ groups, startIdx, selected, onSelectPaths, onIgnore, onClose });
   const [overlayMode, setOverlayMode] = useState(false);
   const [sliderPos, setSliderPos] = useState(50);
   const [leftThumb, setLeftThumb] = useState<string | null>(null);
@@ -257,7 +260,9 @@ export function ImageComparator({
         <div className="comparator-body" data-testid="comparator-body">
           <ImagePanel
             file={leftFile} thumb={leftThumb} meta={leftMeta}
-            kept={isKept(leftFile)} onKeep={() => keepFile(leftFile.path)}
+            kept={isKept(leftFile)}
+            onKeepNext={() => keepFile(leftFile.path, true)}
+            onKeepClose={() => keepFile(leftFile.path, false)}
             transform={transform} cursor={cursor}
             onWheel={handleWheel} onMouseDown={handleMouseDown}
             onImageClick={handleImageClick}
@@ -265,7 +270,9 @@ export function ImageComparator({
           <div className="comparator-divider" />
           <ImagePanel
             file={rightFile} thumb={rightThumb} meta={rightMeta}
-            kept={isKept(rightFile)} onKeep={() => keepFile(rightFile.path)}
+            kept={isKept(rightFile)}
+            onKeepNext={() => keepFile(rightFile.path, true)}
+            onKeepClose={() => keepFile(rightFile.path, false)}
             transform={transform} cursor={cursor}
             onWheel={handleWheel} onMouseDown={handleMouseDown}
             onImageClick={handleImageClick}
@@ -308,11 +315,19 @@ export function ImageComparator({
           </div>
           <div className="comparator-overlay-meta">
             <div className="comparator-overlay-meta-col">
-              <KeepButton kept={isKept(leftFile)} onKeep={() => keepFile(leftFile.path)} />
+              <KeepActions
+                kept={isKept(leftFile)}
+                onKeepNext={() => keepFile(leftFile.path, true)}
+                onKeepClose={() => keepFile(leftFile.path, false)}
+              />
               <ImageMetaBlock file={leftFile} meta={leftMeta} />
             </div>
             <div className="comparator-overlay-meta-col">
-              <KeepButton kept={isKept(rightFile)} onKeep={() => keepFile(rightFile.path)} />
+              <KeepActions
+                kept={isKept(rightFile)}
+                onKeepNext={() => keepFile(rightFile.path, true)}
+                onKeepClose={() => keepFile(rightFile.path, false)}
+              />
               <ImageMetaBlock file={rightFile} meta={rightMeta} />
             </div>
           </div>

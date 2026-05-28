@@ -261,7 +261,7 @@ For images, videos, and audio, the row also shows individual **size** and **dura
     body: {
       fr: `**Filtrer par nom ou chemin** : saisissez du texte dans le champ "Filtrer par nom ou chemin…" pour n'afficher que les groupes dont au moins un fichier correspond. Le filtre est appliqué en temps réel.
 
-En mode **par sous-dossier**, le filtre s'applique aux noms de dossiers (pas aux noms de fichiers). Tapez "vacances" pour ne voir que les dossiers contenant ce mot.
+En mode **par sous-dossier**, le filtre regarde **tout** : le nom du dossier ET les noms/chemins des fichiers qu'il contient. Un dossier apparaît si son nom correspond, ou si au moins un de ses groupes contient un fichier qui correspond ; déplié, il n'affiche alors que les groupes correspondants. (Dans ce mode, comme les fichiers sont chargés à la demande, le filtre passe par le moteur : un changement de filtre peut replier les dossiers ouverts, qui se rechargent à l'ouverture.)
 
 **Le filtre restreint aussi la portée des sélections automatiques** : quand un filtre est actif, **Tout cocher** et **Appliquer** (règles de sélection) ne touchent qu'aux groupes visibles. Les groupes masqués par le filtre ne sont pas modifiés. Permet par exemple de filtrer "vacances", puis garder la plus haute résolution uniquement dans ces groupes-là.
 
@@ -270,7 +270,7 @@ En mode **par sous-dossier**, le filtre s'applique aux noms de dossiers (pas aux
 **Trier les dossiers** (mode par sous-dossier) : la barre "Trier par" classe les dossiers par espace récupérable (défaut) ou par nom alphabétique.`,
       en: `**Filter by name or path**: type in the "Filter by name or path…" field to show only groups where at least one file matches. The filter applies in real time.
 
-In **by-subfolder** mode, the filter applies to folder names (not file names). Type "holidays" to only see folders containing that word.
+In **by-subfolder** mode, the filter looks at **everything**: the folder name AND the names/paths of the files inside it. A folder shows up if its name matches, or if at least one of its groups contains a matching file; when expanded, it then shows only the matching groups. (In this mode, since files are loaded on demand, the filter runs in the engine: changing the filter may collapse open folders, which reload when reopened.)
 
 **The filter also restricts the scope of automatic selections**: when a filter is active, **Select all** and **Apply** (selection rules) only affect visible groups. Groups hidden by the filter are not modified. For example, filter "holidays" then keep the highest resolution only in those groups.
 
@@ -529,7 +529,11 @@ This mode is ideal for photo or music libraries organized by folder.`,
 
 **Choisir les images affichées** : des onglets en haut de chaque colonne (Gauche / Droite) permettent de sélectionner quel fichier du groupe s'affiche de chaque côté. Vous pouvez ainsi comparer n'importe quelle paire.
 
-**Garder celui-ci** : bouton sous chaque image. Il sélectionne les autres fichiers du groupe (les "doublons" à supprimer) et désélectionne celui-ci - indiquant que c'est le fichier à conserver.
+**Garder & suivant / Garder & fermer** : sous chaque image, deux boutons cochent les autres fichiers du groupe (les "doublons" à supprimer) et désélectionnent celui-ci - indiquant que c'est le fichier à conserver. **Garder & suivant** (principal) enchaîne automatiquement sur le groupe suivant pour un triage rapide en série (et ferme le comparateur si c'était le dernier groupe). **Garder & fermer** (secondaire, ghost) ferme directement le comparateur après le marquage - utile quand on n'inspecte qu'un seul groupe.
+
+**Ignorer & suivant** : bouton **🚫** dans le header. Retire le groupe courant des résultats (équivalent à la croix d'ignore sur les cartes) puis passe au groupe suivant. Ferme si c'était le dernier.
+
+**Raccourcis clavier de triage** : \`1\` garde le fichier de gauche & suivant, \`2\` garde celui de droite & suivant, \`i\` ignore & suivant, \`←\`/\`→\` naviguent entre groupes, \`Échap\` ferme.
 
 **GIF animés** : les fichiers \`.gif\` sont lus directement par le navigateur intégré et **s'animent** dans le comparateur (contrairement à la liste des résultats où une miniature statique est affichée). Les autres formats (PNG, JPEG, WEBP...) sont redimensionnés à 800 px max pour limiter la mémoire.
 
@@ -542,7 +546,11 @@ Le bouton **📂** à côté du nom de dossier ouvre le dossier du fichier dans 
 
 **Choose displayed images**: tabs at the top of each column (Left / Right) let you select which file from the group appears on each side. You can compare any pair.
 
-**Keep this one**: button below each image. It checks the other files in the group (the "duplicates" to delete) and unchecks this one - indicating this is the file to keep.
+**Keep & next / Keep & close**: below each image, two buttons check the other files in the group (the "duplicates" to delete) and uncheck this one - indicating this is the file to keep. **Keep & next** (primary) automatically jumps to the next group for fast batch triage (and closes the comparator if it was the last group). **Keep & close** (secondary, ghost) closes the comparator right after marking - handy when reviewing a single group.
+
+**Ignore & next**: the **🚫** button in the header. Removes the current group from results (same as the ignore cross on group cards) then jumps to the next. Closes if it was the last group.
+
+**Triage keyboard shortcuts**: \`1\` keep left & next, \`2\` keep right & next, \`i\` ignore & next, \`←\`/\`→\` navigate between groups, \`Esc\` closes.
 
 **Animated GIFs**: \`.gif\` files are loaded directly by the embedded browser and **animate** inside the comparator (unlike the results list which only shows a static thumbnail). Other formats (PNG, JPEG, WEBP...) are downscaled to 800 px max to keep memory usage in check.
 
@@ -623,16 +631,16 @@ The **📂** button next to the folder name opens the file's folder in the file 
       en: ["keep", "delete", "keep this one", "check", "video duplicates"],
     },
     body: {
-      fr: `Sous chaque vidéo, le bouton **"Garder celui-ci"** marque les autres fichiers du groupe comme à supprimer et retire ce fichier de la sélection.
+      fr: `Sous chaque vidéo, deux boutons : **Garder & suivant** (principal) marque les autres fichiers du groupe comme à supprimer, retire ce fichier de la sélection, et enchaîne sur le groupe suivant (ferme si dernier). **Garder & fermer** (secondaire) fait la même chose mais ferme le comparateur tout de suite - utile quand on n'inspecte qu'un seul groupe. Le bouton affiche **"✓ Garder & suivant"** quand ce fichier est déjà conservé (tous les autres sont cochés).
 
-Le bouton affiche **"✓ Garder celui-ci"** quand ce fichier est effectivement conservé (tous les autres sont cochés).
+**Ignorer & suivant** : le bouton **🚫** dans le header retire le groupe courant des résultats puis passe au suivant. **Raccourcis** : \`1\`/\`2\` garder gauche/droite & suivant, \`i\` ignorer & suivant.
 
 Le bouton **📂** à côté du nom de dossier ouvre le dossier du fichier dans le gestionnaire de fichiers. Le bouton **⏵** à côté du nom du fichier ouvre directement le fichier dans le lecteur système (utile pour comparer dans un lecteur externe sans fermer le comparateur).
 
 La suppression effective se fait ensuite depuis la liste principale via le bouton "Supprimer N fichiers". Les fichiers supprimés sont envoyés dans la corbeille - récupérables.`,
-      en: `Below each video, the **"Keep this one"** button marks the other files in the group as to be deleted and removes this file from the selection.
+      en: `Below each video, two buttons: **Keep & next** (primary) marks the other files in the group as to be deleted, removes this file from the selection, and jumps to the next group (closes if last). **Keep & close** (secondary) does the same but closes the comparator immediately - handy when reviewing a single group. The button shows **"✓ Keep & next"** when this file is already kept (all others are checked).
 
-The button shows **"✓ Keep this one"** when this file is actually kept (all others are checked).
+**Ignore & next**: the **🚫** button in the header removes the current group from results then jumps to the next. **Shortcuts**: \`1\`/\`2\` keep left/right & next, \`i\` ignore & next.
 
 The **📂** button next to the folder name opens the file's folder in the file manager. The **⏵** button next to the file name opens the file directly in the system player (useful to compare in an external player without closing the comparator).
 
@@ -672,12 +680,16 @@ Navigate between groups using the **◀ ▶** buttons or the **← →** keyboar
       en: ["keep", "delete", "choose", "comparator", "audio", "retain"],
     },
     body: {
-      fr: `Cliquer sur **Garder celui-ci** sous le lecteur souhaité : tous les autres fichiers du groupe sont cochés pour suppression et le comparateur se ferme.
+      fr: `Sous chaque lecteur, deux boutons : **Garder & suivant** (principal) coche les autres fichiers du groupe pour suppression puis passe au groupe suivant (ferme si dernier) - idéal pour trier plusieurs groupes d'affilée. **Garder & fermer** (secondaire) fait la même chose mais ferme le comparateur après.
+
+**Ignorer & suivant** : le bouton **🚫** dans le header retire le groupe courant des résultats puis passe au suivant. **Raccourcis clavier** : \`1\`/\`2\` garder gauche/droite & suivant, \`i\` ignorer & suivant, \`←\`/\`→\` naviguer, \`Échap\` fermer.
 
 Les métadonnées sous chaque lecteur (nom du fichier, dossier, taille, durée) permettent de comparer les fichiers avant de choisir.
 
 Le bouton **📂** à côté du dossier ouvre le dossier du fichier dans le gestionnaire de fichiers. Le bouton **⏵** à côté du nom du fichier ouvre directement le fichier dans le lecteur audio système.`,
-      en: `Click **Keep this one** under the desired player: all other files in the group are checked for deletion and the comparator closes.
+      en: `Below each player, two buttons: **Keep & next** (primary) checks the other files in the group for deletion then jumps to the next group (closes if last) - ideal for triaging several groups in a row. **Keep & close** (secondary) does the same but closes the comparator afterwards.
+
+**Ignore & next**: the **🚫** button in the header removes the current group from results then jumps to the next. **Keyboard shortcuts**: \`1\`/\`2\` keep left/right & next, \`i\` ignore & next, \`←\`/\`→\` navigate, \`Esc\` close.
 
 The metadata below each player (file name, folder, size, duration) lets you compare files before choosing.
 

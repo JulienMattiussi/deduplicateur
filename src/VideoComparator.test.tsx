@@ -50,6 +50,7 @@ function renderComp(props: Partial<Parameters<typeof VideoComparator>[0]> = {}) 
     startIdx: 0,
     selected: new Set<string>(),
     onSelectPaths: vi.fn(),
+    onIgnore: vi.fn(),
     onClose: vi.fn(),
   };
   return render(
@@ -152,9 +153,10 @@ describe("A - rendu de base", () => {
     });
   });
 
-  it("affiche les boutons Garder celui-ci", () => {
+  it("affiche les boutons Garder & suivant / Garder & fermer", () => {
     renderComp();
-    expect(screen.getAllByText(/Garder celui-ci/)).toHaveLength(2);
+    expect(screen.getAllByText(/Garder & suivant/)).toHaveLength(2);
+    expect(screen.getAllByText(/Garder & fermer/)).toHaveLength(2);
   });
 
   it("appelle onClose au clic sur ✕", async () => {
@@ -213,11 +215,25 @@ describe("B - navigation entre groupes", () => {
 
 // ---- C : keepFile ----
 describe("C - keepFile", () => {
-  it("appelle onSelectPaths avec les autres fichiers en toAdd et le fichier garde en toRemove", () => {
+  it("Garder & suivant : onSelectPaths avec les autres en toAdd et le garde en toRemove", () => {
     const onSelectPaths = vi.fn();
     renderComp({ onSelectPaths });
-    fireEvent.click(screen.getAllByText(/Garder celui-ci/)[0]);
+    fireEvent.click(screen.getAllByText(/Garder & suivant/)[0]);
     expect(onSelectPaths).toHaveBeenCalledWith(["/videos/vid2.mp4"], ["/videos/vid1.mp4"]);
+  });
+
+  it("Garder & fermer ferme le comparateur (multi-groupes)", () => {
+    const onClose = vi.fn();
+    renderComp({ onClose, groups: [group2, group3] });
+    fireEvent.click(screen.getAllByText(/Garder & fermer/)[0]);
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it("le bouton 🚫 ignore le groupe courant", () => {
+    const onIgnore = vi.fn();
+    renderComp({ onIgnore, groups: [group2, group3] });
+    fireEvent.click(screen.getByTestId("comparator-ignore-btn"));
+    expect(onIgnore).toHaveBeenCalledWith(group2.id);
   });
 
   it("affiche un checkmark sur le fichier garde quand les autres sont selectionnes", () => {

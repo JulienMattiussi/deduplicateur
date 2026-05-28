@@ -240,7 +240,7 @@ describe("S - Scénarios complets (3 modes × 4 types × 2 résultats = 24)", ()
       if (hasResults) {
         if (mode === "by_folder") {
           // list_folder_keys doit être appelé après le scan
-          expect(mockInvoke).toHaveBeenCalledWith("list_folder_keys");
+          expect(mockInvoke).toHaveBeenCalledWith("list_folder_keys", { filterText: null });
           // L'en-tête de section du dossier doit être visible (replié par défaut)
           expect(screen.getByText(/SubFolder/)).toBeInTheDocument();
         } else {
@@ -252,7 +252,7 @@ describe("S - Scénarios complets (3 modes × 4 types × 2 résultats = 24)", ()
         expect(screen.getByText(/Aucun doublon/)).toBeInTheDocument();
         if (mode === "by_folder") {
           // list_folder_keys est appelé même quand il n'y a pas de résultats
-          expect(mockInvoke).toHaveBeenCalledWith("list_folder_keys");
+          expect(mockInvoke).toHaveBeenCalledWith("list_folder_keys", { filterText: null });
         }
       }
     }
@@ -445,6 +445,68 @@ describe("T - Régressions", () => {
     // Le 2e appel a get_folder_groups_page doit utiliser offset=0 (pas 2),
     // car les 2 groupes charges ont ete supprimes du cache backend.
     expect(folderPageOffsets[folderPageOffsets.length - 1]).toBe(0);
+  });
+
+  /**
+   * Filtre texte en mode by_folder : le filtre "regarde tout" (folder_key + noms +
+   * chemins de fichiers). Comme les fichiers ne sont pas charges cote frontend en
+   * mode dossier, le filtre descend au backend : list_folder_keys et
+   * get_folder_groups_page sont rappeles avec filterText (debounce ~250ms).
+   */
+  it("by_folder : taper un filtre rappelle list_folder_keys + get_folder_groups_page avec filterText", async () => {
+    const user = userEvent.setup();
+    const imageGroupWithFolder = { ...imageGroup, folder_key: "Photos" };
+    const summary = {
+      id: "s-filter-byfolder", folder: "/home/test",
+      total_wasted_bytes: imageGroup.size,
+      total_groups: 1, scanned_files: 10,
+      duration_ms: 100, by_folder: true, total_folders: 1, partial: false,
+      find_similar: true,
+    };
+    const folderSummaries = [
+      { folder_key: "Photos", group_count: 1, total_wasted_bytes: imageGroup.size },
+    ];
+
+    const listFolderKeysFilters: (string | null)[] = [];
+    const folderPageFilters: (string | null)[] = [];
+    mockInvoke.mockImplementation(makeDefaultMock({
+      scan_folder: summary,
+      list_folder_keys: (_cmd: string, args: any) => {
+        listFolderKeysFilters.push(args?.filterText ?? null);
+        return Promise.resolve(folderSummaries);
+      },
+      get_folder_groups_page: (_cmd: string, args: any) => {
+        folderPageFilters.push(args?.filterText ?? null);
+        return Promise.resolve({ groups: [imageGroupWithFolder], has_more: false });
+      },
+    }));
+    mockDialogOpen.mockResolvedValue("/home/test");
+
+    render(<App />);
+    await user.click(screen.getByText(/Cliquer pour choisir un dossier/));
+    await waitFor(() => screen.getByText("/home/test"));
+    await user.selectOptions(screen.getAllByRole("combobox")[0], "by_folder");
+    await user.click(screen.getByText("🖼 Images"));
+    await user.click(screen.getByText("Analyser"));
+    await waitFor(() => screen.getByTestId("stats-row"), { timeout: 5000 });
+
+    // Le chargement initial passe filterText=null (pas de filtre).
+    expect(listFolderKeysFilters).toContain(null);
+
+    // Taper un filtre qui matche un nom de fichier (pas le folder_key).
+    const input = screen.getByPlaceholderText(/Filtrer par nom/i);
+    await user.type(input, "photo");
+
+    // Apres le debounce, list_folder_keys est rappele avec le filtre.
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("list_folder_keys", { filterText: "photo" });
+    }, { timeout: 2000 });
+
+    // Deplier le dossier : get_folder_groups_page doit recevoir le meme filtre.
+    await user.click(screen.getByText(/Photos/));
+    await waitFor(() => {
+      expect(folderPageFilters).toContain("photo");
+    });
   });
 
   /**

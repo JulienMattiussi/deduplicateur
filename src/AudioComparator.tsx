@@ -4,7 +4,7 @@ import type { DuplicateFile } from "./types";
 import { formatDurationSecs } from "./utils";
 import { useLang } from "./LangContext";
 import type { ComparatorProps } from "./comparatorShared";
-import { useComparatorNav, ComparatorShell, MetaBlockBase, MetaField, KeepButton, toMediaUrl } from "./comparatorShared";
+import { useComparatorNav, ComparatorShell, MetaBlockBase, MetaField, KeepActions, toMediaUrl } from "./comparatorShared";
 
 function AudioMetaBlock({ file }: { file: DuplicateFile }) {
   const { t } = useLang();
@@ -28,7 +28,8 @@ function AudioPanel({
   onPlay,
   onPause,
   onSeeked,
-  onKeep,
+  onKeepNext,
+  onKeepClose,
 }: {
   file: DuplicateFile;
   audioRef: React.RefObject<HTMLAudioElement>;
@@ -39,7 +40,8 @@ function AudioPanel({
   onPlay?: () => void;
   onPause?: () => void;
   onSeeked?: () => void;
-  onKeep: () => void;
+  onKeepNext: () => void;
+  onKeepClose: () => void;
 }) {
   return (
     <div className="comparator-panel">
@@ -57,7 +59,7 @@ function AudioPanel({
         />
       </div>
       <div className="comparator-footer">
-        <KeepButton kept={kept} onKeep={onKeep} />
+        <KeepActions kept={kept} onKeepNext={onKeepNext} onKeepClose={onKeepClose} />
         <AudioMetaBlock file={file} />
       </div>
     </div>
@@ -69,10 +71,11 @@ export function AudioComparator({
   startIdx,
   selected,
   onSelectPaths,
+  onIgnore,
   onClose,
 }: ComparatorProps) {
   const { t } = useLang();
-  const nav = useComparatorNav({ groups, startIdx, selected, onSelectPaths, onClose });
+  const nav = useComparatorNav({ groups, startIdx, selected, onSelectPaths, onIgnore, onClose });
   const [mediaPort, setMediaPort] = useState<number | null>(null);
   const leftAudioRef = useRef<HTMLAudioElement>(null);
   const rightAudioRef = useRef<HTMLAudioElement>(null);
@@ -116,13 +119,15 @@ export function AudioComparator({
           file={leftFile} audioRef={leftAudioRef}
           kept={isKept(leftFile)} side="left" src={leftSrc} master
           onPlay={syncPlay} onPause={syncPause} onSeeked={syncSeek}
-          onKeep={() => keepFile(leftFile.path)}
+          onKeepNext={() => keepFile(leftFile.path, true)}
+          onKeepClose={() => keepFile(leftFile.path, false)}
         />
         <div className="comparator-divider" />
         <AudioPanel
           file={rightFile} audioRef={rightAudioRef}
           kept={isKept(rightFile)} side="right" src={rightSrc} master={false}
-          onKeep={() => keepFile(rightFile.path)}
+          onKeepNext={() => keepFile(rightFile.path, true)}
+          onKeepClose={() => keepFile(rightFile.path, false)}
         />
       </div>
     </ComparatorShell>

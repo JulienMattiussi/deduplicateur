@@ -1,4 +1,4 @@
-import { useState, startTransition, useEffect, useMemo } from "react";
+import { useState, startTransition, useEffect, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -148,18 +148,34 @@ export default function App() {
   // la liste quand leur dernier groupe avait ete ignore. On re-fetch summary
   // (qui passe par filtered_view et reflete donc total_groups et total_folders
   // corrects) puis les folder_summaries ou la premiere page selon le mode.
+  // En mode by_folder le filtre texte "regarde tout" (folder_key + noms + chemins
+  // de fichiers). Comme le frontend ne charge pas les fichiers en mode dossier
+  // (chargement lazy par dossier), le filtre doit etre applique cote backend :
+  // `list_folder_keys(filterText)` ne renvoie que les dossiers ayant au moins un
+  // groupe matchant, avec des compteurs restreints. On recharge donc la liste des
+  // dossiers et on reset les pages deja chargees (les dossiers ouverts se
+  // re-replient, leur contenu charge etant potentiellement perime). Le ref memorise
+  // le dernier filtre charge pour eviter les rechargements redondants (cf. effet
+  // debounce plus bas et les loaders de scan/resume qui passent par ici avec "").
+  const lastFolderFilterRef = useRef<string>("");
+  async function reloadFolderSummaries(ft: string) {
+    const trimmed = ft.trim();
+    lastFolderFilterRef.current = trimmed;
+    const fs = await invoke<FolderSummary[]>("list_folder_keys", { filterText: trimmed || null });
+    startTransition(() => {
+      results.setGroups([]);
+      results.setFolderState({});
+      results.setFolderSummaries(fs);
+    });
+  }
+
   async function refreshAfterIgnoreChange() {
     if (!summary) return;
     try {
       const s = await invoke<ScanSummary>("load_session", { id: summary.id });
       startTransition(() => setSummary(s));
       if (s.by_folder) {
-        const fs = await invoke<FolderSummary[]>("list_folder_keys");
-        startTransition(() => {
-          results.setGroups([]);
-          results.setFolderState({});
-          results.setFolderSummaries(fs);
-        });
+        await reloadFolderSummaries(filterText);
       } else {
         await results.loadPage(0, false);
       }
@@ -167,6 +183,23 @@ export default function App() {
       setError(String(e));
     }
   }
+
+  // Rechargement des dossiers quand le filtre texte change (mode by_folder
+  // uniquement). Debounce ~250ms pour ne pas spammer le backend a chaque frappe.
+  // Le ref `lastFolderFilterRef` evite le double-chargement juste apres un scan /
+  // resume (qui ont deja charge avec le filtre courant, donc ref == filterText).
+  useEffect(() => {
+    if (!summary?.by_folder) return;
+    const trimmed = filterText.trim();
+    if (trimmed === lastFolderFilterRef.current) return;
+    const id = setTimeout(() => {
+      // Re-check : un loader direct (scan / resume) a pu charger ce filtre entre-temps.
+      if (filterText.trim() === lastFolderFilterRef.current) return;
+      reloadFolderSummaries(filterText).catch((e) => setError(String(e)));
+    }, 250);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterText, summary?.by_folder, summary?.id]);
 
   useEffect(() => {
     invoke<ScanSummary[]>("list_sessions")
@@ -209,8 +242,7 @@ export default function App() {
     startTransition(() => setSessions((prev) => [s, ...prev]));
     invoke<number>("get_cache_size").then(setCacheBytes).catch(() => {});
     if (s.by_folder) {
-      const summaries = await invoke<FolderSummary[]>("list_folder_keys");
-      results.setFolderSummaries(summaries);
+      await reloadFolderSummaries("");
     } else {
       await results.loadPage(0, false);
     }
@@ -285,7 +317,7 @@ export default function App() {
             // Apres purge du cache backend, l'offset a reprendre = nombre de
             // groupes de ce dossier encore affiches (les indices ont decale).
             const remainingInFolder = updatedGroups.filter((g) => (g.folder_key ?? "") === key).length;
-            results.loadFolderPage(key, n, remainingInFolder);
+            results.loadFolderPage(key, n, remainingInFolder, filterText);
           }
         }
       } else if (results.hasMore) {
@@ -305,8 +337,7 @@ export default function App() {
         setError(null);
       });
       if (s.by_folder) {
-        const summaries = await invoke<FolderSummary[]>("list_folder_keys");
-        startTransition(() => results.setFolderSummaries(summaries));
+        await reloadFolderSummaries("");
       } else {
         await results.loadPage(0, false);
       }
@@ -396,7 +427,7 @@ export default function App() {
           // Offset a reprendre = nombre de groupes du dossier encore affiches
           // (la pagination backend est decalee par le filtre ignored).
           const remainingInFolder = remainingGroups.filter((g) => (g.folder_key ?? "") === folderKey).length;
-          results.loadFolderPage(folderKey, 1, remainingInFolder);
+          results.loadFolderPage(folderKey, 1, remainingInFolder, filterText);
         }
       } else if (results.hasMore) {
         results.loadPage(remainingGroups.length, true, 1);
@@ -511,13 +542,12 @@ export default function App() {
     selection.setSelected(next);
   }
 
-  const filteredFolderSummaries = useMemo(() => {
-    if (!filterText.trim()) return results.sortedFolderSummaries;
-    const q = filterText.toLowerCase();
-    return results.sortedFolderSummaries.filter((fs) =>
-      fs.folder_key.toLowerCase().includes(q)
-    );
-  }, [results.sortedFolderSummaries, filterText]);
+  // En mode by_folder, le filtre texte est applique cote backend (cf.
+  // reloadFolderSummaries + l'effet debounce) : `sortedFolderSummaries` ne
+  // contient deja que les dossiers ayant au moins un groupe matchant, avec des
+  // compteurs restreints. Pas de filtrage client ici - il ne pourrait de toute
+  // facon pas matcher les noms/chemins de fichiers, non charges en mode dossier.
+  const filteredFolderSummaries = results.sortedFolderSummaries;
 
   type ListItem =
     | { kind: "file"; group: DuplicateGroup; waste: number }
@@ -817,8 +847,8 @@ export default function App() {
                       hasMore={results.folderState[fs.folder_key]?.hasMore ?? true}
                       selected={selection.selected}
                       onToggle={selection.toggleFile}
-                      onExpand={() => results.loadFolderPage(fs.folder_key)}
-                      onLoadMore={() => results.loadFolderPage(fs.folder_key)}
+                      onExpand={() => results.loadFolderPage(fs.folder_key, undefined, undefined, filterText)}
+                      onLoadMore={() => results.loadFolderPage(fs.folder_key, undefined, undefined, filterText)}
                       onIgnore={handleIgnoreGroup}
                       onCompare={(group) => { const idx = imageGroups.indexOf(group); if (idx >= 0) setComparatorIdx(idx); }}
                       onCompareVideo={(group) => { const idx = videoGroups.indexOf(group); if (idx >= 0) setVideoComparatorIdx(idx); }}
@@ -909,6 +939,7 @@ export default function App() {
           startIdx={comparatorIdx}
           selected={selection.selected}
           onSelectPaths={handleSelectPaths}
+          onIgnore={handleIgnoreGroup}
           onClose={() => setComparatorIdx(null)}
         />
       )}
@@ -919,6 +950,7 @@ export default function App() {
           startIdx={videoComparatorIdx}
           selected={selection.selected}
           onSelectPaths={handleSelectPaths}
+          onIgnore={handleIgnoreGroup}
           onClose={() => setVideoComparatorIdx(null)}
         />
       )}
@@ -929,6 +961,7 @@ export default function App() {
           startIdx={audioComparatorIdx}
           selected={selection.selected}
           onSelectPaths={handleSelectPaths}
+          onIgnore={handleIgnoreGroup}
           onClose={() => setAudioComparatorIdx(null)}
         />
       )}

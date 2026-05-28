@@ -4,7 +4,7 @@ import type { DuplicateFile, VideoMetadata, PreparedVideo } from "./types";
 import { formatDurationSecs } from "./utils";
 import { useLang } from "./LangContext";
 import type { ComparatorProps } from "./comparatorShared";
-import { useComparatorNav, ComparatorShell, MetaBlockBase, MetaField, KeepButton, toMediaUrl } from "./comparatorShared";
+import { useComparatorNav, ComparatorShell, MetaBlockBase, MetaField, KeepActions, toMediaUrl } from "./comparatorShared";
 import { isNativePlayerAvailable } from "./components/NativeVideo";
 import { NativeComparatorBody } from "./components/NativeComparatorBody";
 import { useZoomPan } from "./hooks/useZoomPan";
@@ -93,7 +93,8 @@ function VideoPanel({
   onPlay,
   onPause,
   onSeeked,
-  onKeep,
+  onKeepNext,
+  onKeepClose,
   transform,
   cursor,
   onWheel,
@@ -111,7 +112,8 @@ function VideoPanel({
   onPlay?: () => void;
   onPause?: () => void;
   onSeeked?: () => void;
-  onKeep: () => void;
+  onKeepNext: () => void;
+  onKeepClose: () => void;
   transform: string;
   cursor: string;
   onWheel: (e: React.WheelEvent<HTMLDivElement>) => void;
@@ -154,7 +156,7 @@ function VideoPanel({
         )}
       </div>
       <div className="comparator-footer">
-        <KeepButton kept={kept} onKeep={onKeep} />
+        <KeepActions kept={kept} onKeepNext={onKeepNext} onKeepClose={onKeepClose} />
         <VideoMetaBlock file={file} meta={meta} />
       </div>
     </div>
@@ -166,10 +168,11 @@ export function VideoComparator({
   startIdx,
   selected,
   onSelectPaths,
+  onIgnore,
   onClose,
 }: ComparatorProps) {
   const { t } = useLang();
-  const nav = useComparatorNav({ groups, startIdx, selected, onSelectPaths, onClose });
+  const nav = useComparatorNav({ groups, startIdx, selected, onSelectPaths, onIgnore, onClose });
   const [mediaPort, setMediaPort] = useState<number | null>(null);
   const [leftMeta, setLeftMeta] = useState<VideoMetadata | null>(null);
   const [rightMeta, setRightMeta] = useState<VideoMetadata | null>(null);
@@ -282,8 +285,8 @@ export function VideoComparator({
           rightPath={rightFile.path}
           leftMetaSlot={<VideoMetaBlock file={leftFile} meta={leftMeta} />}
           rightMetaSlot={<VideoMetaBlock file={rightFile} meta={rightMeta} />}
-          leftKeepSlot={<KeepButton kept={isKept(leftFile)} onKeep={() => keepFile(leftFile.path)} />}
-          rightKeepSlot={<KeepButton kept={isKept(rightFile)} onKeep={() => keepFile(rightFile.path)} />}
+          leftKeepSlot={<KeepActions kept={isKept(leftFile)} onKeepNext={() => keepFile(leftFile.path, true)} onKeepClose={() => keepFile(leftFile.path, false)} />}
+          rightKeepSlot={<KeepActions kept={isKept(rightFile)} onKeepNext={() => keepFile(rightFile.path, true)} onKeepClose={() => keepFile(rightFile.path, false)} />}
         />
       </ComparatorShell>
     );
@@ -302,7 +305,8 @@ export function VideoComparator({
           kept={isKept(leftFile)} side="left" src={leftSrc} master
           preparing={leftPreparing} unsupported={leftUnsupported}
           onPlay={syncPlay} onPause={syncPause} onSeeked={syncSeek}
-          onKeep={() => keepFile(leftFile.path)}
+          onKeepNext={() => keepFile(leftFile.path, true)}
+          onKeepClose={() => keepFile(leftFile.path, false)}
           transform={transform} cursor={cursor}
           onWheel={handleWheel} onMouseDown={handleMouseDown}
         />
@@ -311,7 +315,8 @@ export function VideoComparator({
           file={rightFile} meta={rightMeta} videoRef={rightVideoRef}
           kept={isKept(rightFile)} side="right" src={rightSrc} master={false}
           preparing={rightPreparing} unsupported={rightUnsupported}
-          onKeep={() => keepFile(rightFile.path)}
+          onKeepNext={() => keepFile(rightFile.path, true)}
+          onKeepClose={() => keepFile(rightFile.path, false)}
           transform={transform} cursor={cursor}
           onWheel={handleWheel} onMouseDown={handleMouseDown}
         />

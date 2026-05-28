@@ -251,11 +251,28 @@ Tout filtre purement frontend qui restreint l'affichage (filtre texte par nom/ch
 
 Pattern (cf. `apply_text_filter` dans `commands/session.rs`) :
 1. Backend expose un paramètre optionnel pour chaque filtre frontend (`filter_text: Option<String>`).
-2. Helper interne (ex. `apply_text_filter`) qui reproduit **exactement** la logique de filtrage frontend (même critère, même mode `by_folder` vs normal, même casse insensible, même trim). Toute divergence crée un écart entre ce que l'utilisateur voit et ce que l'action fait.
+2. Helper interne (ex. `group_matches_filter` + `apply_text_filter`) qui reproduit **exactement** la logique de filtrage frontend (même critère, même casse insensible, même trim). Toute divergence crée un écart entre ce que l'utilisateur voit et ce que l'action fait.
 3. Frontend passe systématiquement l'état courant du filtre à l'invoke (ou `null` si vide après trim, pour distinguer "pas de filtre" de "filtre vide").
 4. Filtre `None` / `""` / `"   "` → passthrough total (comportement d'origine inchangé), pour préserver les call sites qui n'ont pas besoin du filtrage.
 
-Tests d'invariance à garder verts : un test "filtre vide ↔ pas de filtre" pour chaque commande, et un test "filtre actif → résultat restreint" qui vérifie que l'invoke reçoit bien le filterText (côté frontend) et qu'il filtre correctement (côté backend).
+**Prédicat unifié du filtre texte** : un groupe matche si son `folder_key` **OU** le nom **OU** le chemin d'au moins un de ses fichiers contient la requête (`group_matches_filter`). C'est vrai dans les **deux** modes : en mode normal `folder_key` est `None` (seuls les fichiers comptent), en mode `by_folder` il est rempli (dossier + fichiers). Le filtre "regarde tout" partout. Ne PAS réintroduire une branche `by_folder` qui ne matcherait que sur `folder_key` (ancien comportement) : l'utilisateur attend que taper un nom de fichier fasse apparaître le dossier qui le contient.
+
+**Mode `by_folder` : le filtre descend au backend.** En mode dossier le frontend ne charge pas les fichiers (chargement lazy par dossier), donc il ne PEUT PAS filtrer sur les noms/chemins côté client. Le filtre texte est donc paramètre de `list_folder_keys(filter_text)` (un dossier sans groupe matchant disparaît, compteurs restreints) ET de `get_folder_groups_page(filter_text)` (un dossier déplié n'affiche que ses groupes matchants - cohérent avec son compteur). Côté frontend (`App.tsx`), un `useEffect` debounce (~250ms) sur `filterText` rappelle `reloadFolderSummaries` qui re-invoke `list_folder_keys` et **reset les pages déjà chargées** (`setGroups([])` + `setFolderState({})`) : les dossiers ouverts se replient et se rechargent filtrés à la réouverture. Un `useRef` (`lastFolderFilterRef`) évite le double-chargement quand un loader direct (scan / resume, qui passent par `reloadFolderSummaries("")`) a déjà chargé le filtre courant. En mode normal, le filtre reste un `useMemo` purement client sur les groupes déjà chargés (instantané).
+
+Tests d'invariance à garder verts : `apply_text_filter_*` et `group_matches_filter_*` (Rust) ; côté frontend, "by_folder : taper un filtre rappelle list_folder_keys + get_folder_groups_page avec filterText" (`scan-scenarios.test.tsx`) et "filtre actif → smart_select / select_all_duplicates reçoivent filterText" (`App.test.tsx`).
+
+## Règle impérative - Actions de triage dans le comparateur (keep & next / ignore & next)
+
+Les comparateurs image/vidéo/audio partagent une boucle de triage rapide via `comparatorShared.tsx` (`useComparatorNav` + `KeepActions` + bouton 🚫 dans `ComparatorShell`). Trois actions :
+- **Garder & suivant** (primary, sous chaque panneau) : coche les doublons et avance au groupe suivant (ferme si dernier). Les groupes RESTENT dans la liste → `goGroup(+1)`.
+- **Garder & fermer** (ghost, sous chaque panneau) : ancien comportement, coche les doublons puis ferme. À garder pour l'usage "j'inspecte un seul groupe".
+- **Ignorer & suivant** (🚫 header) : appelle `onIgnore(group.id)` qui RETIRE le groupe de la liste côté App. **Subtilité capitale** : on NE change PAS `groupIdx` après l'ignore — le groupe suivant glisse à cette position lors du re-render. On ferme uniquement si c'était le dernier. Ne pas confondre avec keep : keep n'enlève rien, ignore enlève → "avancer" se code différemment dans les deux cas.
+
+Raccourcis clavier dans `useComparatorNav` : `1` keep gauche & suivant, `2` keep droite & suivant, `i` ignorer & suivant (en plus de `←/→/Échap`).
+
+Tout nouveau comparateur (archives, futur format…) qui veut ce workflow doit (a) prendre une prop `onIgnore: (groupId: string) => void` dans `ComparatorProps`, (b) passer par `useComparatorNav` / `ComparatorShell` qui se chargent du clavier et du bouton ignore, (c) utiliser `KeepActions` (pas `KeepButton` — supprimé) dans ses panneaux. Tests d'invariance à garder verts : `ImageComparator.test.tsx::C/C2/C3`, `VideoComparator.test.tsx::C`, `AudioComparator.test.tsx`, `comparatorShared.test.tsx::KeepActions`.
+
+**Le `ArchiveComparator` est délibérément hors-périmètre** pour cette boucle aujourd'hui : il n'a pas de navigation inter-groupes, pas de bouton "garder" (il visualise des entrées internes, pas des fichiers à dédupliquer comme un groupe), et l'ignore d'un groupe d'archives n'existe pas encore (ni `ignore_list.rs` ni état frontend). L'étendre demande trois chantiers distincts : nav inter-groupes, sémantique de garder une archive, ignore backend - à traiter dans un lot dédié.
 
 ## Règle impérative - Diagnostic par logs avant code
 

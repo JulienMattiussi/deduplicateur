@@ -38,6 +38,7 @@ function render2(props: Partial<Parameters<typeof ImageComparator>[0]> = {}) {
     startIdx: 0,
     selected: new Set<string>(),
     onSelectPaths: vi.fn(),
+    onIgnore: vi.fn(),
     onClose: vi.fn(),
   };
   return render(
@@ -63,10 +64,10 @@ describe("A - rendu de base", () => {
     expect(tabs2.length).toBeGreaterThanOrEqual(1);
   });
 
-  it("affiche les boutons Garder celui-ci", () => {
+  it("affiche les boutons Garder & suivant et Garder & fermer (2 panneaux)", () => {
     render2();
-    const keepBtns = screen.getAllByText(/Garder celui-ci/);
-    expect(keepBtns).toHaveLength(2);
+    expect(screen.getAllByText(/Garder & suivant/)).toHaveLength(2);
+    expect(screen.getAllByText(/Garder & fermer/)).toHaveLength(2);
   });
 
   it("appelle onClose au clic sur ✕", async () => {
@@ -127,21 +128,90 @@ describe("B - navigation entre groupes", () => {
 
 // ---- C : keepFile ----
 describe("C - keepFile", () => {
-  it("appelle onSelectPaths avec les autres fichiers en toAdd et le fichier gardé en toRemove", () => {
+  it("Garder & suivant : onSelectPaths avec les autres en toAdd et le gardé en toRemove", () => {
     const onSelectPaths = vi.fn();
     render2({ onSelectPaths });
-    const keepBtns = screen.getAllByText(/Garder celui-ci/);
-    fireEvent.click(keepBtns[0]);
+    fireEvent.click(screen.getAllByText(/Garder & suivant/)[0]);
     expect(onSelectPaths).toHaveBeenCalledWith(
       ["/b/img2.jpg"],
       ["/a/img1.jpg"]
     );
   });
 
+  it("Garder & fermer : coche les doublons ET ferme le comparateur", () => {
+    const onSelectPaths = vi.fn();
+    const onClose = vi.fn();
+    render2({ onSelectPaths, onClose, groups: [group2, group3] });
+    fireEvent.click(screen.getAllByText(/Garder & fermer/)[0]);
+    expect(onSelectPaths).toHaveBeenCalledWith(["/b/img2.jpg"], ["/a/img1.jpg"]);
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it("Garder & suivant : passe au groupe suivant sans fermer (pas le dernier)", () => {
+    const onClose = vi.fn();
+    render2({ onClose, groups: [group2, group3] });
+    expect(screen.getByText("1 / 2")).toBeInTheDocument();
+    fireEvent.click(screen.getAllByText(/Garder & suivant/)[0]);
+    expect(screen.getByText("2 / 2")).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("Garder & suivant sur le dernier groupe : ferme le comparateur", () => {
+    const onClose = vi.fn();
+    render2({ onClose, groups: [group2] });
+    fireEvent.click(screen.getAllByText(/Garder & suivant/)[0]);
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
   it("affiche ✓ sur le fichier gardé quand les autres sont sélectionnés", () => {
     // img2.jpg est dans selected → img1.jpg est "kept"
     render2({ selected: new Set(["/b/img2.jpg"]) });
     expect(screen.getAllByText(/✓/).length).toBeGreaterThan(0);
+  });
+});
+
+// ---- C2 : ignore depuis le comparateur ----
+describe("C2 - ignore & suivant", () => {
+  it("le bouton 🚫 appelle onIgnore avec l'id du groupe courant", () => {
+    const onIgnore = vi.fn();
+    render2({ onIgnore, groups: [group2, group3] });
+    fireEvent.click(screen.getByTestId("comparator-ignore-btn"));
+    expect(onIgnore).toHaveBeenCalledWith(group2.id);
+  });
+
+  it("ignorer le dernier groupe ferme le comparateur", () => {
+    const onIgnore = vi.fn();
+    const onClose = vi.fn();
+    render2({ onIgnore, onClose, groups: [group2] });
+    fireEvent.click(screen.getByTestId("comparator-ignore-btn"));
+    expect(onIgnore).toHaveBeenCalledWith(group2.id);
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+});
+
+// ---- C3 : raccourcis clavier de triage ----
+describe("C3 - raccourcis clavier", () => {
+  it("'1' garde le fichier de gauche et passe au suivant", () => {
+    const onSelectPaths = vi.fn();
+    render2({ onSelectPaths, groups: [group2, group3] });
+    fireEvent.keyDown(window, { key: "1" });
+    expect(onSelectPaths).toHaveBeenCalledWith(["/b/img2.jpg"], ["/a/img1.jpg"]);
+    expect(screen.getByText("2 / 2")).toBeInTheDocument();
+  });
+
+  it("'2' garde le fichier de droite et passe au suivant", () => {
+    const onSelectPaths = vi.fn();
+    render2({ onSelectPaths, groups: [group2, group3] });
+    fireEvent.keyDown(window, { key: "2" });
+    expect(onSelectPaths).toHaveBeenCalledWith(["/a/img1.jpg"], ["/b/img2.jpg"]);
+    expect(screen.getByText("2 / 2")).toBeInTheDocument();
+  });
+
+  it("'i' ignore le groupe courant", () => {
+    const onIgnore = vi.fn();
+    render2({ onIgnore, groups: [group2, group3] });
+    fireEvent.keyDown(window, { key: "i" });
+    expect(onIgnore).toHaveBeenCalledWith(group2.id);
   });
 });
 

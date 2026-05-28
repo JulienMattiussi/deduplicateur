@@ -56,7 +56,7 @@ export function useResults(setError: (e: string | null) => void) {
   // decale. Le compteur cumulatif pointerait alors dans le vide (page vide ->
   // dossier qui disparait). L'appelant passe le nombre de groupes du dossier
   // encore affiches, qui correspond exactement a l'offset a reprendre.
-  async function loadFolderPage(folderKey: string, limit: number = 50, offsetOverride?: number) {
+  async function loadFolderPage(folderKey: string, limit: number = 50, offsetOverride?: number, filterText?: string) {
     const state = folderState[folderKey];
     if (state?.loading) return;
     const offset = offsetOverride ?? state?.offset ?? 0;
@@ -65,7 +65,8 @@ export function useResults(setError: (e: string | null) => void) {
       [folderKey]: { loading: true, hasMore: state?.hasMore ?? true, offset },
     }));
     try {
-      const page = await invoke<GroupsPage>("get_folder_groups_page", { folderKey, offset, limit });
+      const ft = filterText?.trim() ? filterText.trim() : null;
+      const page = await invoke<GroupsPage>("get_folder_groups_page", { folderKey, offset, limit, filterText: ft });
       startTransition(() => {
         setGroups((prev) => [...prev, ...page.groups]);
         setFolderState((prev) => ({

@@ -135,14 +135,14 @@ export function IgnoredPanel({
   return (
     <div className="ignored-container" data-testid="ignored-panel">
       <button className="btn-ghost" onClick={() => setOpen((v) => !v)}>
-        {t.ignoredGroups}
+        🚫 {t.ignoredGroups}
         {entries.length > 0 && <span className="ignored-badge">{entries.length}</span>}
       </button>
       <SideDrawer
         open={open}
         onClose={() => setOpen(false)}
         testId="ignored-drawer"
-        title={`${t.ignoredGroups}${entries.length > 0 ? ` (${entries.length})` : ""}`}
+        title={`🚫 ${t.ignoredGroups}${entries.length > 0 ? ` (${entries.length})` : ""}`}
         toolbar={toolbar}
         footer={footer}
       >

@@ -147,7 +147,7 @@ export function GroupCard({
             title={t.ignoreGroup}
             onClick={(e) => { e.stopPropagation(); setConfirmIgnore(true); }}
           >
-            ✕
+            🚫
           </button>
         )}
         {onIgnore && confirmIgnore && (

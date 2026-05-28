@@ -2168,6 +2168,43 @@
   border-color: var(--border-badge);
 }
 
+/* Paire de boutons "Garder & suivant" (principal) + "Garder & fermer" (ghost)
+   alignes cote a cote sous chaque panneau. Le principal prend l'espace, le ghost
+   reste compact et discret (action secondaire). */
+.comparator-keep-actions {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.comparator-keep-actions .comparator-keep-btn {
+  width: auto;
+}
+
+.comparator-keep-actions .comparator-keep-btn:first-child {
+  flex: 1;
+}
+
+.comparator-keep-btn--ghost {
+  flex: 0 0 auto;
+  background: transparent;
+  color: var(--text-2);
+  border-color: var(--border);
+  font-weight: 400;
+  font-size: 12px;
+}
+
+.comparator-keep-btn--ghost:hover {
+  background: var(--bg-input);
+  color: var(--text-3);
+  border-color: var(--border-2);
+}
+
+/* Bouton "Ignorer ce groupe & suivant" dans le header du comparateur. */
+.comparator-ignore-btn:hover {
+  color: var(--danger, #e05a5a);
+}
+
 .comparator-meta {
   display: flex;
   flex-direction: column;

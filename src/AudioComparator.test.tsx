@@ -41,14 +41,14 @@ const groups = [
 describe("E4 - AudioComparator", () => {
   it("rend le titre 'Comparateur audio'", () => {
     renderWithLang(
-      <AudioComparator groups={groups} startIdx={0} selected={new Set()} onSelectPaths={vi.fn()} onClose={vi.fn()} />
+      <AudioComparator groups={groups} startIdx={0} selected={new Set()} onSelectPaths={vi.fn()} onIgnore={vi.fn()} onClose={vi.fn()} />
     );
     expect(screen.getByText("Comparateur audio")).toBeInTheDocument();
   });
 
   it("affiche les deux elements audio", () => {
     renderWithLang(
-      <AudioComparator groups={groups} startIdx={0} selected={new Set()} onSelectPaths={vi.fn()} onClose={vi.fn()} />
+      <AudioComparator groups={groups} startIdx={0} selected={new Set()} onSelectPaths={vi.fn()} onIgnore={vi.fn()} onClose={vi.fn()} />
     );
     expect(screen.getByTestId("audio-left")).toBeInTheDocument();
     expect(screen.getByTestId("audio-right")).toBeInTheDocument();
@@ -56,7 +56,7 @@ describe("E4 - AudioComparator", () => {
 
   it("le lecteur gauche a controls, le droit n'en a pas", () => {
     renderWithLang(
-      <AudioComparator groups={groups} startIdx={0} selected={new Set()} onSelectPaths={vi.fn()} onClose={vi.fn()} />
+      <AudioComparator groups={groups} startIdx={0} selected={new Set()} onSelectPaths={vi.fn()} onIgnore={vi.fn()} onClose={vi.fn()} />
     );
     const left = screen.getByTestId("audio-left") as HTMLAudioElement;
     const right = screen.getByTestId("audio-right") as HTMLAudioElement;
@@ -64,21 +64,41 @@ describe("E4 - AudioComparator", () => {
     expect(right.controls).toBe(false);
   });
 
-  it("bouton Garder celui-ci sur le fichier gauche appelle onSelectPaths et onClose", () => {
+  it("Garder & fermer sur le fichier gauche appelle onSelectPaths et onClose", () => {
     const onSelectPaths = vi.fn();
     const onClose = vi.fn();
     renderWithLang(
-      <AudioComparator groups={groups} startIdx={0} selected={new Set()} onSelectPaths={onSelectPaths} onClose={onClose} />
+      <AudioComparator groups={groups} startIdx={0} selected={new Set()} onSelectPaths={onSelectPaths} onIgnore={vi.fn()} onClose={onClose} />
     );
-    const keepBtns = screen.getAllByText(/Garder celui-ci/);
-    fireEvent.click(keepBtns[0]);
+    fireEvent.click(screen.getAllByText(/Garder & fermer/)[0]);
     expect(onSelectPaths).toHaveBeenCalledWith(["/music/b.flac"], ["/music/a.mp3"]);
     expect(onClose).toHaveBeenCalled();
   });
 
+  it("Garder & suivant sur le fichier gauche avance au groupe suivant", () => {
+    const onSelectPaths = vi.fn();
+    const onClose = vi.fn();
+    renderWithLang(
+      <AudioComparator groups={groups} startIdx={0} selected={new Set()} onSelectPaths={onSelectPaths} onIgnore={vi.fn()} onClose={onClose} />
+    );
+    fireEvent.click(screen.getAllByText(/Garder & suivant/)[0]);
+    expect(onSelectPaths).toHaveBeenCalledWith(["/music/b.flac"], ["/music/a.mp3"]);
+    expect(screen.getByText("2 / 2")).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("le bouton 🚫 ignore le groupe courant", () => {
+    const onIgnore = vi.fn();
+    renderWithLang(
+      <AudioComparator groups={groups} startIdx={0} selected={new Set()} onSelectPaths={vi.fn()} onIgnore={onIgnore} onClose={vi.fn()} />
+    );
+    fireEvent.click(screen.getByTestId("comparator-ignore-btn"));
+    expect(onIgnore).toHaveBeenCalledWith("g1");
+  });
+
   it("affiche la duree des fichiers audio", () => {
     renderWithLang(
-      <AudioComparator groups={groups} startIdx={0} selected={new Set()} onSelectPaths={vi.fn()} onClose={vi.fn()} />
+      <AudioComparator groups={groups} startIdx={0} selected={new Set()} onSelectPaths={vi.fn()} onIgnore={vi.fn()} onClose={vi.fn()} />
     );
     expect(screen.getByText("3:00")).toBeInTheDocument();
     expect(screen.getByText("3:10")).toBeInTheDocument();
@@ -86,7 +106,7 @@ describe("E4 - AudioComparator", () => {
 
   it("le bouton Ouvrir le dossier est present dans les metadonnees", () => {
     renderWithLang(
-      <AudioComparator groups={groups} startIdx={0} selected={new Set()} onSelectPaths={vi.fn()} onClose={vi.fn()} />
+      <AudioComparator groups={groups} startIdx={0} selected={new Set()} onSelectPaths={vi.fn()} onIgnore={vi.fn()} onClose={vi.fn()} />
     );
     const revealBtns = screen.getAllByTitle("Ouvrir le dossier");
     expect(revealBtns.length).toBeGreaterThanOrEqual(2);
@@ -95,7 +115,7 @@ describe("E4 - AudioComparator", () => {
   it("retourne null si le groupe n'a qu'un fichier", () => {
     const single = [makeGroup("g-single", ["/music/a.mp3"])];
     const { container } = renderWithLang(
-      <AudioComparator groups={single} startIdx={0} selected={new Set()} onSelectPaths={vi.fn()} onClose={vi.fn()} />
+      <AudioComparator groups={single} startIdx={0} selected={new Set()} onSelectPaths={vi.fn()} onIgnore={vi.fn()} onClose={vi.fn()} />
     );
     expect(container.firstChild).toBeNull();
   });
@@ -103,7 +123,7 @@ describe("E4 - AudioComparator", () => {
   it("Escape appelle onClose", () => {
     const onClose = vi.fn();
     renderWithLang(
-      <AudioComparator groups={groups} startIdx={0} selected={new Set()} onSelectPaths={vi.fn()} onClose={onClose} />
+      <AudioComparator groups={groups} startIdx={0} selected={new Set()} onSelectPaths={vi.fn()} onIgnore={vi.fn()} onClose={onClose} />
     );
     fireEvent.keyDown(window, { key: "Escape" });
     expect(onClose).toHaveBeenCalled();

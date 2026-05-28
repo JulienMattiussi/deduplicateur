@@ -129,18 +129,39 @@ export function MetaField({
 }
 
 /**
- * Bouton "Garder celui-ci" partage par les comparateurs Image/Video/Audio.
- * Affiche un coche (✓) prefixe quand le fichier est marque comme garde.
+ * Paire de boutons "Garder" partagee par les comparateurs Image/Video/Audio,
+ * affichee sous chaque panneau (cote gauche / droit). Deux actions :
+ * - principal "Garder & suivant" : coche les doublons et passe au groupe suivant
+ *   (ferme si dernier). Affiche un coche (✓) prefixe quand le fichier est deja garde.
+ * - secondaire (ghost) "Garder & fermer" : coche les doublons et ferme le comparateur
+ *   (comportement historique, utile quand on n'inspecte qu'un seul groupe).
  */
-export function KeepButton({ kept, onKeep }: { kept: boolean; onKeep: () => void }) {
+export function KeepActions({
+  kept,
+  onKeepNext,
+  onKeepClose,
+}: {
+  kept: boolean;
+  onKeepNext: () => void;
+  onKeepClose: () => void;
+}) {
   const { t } = useLang();
   return (
-    <button
-      className={`comparator-keep-btn${kept ? " comparator-keep-btn--kept" : ""}`}
-      onClick={onKeep}
-    >
-      {kept ? "✓ " : ""}{t.keepThis}
-    </button>
+    <div className="comparator-keep-actions">
+      <button
+        className={`comparator-keep-btn${kept ? " comparator-keep-btn--kept" : ""}`}
+        onClick={onKeepNext}
+      >
+        {kept ? "✓ " : ""}{t.keepAndNext}
+      </button>
+      <button
+        className="comparator-keep-btn comparator-keep-btn--ghost"
+        onClick={onKeepClose}
+        title={t.keepAndClose}
+      >
+        {t.keepAndClose}
+      </button>
+    </div>
   );
 }
 
@@ -149,6 +170,9 @@ export interface ComparatorProps {
   startIdx: number;
   selected: Set<string>;
   onSelectPaths: (toAdd: string[], toRemove: string[]) => void;
+  /** Ignore le groupe courant (le retire de la liste). Branche sur la meme
+   *  logique que la croix d'ignore des cartes de groupe. */
+  onIgnore: (groupId: string) => void;
   onClose: () => void;
 }
 
@@ -163,7 +187,11 @@ export interface ComparatorNav {
   goGroup: (delta: number) => void;
   pickLeft: (i: number) => void;
   pickRight: (i: number) => void;
-  keepFile: (keepPath: string) => void;
+  /** Coche les doublons du groupe (garde `keepPath`). Si `advance`, passe au
+   *  groupe suivant (ferme si c'etait le dernier) ; sinon ferme le comparateur. */
+  keepFile: (keepPath: string, advance: boolean) => void;
+  /** Ignore le groupe courant puis passe au suivant (ferme si dernier). */
+  ignoreCurrent: () => void;
   isKept: (file: DuplicateFile) => boolean;
 }
 
@@ -172,6 +200,7 @@ export function useComparatorNav({
   startIdx,
   selected,
   onSelectPaths,
+  onIgnore,
   onClose,
 }: ComparatorProps): ComparatorNav {
   const [groupIdx, setGroupIdx] = useState(Math.max(0, Math.min(startIdx, groups.length - 1)));
@@ -197,12 +226,18 @@ export function useComparatorNav({
       const inInput = (e.target as HTMLElement).tagName === "INPUT";
       if (inInput) return;
       if (e.key === "Escape") { onClose(); return; }
-      if (e.key === "ArrowLeft") goGroup(-1);
-      if (e.key === "ArrowRight") goGroup(1);
+      if (e.key === "ArrowLeft") { goGroup(-1); return; }
+      if (e.key === "ArrowRight") { goGroup(1); return; }
+      // Triage rapide : 1/2 = garder gauche/droite & suivant, i = ignorer & suivant.
+      if (!hasValidGroup) return;
+      if (e.key === "1") { keepFile(group.files[effectiveLeftIdx].path, true); return; }
+      if (e.key === "2") { keepFile(group.files[effectiveRightIdx].path, true); return; }
+      if (e.key === "i" || e.key === "I") { ignoreCurrent(); return; }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [groupIdx, groups.length, onClose]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groupIdx, groups.length, hasValidGroup, effectiveLeftIdx, effectiveRightIdx, onClose, onIgnore, onSelectPaths]);
 
   function pickLeft(i: number) {
     if (i === rightFileIdx) setRightFileIdx(leftFileIdx);
@@ -214,11 +249,35 @@ export function useComparatorNav({
     setRightFileIdx(i);
   }
 
-  function keepFile(keepPath: string) {
+  function keepFile(keepPath: string, advance: boolean) {
     if (!group) return;
     const toAdd = group.files.filter((f) => f.path !== keepPath).map((f) => f.path);
     onSelectPaths(toAdd, [keepPath]);
-    onClose();
+    if (!advance) {
+      onClose();
+      return;
+    }
+    // Garder & suivant : ne retire PAS le groupe de la liste (seuls les doublons
+    // sont coches), donc avancer = groupe +1. Ferme si c'etait le dernier.
+    if (groupIdx >= groups.length - 1) onClose();
+    else goGroup(1);
+  }
+
+  // Ignore le groupe courant puis passe au suivant. Contrairement a keepFile,
+  // onIgnore RETIRE le groupe de la liste (cote App) : le groupe suivant glisse
+  // donc a l'index courant. On NE change PAS groupIdx (il pointera sur le suivant
+  // apres le re-render), on reinitialise juste la paire G/D. Si c'etait le dernier
+  // groupe, plus rien a afficher -> on ferme.
+  function ignoreCurrent() {
+    if (!group) return;
+    const isLast = groupIdx >= groups.length - 1;
+    onIgnore(group.id);
+    if (isLast) {
+      onClose();
+    } else {
+      setLeftFileIdx(0);
+      setRightFileIdx(1);
+    }
   }
 
   function isKept(file: DuplicateFile): boolean {
@@ -241,6 +300,7 @@ export function useComparatorNav({
     pickLeft,
     pickRight,
     keepFile,
+    ignoreCurrent,
     isKept,
   };
 }
@@ -325,7 +385,7 @@ export function ComparatorShell({
   children: React.ReactNode;
 }) {
   const { t } = useLang();
-  const { groupIdx, group, effectiveLeftIdx, effectiveRightIdx, goGroup, pickLeft, pickRight } = nav;
+  const { groupIdx, group, effectiveLeftIdx, effectiveRightIdx, goGroup, pickLeft, pickRight, ignoreCurrent } = nav;
   return (
     <div className="comparator-overlay">
       <div className="comparator-header">
@@ -336,6 +396,14 @@ export function ComparatorShell({
         </div>
         <span className="comparator-title">{title}</span>
         <div className="comparator-header-right">
+          <button
+            className="btn-ghost btn-sm comparator-ignore-btn"
+            onClick={ignoreCurrent}
+            title={t.ignoreAndNext}
+            data-testid="comparator-ignore-btn"
+          >
+            🚫
+          </button>
           {headerExtra}
           <button className="btn-ghost btn-sm" onClick={onClose}>✕</button>
         </div>

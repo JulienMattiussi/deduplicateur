@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { LangProvider } from "./LangContext";
-import { KeepButton, MetaBlockBase, MetaField, toMediaUrl } from "./comparatorShared";
+import { KeepActions, MetaBlockBase, MetaField, toMediaUrl } from "./comparatorShared";
 
 const mockInvoke = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...args: any[]) => mockInvoke(...args) }));
@@ -25,36 +25,49 @@ describe("toMediaUrl", () => {
   });
 });
 
-describe("KeepButton", () => {
-  function renderBtn(kept: boolean, onKeep = vi.fn()) {
+describe("KeepActions", () => {
+  function renderActions(kept: boolean, onKeepNext = vi.fn(), onKeepClose = vi.fn()) {
     return render(
       <LangProvider>
-        <KeepButton kept={kept} onKeep={onKeep} />
+        <KeepActions kept={kept} onKeepNext={onKeepNext} onKeepClose={onKeepClose} />
       </LangProvider>
     );
   }
 
-  it("affiche le label keepThis sans coche quand non garde", () => {
-    renderBtn(false);
-    const btn = screen.getByRole("button");
-    expect(btn.textContent).not.toContain("✓");
-    expect(btn.textContent).toMatch(/Garder/i);
-    expect(btn.className).not.toContain("--kept");
+  it("affiche deux boutons : 'Garder & suivant' (principal) et 'Garder & fermer' (ghost)", () => {
+    renderActions(false);
+    const buttons = screen.getAllByRole("button");
+    expect(buttons).toHaveLength(2);
+    expect(buttons[0].textContent).toMatch(/suivant/i);
+    expect(buttons[1].textContent).toMatch(/fermer/i);
+    expect(buttons[1].className).toContain("comparator-keep-btn--ghost");
   });
 
-  it("affiche une coche prefixee quand garde", () => {
-    renderBtn(true);
-    const btn = screen.getByRole("button");
-    expect(btn.textContent).toContain("✓");
-    expect(btn.className).toContain("comparator-keep-btn--kept");
+  it("le bouton principal affiche une coche quand garde", () => {
+    renderActions(true);
+    const primary = screen.getAllByRole("button")[0];
+    expect(primary.textContent).toContain("✓");
+    expect(primary.className).toContain("comparator-keep-btn--kept");
   });
 
-  it("appelle onKeep au clic", async () => {
+  it("le clic sur 'Garder & suivant' appelle onKeepNext seulement", async () => {
     const user = userEvent.setup();
-    const onKeep = vi.fn();
-    renderBtn(false, onKeep);
-    await user.click(screen.getByRole("button"));
-    expect(onKeep).toHaveBeenCalledTimes(1);
+    const onKeepNext = vi.fn();
+    const onKeepClose = vi.fn();
+    renderActions(false, onKeepNext, onKeepClose);
+    await user.click(screen.getAllByRole("button")[0]);
+    expect(onKeepNext).toHaveBeenCalledTimes(1);
+    expect(onKeepClose).not.toHaveBeenCalled();
+  });
+
+  it("le clic sur 'Garder & fermer' appelle onKeepClose seulement", async () => {
+    const user = userEvent.setup();
+    const onKeepNext = vi.fn();
+    const onKeepClose = vi.fn();
+    renderActions(false, onKeepNext, onKeepClose);
+    await user.click(screen.getAllByRole("button")[1]);
+    expect(onKeepClose).toHaveBeenCalledTimes(1);
+    expect(onKeepNext).not.toHaveBeenCalled();
   });
 });
 

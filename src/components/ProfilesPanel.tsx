@@ -68,14 +68,14 @@ export function ProfilesPanel({ profiles, currentFolder, onSave, onLoad, onLaunc
   return (
     <div className="profiles-container">
       <button className="btn-ghost" onClick={() => setOpen((v) => !v)} disabled={disabled}>
-        {t.profiles}
+        👤 {t.profiles}
         {profiles.length > 0 && <span className="profiles-badge">{profiles.length}</span>}
       </button>
       <SideDrawer
         open={open}
         onClose={() => setOpen(false)}
         testId="profiles-drawer"
-        title={`${t.profiles}${profiles.length > 0 ? ` (${profiles.length})` : ""}`}
+        title={`👤 ${t.profiles}${profiles.length > 0 ? ` (${profiles.length})` : ""}`}
         toolbar={toolbar}
       >
         {profiles.length === 0 ? (
