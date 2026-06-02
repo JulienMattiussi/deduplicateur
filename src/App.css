@@ -1120,31 +1120,147 @@
   font-style: italic;
 }
 
-.cache-section {
-  margin-top: 8px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
+/* ── Menu Maintenance ──────────────────────────────────────────────────── */
+
+.maint-section {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.maint-section:last-child {
+  border-bottom: none;
+}
+
+.maint-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0 0 6px;
+}
+
+.maint-section--danger .maint-section-title {
+  color: var(--danger, #c0392b);
+}
+
+.maint-hint {
+  font-size: 12px;
+  color: var(--text-6);
+  margin: 0 0 10px;
+  line-height: 1.4;
+}
+
+.maint-stats {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.maint-stats li {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+}
+
+.maint-stale-row {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
+  font-size: 13px;
+  padding: 4px 0;
+}
+
+.maint-session-tools,
+.maint-older-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   flex-wrap: wrap;
+  margin-bottom: 8px;
+  font-size: 13px;
 }
 
-.cache-size-label {
+.maint-older-input {
+  width: 64px;
+}
+
+.maint-session-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.maint-session-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+
+.maint-session-row:hover {
+  background: rgba(127, 127, 127, 0.08);
+}
+
+.maint-session-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+  cursor: pointer;
+}
+
+.maint-session-folder {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.maint-session-meta {
+  font-size: 11px;
+  color: var(--text-6);
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.maint-missing-badge {
+  background: var(--danger, #c0392b);
+  color: #fff;
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 10px;
+}
+
+.maint-empty {
   font-size: 12px;
   color: var(--text-6);
-  flex: 1;
 }
 
-.cache-confirm-text {
+.maint-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   font-size: 12px;
   color: var(--text-6);
-  flex: 1;
 }
 
-.cache-confirm-buttons {
+.maint-confirm-buttons {
   display: flex;
   gap: 6px;
+}
+
+.maint-delete-btn {
+  align-self: flex-start;
 }
 
 .session-card {
@@ -2621,6 +2737,11 @@
   box-shadow: -4px 0 24px rgba(0, 0, 0, 0.3);
 }
 
+/* Variante étroite (menu Maintenance) : rapproche labels et valeurs/boutons. */
+.side-drawer--narrow {
+  width: 480px;
+}
+
 .side-drawer-header {
   display: flex;
   align-items: center;
@@ -2811,6 +2932,41 @@
   font-weight: bold;
   min-width: 30px;
   padding: 0 8px;
+}
+
+/* Tooltip CSS (instantané, cross-plateforme) : le title natif est peu fiable
+   sous WebKitGTK. Texte via attr(data-tooltip), aligné sous le bouton et calé à
+   droite pour ne pas déborder du bord de la fenêtre (boutons situés en haut à
+   droite). aria-label reste sur le bouton pour l'accessibilité. */
+[data-tooltip] {
+  position: relative;
+}
+
+[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  white-space: nowrap;
+  background: var(--bg-panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: normal;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-2px);
+  transition: opacity 0.12s ease, transform 0.12s ease;
+  z-index: 300;
+}
+
+[data-tooltip]:hover::after,
+[data-tooltip]:focus-visible::after {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 /* ── Help drawer ── */

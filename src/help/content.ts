@@ -24,6 +24,7 @@ export const HELP_SECTIONS: HelpSection[] = [
   { id: "filters",    title: { fr: "Filtres",                       en: "Filters" } },
   { id: "advanced",   title: { fr: "Paramètres avancés",            en: "Advanced settings" } },
   { id: "sessions",   title: { fr: "Analyses précédentes",          en: "Previous scans" } },
+  { id: "maintenance", title: { fr: "Maintenance",                   en: "Maintenance" } },
   { id: "tools",      title: { fr: "Outils externes",               en: "External tools" } },
   { id: "misc",       title: { fr: "Export et interface",           en: "Export and interface" } },
   { id: "notif",      title: { fr: "Notifications",                 en: "Notifications" } },
@@ -1033,7 +1034,7 @@ The acoustic fingerprint is computed by **fpcalc** (chromaprint). If fpcalc is n
 
 **Supprimer** : retire la session de la liste sans supprimer aucun fichier sur le disque. Les résultats sont définitivement perdus.
 
-**Cache de détection** : en bas de la liste, l'app affiche la taille totale du cache accumulé (hashes pHash, vidéo, audio, exacts). Ce cache accélère les prochains scans mais peut prendre de l'espace disque. Le bouton **"Purger"** le supprime après confirmation - une seule confirmation inline suffit.`,
+**Cache de détection et entretien** : la gestion du cache (taille, purge) et la suppression groupée d'analyses se font désormais dans le menu **🔧 Maintenance** (barre d'outils). Voir l'article dédié.`,
       en: `Every scan is automatically saved. The **"← My scans"** button in the toolbar is always visible and shows the list of previous scans.
 
 **Resume**: reloads a scan's results without re-running it. Groups and statistics are restored. Files deleted in the meantime are filtered out automatically.
@@ -1046,7 +1047,43 @@ The acoustic fingerprint is computed by **fpcalc** (chromaprint). If fpcalc is n
 
 **Delete**: removes the session from the list without deleting any files on disk. The results are permanently lost.
 
-**Detection cache**: at the bottom of the list, the app shows the total size of accumulated cache (pHash, video, audio, exact hashes). This cache speeds up future scans but can take up disk space. The **"Purge"** button deletes it after confirmation - a single inline confirmation is enough.`,
+**Detection cache and housekeeping**: cache management (size, purge) and bulk deletion of scans now live in the **🔧 Maintenance** menu (toolbar). See the dedicated article.`,
+    },
+  },
+
+  // ── Maintenance ───────────────────────────────────────────────────────────
+
+  {
+    id: "maintenance",
+    sectionId: "maintenance",
+    title: { fr: "Menu Maintenance", en: "Maintenance menu" },
+    keywords: {
+      fr: ["maintenance", "cache", "purger", "purge", "obsolète", "nettoyer", "espace disque", "ignorés", "analyses", "supprimer", "ménage", "disque débranché", "volume"],
+      en: ["maintenance", "cache", "purge", "stale", "clean", "disk space", "ignored", "scans", "delete", "housekeeping", "unplugged drive", "volume"],
+    },
+    body: {
+      fr: `Le menu **🔧 Maintenance** (barre d'outils) regroupe l'entretien long terme de l'application. Au fil du temps, le cache, la liste des ignorés et les analyses peuvent référencer des fichiers qui n'existent plus, occupant de l'espace et ralentissant légèrement le chargement.
+
+**Espace occupé** : taille du cache de détection, nombre de groupes ignorés et nombre d'analyses enregistrées.
+
+**Références obsolètes** : nettoyage ciblé. Un bouton **"Nettoyer"** retire du cache (et des ignorés) les entrées dont le fichier a été déplacé ou supprimé. Le compteur "X sur Y obsolètes" indique combien seront retirées avant que vous cliquiez.
+
+**Garde-fou disque débranché** : une entrée n'est considérée comme obsolète **que si son volume est joignable**. Si un disque externe ou un partage réseau est débranché, ses entrées sont **préservées** : rien n'est retiré tant que le disque n'est pas rebranché. Cela évite de re-calculer tout un cache par erreur.
+
+**Analyses** : la liste de toutes les analyses enregistrées avec cases à cocher. Les analyses dont le **dossier scanné a disparu** sont signalées par un badge "dossier introuvable". Trois aides à la sélection : *Tout cocher*, *Cocher les dossiers introuvables*, et *Cocher les analyses de plus de N jours*. Le bouton **"Supprimer"** retire les analyses cochées après confirmation - **aucun fichier sur le disque n'est touché**, seuls les résultats enregistrés sont effacés.
+
+**Vider entièrement les caches** : option radicale qui supprime tous les caches de détection, **y compris les empreintes encore valides**. Le prochain scan recalcule tout. À utiliser seulement pour repartir de zéro ou récupérer de l'espace.`,
+      en: `The **🔧 Maintenance** menu (toolbar) gathers the application's long-term housekeeping. Over time, the cache, the ignore list and saved scans can reference files that no longer exist, taking up space and slightly slowing down loading.
+
+**Storage used**: detection cache size, number of ignored groups and number of saved scans.
+
+**Stale references**: targeted cleanup. A **"Clean up"** button removes from the cache (and the ignore list) the entries whose file has been moved or deleted. The "X of Y stale" counter shows how many will be removed before you click.
+
+**Unplugged-drive safeguard**: an entry is considered stale **only if its volume is reachable**. If an external drive or a network share is unplugged, its entries are **preserved**: nothing is removed until the drive is reconnected. This prevents recomputing an entire cache by mistake.
+
+**Scans**: the list of all saved scans with checkboxes. Scans whose **scanned folder has disappeared** are flagged with a "folder missing" badge. Three selection helpers: *Select all*, *Check missing folders*, and *Check scans older than N days*. The **"Delete"** button removes the checked scans after confirmation - **no file on disk is touched**, only the saved results are erased.
+
+**Clear all caches**: a drastic option that removes all detection caches, **including fingerprints that are still valid**. The next scan recomputes everything. Use only to start fresh or reclaim space.`,
     },
   },
 

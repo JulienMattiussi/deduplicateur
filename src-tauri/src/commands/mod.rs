@@ -2,6 +2,7 @@ pub mod archive;
 pub mod export;
 pub mod files;
 pub mod ignore;
+pub mod maintenance;
 pub mod native_player;
 pub mod scan;
 pub mod session;

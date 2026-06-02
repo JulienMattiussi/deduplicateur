@@ -77,6 +77,20 @@ impl ExactCache {
         self.dirty = true;
     }
 
+    /// Retire les entrees dont le fichier a disparu (volume joignable). Retourne le nombre retire.
+    pub fn prune_missing(&mut self) -> usize {
+        let n = crate::maintenance::retain_existing(&mut self.entries);
+        if n > 0 {
+            self.dirty = true;
+        }
+        n
+    }
+
+    /// Nombre d'entrees obsoletes (fichier disparu, volume joignable) sans modifier le cache.
+    pub fn count_missing(&self) -> usize {
+        crate::maintenance::count_purgeable(self.entries.keys().map(|s| s.as_str()))
+    }
+
     #[allow(dead_code)]
     pub fn len(&self) -> usize {
         self.entries.len()

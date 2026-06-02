@@ -192,6 +192,25 @@ export interface IgnoreEntry {
   ignored_at: number;
 }
 
+export interface SessionMaintenanceInfo {
+  id: string;
+  folder: string;
+  /** Le dossier scanné a disparu (volume joignable). */
+  folder_missing: boolean;
+  total_groups: number;
+  total_wasted_bytes: number;
+  size_bytes: number;
+}
+
+export interface MaintenanceReport {
+  cache_bytes: number;
+  cache_total_entries: number;
+  cache_stale_entries: number;
+  ignored_total: number;
+  ignored_stale: number;
+  sessions: SessionMaintenanceInfo[];
+}
+
 export interface ScanProfile {
   id: string;
   name: string;

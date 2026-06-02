@@ -18,6 +18,7 @@ import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { useTheme } from "./hooks/useTheme";
 import { useIgnoreList } from "./hooks/useIgnoreList";
 import { IgnoredPanel } from "./components/IgnoredPanel";
+import { MaintenancePanel } from "./components/MaintenancePanel";
 import { HelpPanel } from "./components/HelpPanel";
 import { useProfiles } from "./hooks/useProfiles";
 import { ImageComparator } from "./ImageComparator";
@@ -59,11 +60,9 @@ export default function App() {
   const [priorityFolder, setPriorityFolder] = useState("");
   const { ignoredEntries, reload: loadIgnoredEntries } = useIgnoreList();
   const [helpOpen, setHelpOpen] = useState(false);
-  const [cacheBytes, setCacheBytes] = useState<number | null>(null);
   const [panelResetKey, setPanelResetKey] = useState(0);
   const [preScanToolMissing, setPreScanToolMissing] = useState<"ffmpeg" | "fpcalc" | null>(null);
   const [diskWarning, setDiskWarning] = useState<ArchiveDiskCheck | null>(null);
-  const [purgeConfirm, setPurgeConfirm] = useState(false);
 
   const config = useScanConfig();
   const results = useResults(setError);
@@ -225,22 +224,22 @@ export default function App() {
       .catch(() => {});
   }
 
-  async function handlePurgeCache() {
-    try {
-      await invoke("purge_cache");
-      const newSize = await invoke<number>("get_cache_size");
-      setCacheBytes(newSize);
-    } catch {
-      // non-fatal
-    }
-    setPurgeConfirm(false);
+  // Rafraichissement apres une action du menu Maintenance (purge de caches,
+  // d'ignores obsoletes, suppression de sessions). On recharge la liste des
+  // sessions, la liste d'ignores, et la vue de la session courante si une est
+  // ouverte (un ignore obsolete purge peut avoir fait reapparaitre des groupes).
+  async function handleMaintenanceChanged() {
+    invoke<ScanSummary[]>("list_sessions")
+      .then((s) => startTransition(() => setSessions(s)))
+      .catch(() => {});
+    await loadIgnoredEntries();
+    if (summary) await refreshAfterIgnoreChange();
   }
 
   async function handleScanComplete(s: ScanSummary) {
     setSummary(s);
     setFilterText("");
     startTransition(() => setSessions((prev) => [s, ...prev]));
-    invoke<number>("get_cache_size").then(setCacheBytes).catch(() => {});
     if (s.by_folder) {
       await reloadFolderSummaries("");
     } else {
@@ -495,12 +494,6 @@ export default function App() {
   }
 
   const showSessionPicker = !summary && !scanExec.scanning;
-
-  useEffect(() => {
-    if (showSessionPicker) {
-      invoke<number>("get_cache_size").then(setCacheBytes).catch(() => {});
-    }
-  }, [showSessionPicker]);
   const showResults = summary !== null && summary.total_groups > 0;
 
   const filteredGroups = useMemo(() => {
@@ -623,10 +616,12 @@ export default function App() {
               disabled={scanExec.scanning}
             />
             <button className="btn-ghost" onClick={resetResults}>{t.backToSessions}</button>
+            <MaintenancePanel onChanged={handleMaintenanceChanged} />
             <button
               className="btn-ghost help-btn"
               onClick={() => setHelpOpen(true)}
-              title={t.helpOpen}
+              data-tooltip={t.helpOpen}
+              aria-label={t.helpOpen}
               data-testid="help-open-btn"
             >
               ?
@@ -778,12 +773,8 @@ export default function App() {
         <SessionPicker
           sessions={sessions}
           resumingId={resumingId}
-          cacheBytes={cacheBytes}
-          purgeConfirm={purgeConfirm}
           onResume={resumeSession}
           onDelete={removeSession}
-          onPurge={handlePurgeCache}
-          onPurgeConfirm={setPurgeConfirm}
         />
       )}
 

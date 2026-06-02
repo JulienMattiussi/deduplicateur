@@ -42,6 +42,7 @@ export function useScanConfig() {
   const [excluded, setExcluded] = useState<string[]>([
     "node_modules", ".git", "target", "dist", ".next",
     "__pycache__", ".cache", "vendor", "build", ".npm",
+    "$RECYCLE.BIN", "System Volume Information",
   ]);
   const [scanMode, setScanMode] = useState<"all" | "by_folder" | "compare_folder">("all");
   const [secondaryFolder, setSecondaryFolder] = useState("");

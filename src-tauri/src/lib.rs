@@ -5,6 +5,7 @@ mod commands;
 mod exact_cache;
 mod filters;
 mod ignore_list;
+mod maintenance;
 mod media_types;
 mod native_player;
 mod notifications;
@@ -225,6 +226,7 @@ pub fn run() {
         open_archive_entry, open_file, prepare_video_for_playback, reveal_in_folder,
     };
     use commands::ignore::{clear_all_ignored, clear_ignore_entry, get_ignore_list, ignore_group};
+    use commands::maintenance::{get_maintenance_report, purge_stale_caches, purge_stale_ignored};
     use commands::native_player::{
         native_player_available, native_player_create, native_player_destroy,
         native_player_get_state, native_player_load, native_player_pause_pair,
@@ -324,6 +326,9 @@ pub fn run() {
             get_media_server_port,
             get_cache_size,
             purge_cache,
+            get_maintenance_report,
+            purge_stale_caches,
+            purge_stale_ignored,
             get_archive_groups,
             get_archive_comparison,
             native_player_available,

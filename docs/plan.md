@@ -1220,3 +1220,18 @@ Cinq iterations ont ete necessaires pour cerner le comportement reel :
 - [x] [src/ImageComparator.tsx](../src/ImageComparator.tsx) : calcul d'un `remountKey` derivé de `groupIdx + effectiveLeftIdx + effectiveRightIdx`. Cette cle est passee aux deux `<img>` (mode normal via le nouveau prop `imgKey` d'`ImagePanel`, mode overlay directement). Quand l'utilisateur change un onglet, la cle change pour les DEUX `<img>` -> React demonte et remonte les deux simultanement -> les GIF redemarrent ensemble. Pour les images statiques le remount est invisible (data URL en cache memoire).
 - [x] 1 nouveau test TS `ImageComparator.test.tsx::F::changer l'onglet droit remonte aussi l'img gauche` : recupere les noeuds DOM des deux `<img>` avant + apres clic sur un onglet, verifie que les DEUX references DOM ont change (et pas seulement celle qui a vu son fichier changer).
 - [x] 317 tests Rust / 472 tests TypeScript / tsc clean.
+
+### Menu Maintenance - purge long terme ✅
+
+**Feature** : un menu d'entretien (drawer 🔧 dans la barre d'outils) pour gerer l'accumulation long terme. Au fil du temps, le cache de detection, la liste des ignores et les analyses enregistrees peuvent referencer des fichiers qui n'existent plus, occupant de l'espace et ralentissant le chargement. Trois blocs du moins au plus destructeur : espace occupe (lecture seule), purge ciblee des references obsoletes (caches + ignores), liste des analyses avec suppression groupee, et vidage complet du cache (ancien `purge_cache` deplace depuis le SessionPicker).
+
+**Garde-fou central** : une reference n'est purgee que si son fichier a disparu ET que son volume est joignable. Un disque externe / NAS debranche est preserve (rien retire tant qu'il n'est pas rebranche) - evite de re-hasher tout un disque par erreur. Cf. la nouvelle regle AGENTS.md "fichier absent != fichier supprime".
+
+- [x] [src-tauri/src/maintenance.rs](../src-tauri/src/maintenance.rs) : module pur. `is_volume_reachable` (detection mount points par OS : prefixe disque/UNC sous Windows, `/media|/run/media|/mnt|/Volumes` sous Unix), `is_purgeable` (fichier absent + volume joignable), `ignore_key_is_stale` (cle d'ignore devenue impossible a re-matcher), helpers `retain_existing` / `count_purgeable` partages par les caches.
+- [x] `prune_missing` + `count_missing` ajoutes aux 4 caches (`HashCache`, `VideoCache`, `AudioCache`, `ExactCache`), delegant a `maintenance` (source unique de la logique volume).
+- [x] [src-tauri/src/commands/maintenance.rs](../src-tauri/src/commands/maintenance.rs) : commandes `get_maintenance_report` (espace + compteurs obsoletes + liste des sessions avec flag `folder_missing`), `purge_stale_caches`, `purge_stale_ignored`. Suppression de sessions via `delete_session` existant (boucle frontend).
+- [x] [src/components/MaintenancePanel.tsx](../src/components/MaintenancePanel.tsx) : drawer SideDrawer, aides de selection (tout cocher / dossiers introuvables / plus de N jours), confirmations inline pour la suppression de sessions et le vidage complet.
+- [x] Section cache retiree du `SessionPicker` (props `cacheBytes`/`purgeConfirm`/`onPurge` supprimees, `handlePurgeCache` + state `purgeConfirm` retires d'App.tsx) - tout est dans le menu Maintenance.
+- [x] Article d'aide bilingue `maintenance` (nouvelle section) ; article `sessions` mis a jour (cache -> Maintenance).
+- [x] 13 nouveaux tests Rust (`maintenance::tests` + `commands::maintenance::tests`), 10 tests TS `MaintenancePanel.test.tsx`, tests `SessionPicker`/`App` mis a jour.
+- [x] 345 tests Rust / 519 tests TypeScript / tsc clean.

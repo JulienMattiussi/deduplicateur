@@ -25,8 +25,9 @@ Outil de détection et suppression de fichiers en double - rapide, local, sans c
 - **Filtres** - extensions, taille, date de modification ; filtre texte sur les résultats
 - **Export** - CSV ou rapport HTML autonome
 - **Profils de scan** - configurations sauvegardées, lancement en un clic
+- **Maintenance** - menu d'entretien : purge ciblée des références obsolètes (cache, ignorés) avec garde-fou disque débranché, suppression groupée d'analyses, vidage complet du cache
 - **Notifications système** - en fin de scan long
-- **Aide intégrée** - 38 articles bilingues FR / EN (touche F1)
+- **Aide intégrée** - 40 articles bilingues FR / EN (touche F1)
 - **Interface** - thème sombre / clair, glisser-déposer, FR / EN
 
 ---

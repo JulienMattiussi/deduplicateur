@@ -17,6 +17,7 @@ export function SideDrawer({
   toolbar,
   footer,
   testId,
+  className,
   children,
 }: {
   open: boolean;
@@ -25,6 +26,8 @@ export function SideDrawer({
   toolbar?: React.ReactNode;
   footer?: React.ReactNode;
   testId?: string;
+  /** Classe additionnelle sur le conteneur (ex. largeur réduite). */
+  className?: string;
   children: React.ReactNode;
 }) {
   useEffect(() => {
@@ -41,7 +44,7 @@ export function SideDrawer({
   return (
     <>
       <div className="side-drawer-overlay" onClick={onClose} />
-      <div className="side-drawer" data-testid={testId}>
+      <div className={`side-drawer${className ? ` ${className}` : ""}`} data-testid={testId}>
         <div className="side-drawer-header">
           <span className="side-drawer-title">{title}</span>
           <button className="btn-ghost btn-sm" onClick={onClose} aria-label="Close">✕</button>

@@ -241,8 +241,10 @@ describe("S - Scénarios complets (3 modes × 4 types × 2 résultats = 24)", ()
         if (mode === "by_folder") {
           // list_folder_keys doit être appelé après le scan
           expect(mockInvoke).toHaveBeenCalledWith("list_folder_keys", { filterText: null });
-          // L'en-tête de section du dossier doit être visible (replié par défaut)
-          expect(screen.getByText(/SubFolder/)).toBeInTheDocument();
+          // L'en-tête de section du dossier doit être visible (replié par défaut).
+          // findByText : list_folder_keys est asynchrone, on attend son rendu
+          // (getByText synchrone est fragile sous charge parallèle de la suite).
+          expect(await screen.findByText(/SubFolder/)).toBeInTheDocument();
         } else {
           // Le texte du groupe doit être visible
           expect(screen.getByText(groupTextByType[type])).toBeInTheDocument();

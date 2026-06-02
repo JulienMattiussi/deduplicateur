@@ -43,7 +43,10 @@
       "Bash(PATH=* npx tsc --noEmit*)",
       "Bash(python3 -c ' *)",
       "Bash(grep -A3 \"--- stderr\")",
-      "Bash(ffprobe -version)"
+      "Bash(ffprobe -version)",
+      "Bash(PATH=/home/julien/.nvm/versions/node/v22.22.0/bin:__TRACKED_VAR__ npx vitest run)",
+      "Bash(PATH=/home/julien/.nvm/versions/node/v22.22.0/bin:__TRACKED_VAR__ npx vitest run src/scan-scenarios.test.tsx)",
+      "Bash(PATH=/home/julien/.nvm/versions/node/v22.22.0/bin:__TRACKED_VAR__ npx vitest run src/i18n.test.ts)"
     ]
   }
 }

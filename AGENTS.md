@@ -237,6 +237,20 @@ Pattern :
 
 Voir `archive_entries_cache` (HashMap path → entrées avec hashes) comme exemple de référence.
 
+## Règle impérative - Purge long terme : "fichier absent" != "fichier supprimé"
+
+Toute purge de références accumulées (entrées de cache, groupes ignorés, sessions) **doit distinguer un fichier réellement supprimé d'un fichier momentanément indisponible** (disque externe débranché, partage réseau injoignable). Le programme sert à dédupliquer des disques externes et des NAS : purger naïvement toute entrée dont `path.exists() == false` détruirait, au prochain lancement avec un disque débranché, un cache coûteux à recalculer (re-hash de dizaines de milliers de fichiers au rebranchement). C'est un footgun majeur, contraire à la prudence du projet (corbeille systématique, etc.).
+
+Source unique de la logique : `crate::maintenance`.
+- `volume_root(path)` détermine la racine du volume quand elle est distincte du disque système. Windows : préfixe disque (`C:\`) ou UNC (`\\serveur\partage`). Unix : points de montage externes `/media/<user>/<vol>` (profondeur 3), `/run/media/<user>/<vol>` (4), `/mnt/<vol>` et `/Volumes/<vol>` (2). Tout le reste (`/home`, `/`...) = disque système → `None` (supposé toujours monté).
+- `is_volume_reachable(path)` : vrai pour le disque système, vrai si la racine du volume externe existe, **faux si elle a disparu** (démonté).
+- `is_purgeable(path)` : vrai **uniquement** si le fichier n'existe plus ET que son volume est joignable.
+- `ignore_key_is_stale(key)` : un groupe ignoré (clé = chemins triés joints par `|`, cf. `group_ignore_key`) est obsolète si au moins un chemin est réellement supprimé ET aucun n'est sur un volume injoignable. Rationnel : la clé exige le jeu exact de chemins pour re-matcher ; un seul chemin définitivement perdu rend le groupe inutile, mais un chemin juste indisponible interdit de conclure.
+
+Les 4 caches (`HashCache`, `VideoCache`, `AudioCache`, `ExactCache`) exposent `prune_missing()` (retire + marque dirty, retourne le compte) et `count_missing()` (compte sans modifier), tous deux délégant à `maintenance::retain_existing` / `count_purgeable`. **Ne jamais réimplémenter la logique volume ailleurs** : toute nouvelle purge passe par ces helpers.
+
+Côté UX : la purge est **explicite** (menu `🔧 Maintenance`, `MaintenancePanel.tsx`), jamais automatique au démarrage, avec aperçu chiffré ("X sur Y obsolètes") avant action. Le vidage complet du cache (`purge_cache`, option nucléaire qui supprime aussi les empreintes valides) vit dans le même menu, clairement séparé. Tests d'invariance : `maintenance::tests::*` (notamment `fichier_sur_volume_demonte_non_purgeable` et `ignore_key_non_stale_si_un_chemin_sur_volume_demonte`) et `commands::maintenance::tests::*`.
+
 ## Règle impérative - Cohérence des seuils entre scan et opérations post-scan
 
 Tout paramètre qui influence un calcul (seuil de similarité, tolérance, etc.) doit être **partagé entre toutes les phases qui s'en servent**. Si la phase de scan utilise un seuil et qu'une opération post-scan (comparateur, recompute, export) utilise un seuil différent, le compteur affiché à l'utilisateur ne correspond plus à ce qu'il voit dans le détail.
